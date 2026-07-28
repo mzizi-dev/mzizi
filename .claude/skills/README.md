@@ -1,97 +1,65 @@
-# Nyuchi Design Portal — Claude Code Skills
+# Mzizi agent skills — published from `nyuchi/mzizi-tools`
 
-Installable Claude Code skills for working with the bundu ecosystem. Each `.md` file in this directory is a self-contained skill with YAML frontmatter describing when Claude should invoke it.
+**The skills are not in this repo any more.** They live in
+[`nyuchi/mzizi-tools`](https://github.com/nyuchi/mzizi-tools) under `mzizi-skills/skills/` and
+ship as the public npm package **`@nyuchi/mzizi-skills`**. Git is the source of truth for skill
+content; this directory holds no skill files.
 
-## What's in here
-
-| Skill                  | When to use                                                                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `nyuchi-design-system` | Working on any bundu-ecosystem app — design tokens, component patterns, Ubuntu doctrine, APCA accessibility, shadcn CLI install flows. |
-| `ecosystem-app-setup`  | Bootstrapping a brand-new ecosystem app (new mukoko mini-app, nyuchi product, sister brand, etc.).                                     |
-| `scaffold-component`   | Adding a new UI component to the registry (Supabase-first: MCP `scaffold_component` → upsert → `pnpm registry:sync`).                  |
-
-All three skills assume the live portal at <https://mzizi.dev> and the MCP server at <https://mzizi.dev/mcp>.
-
-## Install into another Claude Code project
-
-Skills live in one of two places:
-
-- `<project>/.claude/skills/` — project-scoped (recommended for ecosystem apps)
-- `~/.claude/skills/` — user-global
-
-Install via any of these paths.
-
-### Option A — Clone the repo (always up-to-date)
+## Install them here, or in any consumer repo
 
 ```bash
-cd ~/src # wherever you keep repos
-git clone https://github.com/nyuchi/design-portal.git
-mkdir -p ~/.claude/skills
-ln -s "$PWD/design-portal/.claude/skills/nyuchi-design-system.md"   ~/.claude/skills/
-ln -s "$PWD/design-portal/.claude/skills/ecosystem-app-setup.md"    ~/.claude/skills/
-ln -s "$PWD/design-portal/.claude/skills/scaffold-component.md"     ~/.claude/skills/
+npx skills add @nyuchi/mzizi-skills
 ```
 
-Symlinking means `git pull` in the portal repo auto-updates the skills in every other project.
+Or install the whole toolchain as a Claude Code plugin — the skills, the `fundi` agent, the
+registry MCP, and the `/mzizi:*` commands in one step:
 
-### Option B — Copy into an ecosystem app's project scope
+```
+/plugin marketplace add nyuchi/mzizi-tools
+/plugin install mzizi@mzizi-tools
+```
+
+## What's in the bundle
+
+Design and brand: `bundu-design`, `nyuchi-design`, `mukoko-design`.
+Engineering doctrine: `simplify`, `discoverability`, `scaffold-component`,
+`ecosystem-app-setup`, `cloudflare-worker-rust`, `mcp-server-cloudflare`.
+
+Read the live list any time — it is served from this portal:
 
 ```bash
-# From the root of the consumer app (e.g. mukoko-weather):
-mkdir -p .claude/skills
-curl -fsSL -o .claude/skills/nyuchi-design-system.md   https://raw.githubusercontent.com/nyuchi/design-portal/main/.claude/skills/nyuchi-design-system.md
-curl -fsSL -o .claude/skills/ecosystem-app-setup.md    https://raw.githubusercontent.com/nyuchi/design-portal/main/.claude/skills/ecosystem-app-setup.md
-curl -fsSL -o .claude/skills/scaffold-component.md     https://raw.githubusercontent.com/nyuchi/design-portal/main/.claude/skills/scaffold-component.md
+curl -s https://mzizi.dev/api/v1/skills | jq '.skills[].name'
 ```
 
-Project-scoped skills ship with the repo — every contributor and every Claude Code session automatically gets the right skills.
+or over the MCP: `list_skills` / `get_skill`.
 
-### Option C — Pair with the MCP server
+## Why they moved
 
-For the richest experience, also wire up the live MCP server. Add to your Claude Code settings (`.claude/settings.json`):
+Three skills used to be committed here as `.md` files and kept in step with the Supabase
+`skills` table by a `scripts/sync-skills.ts` that pulled DB → disk. That arrangement broke down:
 
-```json
-{
-  "mcpServers": {
-    "nyuchi-design": {
-      "type": "url",
-      "url": "https://mzizi.dev/mcp"
-    }
-  }
-}
-```
+- `nyuchi-design-system.md` was superseded by the bundle's `nyuchi-design`, and still described
+  the retired L1–L10 "3D architecture" model rather than the DNA helix.
+- `ecosystem-app-setup.md` and `scaffold-component.md` were duplicates of registry rows, and
+  both drifted — pointing at `@nyuchi/design-cli` and `nyuchi/design-agent-skills`, neither of
+  which exists under those names.
+- `scripts/sync-skills.ts` wrote to `packages/design-agent-skills/`, a directory removed when
+  that package moved out of this repo, so `pnpm skills:sync` could only crash.
+- Worst of all it pulled **DB → disk** while `mzizi-tools`' own `sync-skills.mjs` pushes
+  **disk → DB**. Two writers, opposite directions, one table: whichever ran last won.
 
-The MCP server exposes tools and resources that read live data from the Supabase registry — call `tools/list` or `resources/list` for the current inventory (the set is never hardcoded, it grows as the registry grows). The skills are the _doctrine_ ("what does it mean?"); the MCP server is the _data_ ("what does it currently contain?"). Use them together.
+The loop is now cut. `mzizi-tools` owns skill content in git and projects it into the `skills`
+collection with `pnpm skills:sync`; this repo only ever **reads** that collection, through
+`/api/v1/skills*` and the MCP.
 
-## Verifying installation
+## Editing a skill
 
-Start a new Claude Code session in the target project and type:
+Open a PR against `nyuchi/mzizi-tools`, editing `mzizi-skills/skills/<name>/SKILL.md`. Never
+edit a copy — not here, not in a consumer repo, and not the DB row directly. Merging to `main`
+publishes the package automatically.
 
-```
-/nyuchi-design-system
-```
+## Author-time skills that belong in this repo
 
-If the skill is registered, Claude will acknowledge the trigger and load the instructions. You can also type `/` to browse available skills — the three Nyuchi skills should appear with their descriptions.
-
-## Updating
-
-- **If you symlinked (Option A):** `git pull` in the portal repo.
-- **If you copied (Option B):** rerun the `curl` commands; they'll overwrite with the latest version.
-
-## Contributing to the skills
-
-Edit the `.md` file directly in this repo. Open a PR. The skill frontmatter format is:
-
-```yaml
----
-name: skill-slug-kebab-case
-description: One-sentence trigger guide — "Use when …"; include keywords Claude's router should match on. This field is the ONLY signal for when the skill activates, so make it concrete.
----
-# Skill content in Markdown …
-```
-
-Keep `description` specific and in imperative voice starting with "Use when". Do not bury the triggers — the first sentence is what Claude's router matches against.
-
-## License
-
-MIT — see `../../LICENSE`. These skills are free to fork, extend, and redistribute. If you derive a skill for another design system, please credit the Nyuchi Design Portal in your own README.
+If a skill is genuinely specific to working **on the portal codebase** (as opposed to building
+with the design system), it can live here as `<name>.md` with `name` + `description` YAML
+frontmatter. There are none today. Anything reusable by a consumer belongs in the bundle.
