@@ -15,23 +15,25 @@
 
 ## What is Mzizi?
 
-**Mzizi** (Swahili for _root_) is an independent open-architecture project of the **Bundu Foundation**, operated and developed by **Nyuchi**. It owns the open DNA-helix frontend architecture, the component registry served at `mzizi.dev/r/`, the Mzizi API at `mzizi.dev/api`, the Seven African Minerals design system, and the document-route Model Context Protocol (MCP) server at `mzizi.dev/mcp`. It is **not** a Nyuchi product — it is a Bundu-governed standard the whole bundu ecosystem (Mukoko consumer mini-apps, Nyuchi enterprise products, sister brands) installs from. Backed by a DB-first architecture (Supabase) and served as a shadcn-compatible API, every component is installable into any project with one command.
+**Mzizi** (Swahili for _root_) is an independent open-architecture project of the **Bundu Foundation**, operated and developed by **Nyuchi**. It owns the open DNA-helix frontend architecture, the component registry served at `mzizi.dev/r/`, the Mzizi API at `mzizi.dev/api`, the Seven African Minerals design system, and the document-route Model Context Protocol (MCP) server at `mzizi.dev/mcp`. It is **not** a Nyuchi product — it is a Bundu-governed standard the whole bundu ecosystem (Mukoko consumer mini-apps, Nyuchi enterprise products, sister brands) installs from. Component source is files in this repo, in git; Supabase holds the metadata around them. Everything is served over our own API in the shadcn registry format, so every component installs into any project with one command — with our CLI, with the shadcn CLI, or with no tooling at all.
 
 ---
 
 ## Quick install
 
 ```bash
-npx shadcn@latest add https://mzizi.dev/api/v1/ui/button
+npx mzizi add button
+npx mzizi add card dialog data-table
 ```
 
-Install several at once:
+`mzizi` is the first-party installer — it resolves the Mzizi dependency graph itself, shells out
+to `npx shadcn add` for genuine upstream primitives, and is the only path that can serve the
+Rust/Dioxus siblings (`npx mzizi add --rust <name>`).
+
+The shadcn CLI is fully supported too, and needs nothing from us:
 
 ```bash
-npx shadcn@latest add \
-  https://mzizi.dev/api/v1/ui/card \
-  https://mzizi.dev/api/v1/ui/dialog \
-  https://mzizi.dev/api/v1/ui/data-table
+npx shadcn@latest add https://mzizi.dev/api/v1/ui/button
 ```
 
 Every install carries the canonical typography (Noto Sans / Noto Serif / JetBrains Mono), the Seven African Minerals palette, the layered architecture, the pill-button identity, and the 56px touch-target floor.

@@ -10,10 +10,11 @@
 
 **Mzizi** is an **independent open-architecture project of the Bundu Foundation** — governed by the Bundu Foundation, operated and developed by Nyuchi. It is **not** a Nyuchi product. Mzizi owns the open DNA-helix frontend architecture, the component registry (`mzizi.dev/r/`), the Mzizi API (`mzizi.dev/api`), the components, the infrastructure harness, and the architecture nodes it serves.
 
-It serves the full stable registry across the **Mzizi DNA double helix** — two entwined backbones (an **engineering** strand and a **meaning** strand) held by cross-cutting **rungs**, with no axes and no outliers. Nodes N1–N8 sit on strands (N2 primitives → N3 brand → N6 pages → N7 shell = the `shipped`/`core-guarantee` build; N1 tokens = `swappable`; N4 safety, N5 resilience, N8 assurance = `core-guarantee`); the rungs are N9 fundi (self-healing, owned by `mzizi-tools`), N10 documentation, and N11 discovery (SEO/AIO). The N-numbers are labels, not a sequence — see §6.2. Built on the **Seven African Minerals** design system (seven minerals + seven heritage tones + status + the Experimental Seven — see §7), installable via the shadcn CLI:
+It serves the full stable registry across the **Mzizi DNA double helix** — two entwined backbones (an **engineering** strand and a **meaning** strand) held by cross-cutting **rungs**, with no axes and no outliers. Nodes N1–N8 sit on strands (N2 primitives → N3 brand → N6 pages → N7 shell = the `shipped`/`core-guarantee` build; N1 tokens = `swappable`; N4 safety, N5 resilience, N8 assurance = `core-guarantee`); the rungs are N9 fundi (self-healing, owned by `mzizi-tools`), N10 documentation, and N11 discovery (SEO/AIO). The N-numbers are labels, not a sequence — see §6.2. Built on the **Seven African Minerals** design system (seven minerals + seven heritage tones + status + the Experimental Seven — see §7), installable with the first-party CLI or any shadcn-compatible client (§8.6):
 
 ```
-npx shadcn@latest add https://mzizi.dev/api/v1/ui/<component>
+npx mzizi add <component>                                  # first-party
+npx shadcn@latest add https://mzizi.dev/api/v1/ui/<component>   # also supported
 ```
 
 **Version:** 1.0.0
@@ -53,9 +54,10 @@ design-portal (this repo)
     │
     ├── Defines: Seven African Minerals palette, typography, component API,
     │            DNA-helix frontend architecture, Ubuntu doctrine
-    ├── Serves: the full stable registry across the DNA-helix nodes via the
-    │           shadcn CLI / `/api/v1/*` (live count: GET /api/v1/stats)
-    │           and the document-route MCP at /mcp (mzizi://components, mzizi://nodes)
+    ├── Serves: the full stable registry across the DNA-helix nodes over our own
+    │           `/api/v1/*` (live count: GET /api/v1/stats) — consumed by the
+    │           first-party `mzizi` CLI, by any shadcn-compatible client, or by
+    │           raw HTTP — and the document-route MCP at /mcp
     │
     └── Consumed by:
         ├── Mukoko consumer apps  (weather, news, nhimbe, super app, …)
@@ -63,7 +65,7 @@ design-portal (this repo)
         │   (each Mzizi mini-app ships as the `mzizi-console-app` npm package
         │    and plugs into platform.nyuchi.com)
         ├── Sister brands (Zimbabwe Information Platform, Barstool by Nyuchi)
-        └── Any new bundu ecosystem app — via the shadcn CLI against /api/v1/ui/<component>
+        └── Any new bundu ecosystem app — `npx mzizi add <component>`
 ```
 
 **Rule:** When building a new app, install components from this registry. Do not copy-paste component code or create parallel component libraries. Mzizi-side agentic tooling (the Fundi self-healing agent, MCP transport, console mini-app shell) lives in `nyuchi/mzizi-tools`; long-form product docs live in `nyuchi/bundu-docs`; engineering docs in `nyuchi/nyuchi-docs`. Do not reintroduce any of those into `design-portal`.
@@ -301,7 +303,39 @@ design-portal/
 
 ### 6.1 Registry System
 
-**Single source of truth: the Supabase `components` table** — the stable registry across the nodes and rungs of the DNA double helix (live count: `GET /api/v1/stats`; never a fixed number — the node set is uncapped), with metadata, dependencies, docs and version history split across the tables below. **Source code is the exception and is not in any of them** — it is on disk, in git (§8.3).
+**The registry is files in this repo. Supabase holds the metadata around them.** Those two
+sentences are the whole model, and getting them the wrong way round is how the last several
+defect classes happened.
+
+- **Component source** — `components/registry/n<N>-<label>/<name>.<ext>`, in git, 571 files.
+  Read only through `lib/registry-source.ts`. This is the artifact a consumer installs, and it
+  lives where tsc, eslint, prettier and a code reviewer can see it (§8.3).
+- **Metadata** — description, `dependencies`, `registryDependencies`, `files[]`, node,
+  collection, owner, status, version history, docs, changelog: the Supabase `component_documents`
+  store, reached through `lib/db` and served over **our own** `/api/v1/*` routes (live count:
+  `GET /api/v1/stats`; never a fixed number — the node set is uncapped). Split across the
+  tables below.
+
+**Two rules follow, and they are the ones to enforce in review:**
+
+1. **The DB never holds component code — not source, not a snapshot, not an archive blob.**
+   Not in a column, not nested in a JSON document, not in a `versions[]` entry. It was in four
+   places at once; a JSON column is invisible to the toolchain, so every defect that reached
+   disk had already shipped to consumers. See `docs/component-source-migration.md`.
+2. **Consumers talk to our API, never to Supabase's.** `/api/v1/*` are Vercel serverless
+   routes we own — we control the shape, the caching, the CORS, the error contract and the
+   schema.org envelope. Do not hand a consumer, a CLI, or a downstream app a PostgREST URL or
+   an anon key and call it an API. If a surface needs data, add a route; the database client
+   stays behind `lib/db`. (The MCP server at `/mcp` is the one deliberate exception in the other
+   direction: it reads `component_documents` directly because it _is_ a first-party server, not
+   a consumer.)
+
+**And prefer no database at all where the answer is a file.** A shadcn registry is normally
+just files plus a build step, and everything about the registry that _can_ be a build artifact
+should be — `registry.json` is generated, the N1 token targets are generated, and the source is
+read off disk. Reach for Supabase when the data genuinely is mutable state someone edits
+(brand tokens, doctrine, changelog, observability events), not to store something a build could
+have produced.
 
 | Table                                                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -460,7 +494,7 @@ Three layers of error isolation:
 
 - API routes return proper HTTP status codes (400, 404, 500, 503 when Supabase env vars are missing)
 - All errors logged via `createLogger("<scope>")` from `lib/observability.ts`, with `[mzizi]` prefix for grep-ability
-- Resilience patterns (circuit-breaker, retry, timeout, fallback-chain, ai-safety, chaos) are vendored in `lib/`; their canonical source lives in the Supabase `components` table as `registry:lib` items and is installed by consumer apps via the shadcn CLI
+- Resilience patterns (circuit-breaker, retry, timeout, fallback-chain, ai-safety, chaos) are vendored in `lib/`; their canonical source is on disk under `components/registry/n5-resilience/` as `registry:lib` items, installed by consumer apps with `npx mzizi add <name>` or any shadcn-compatible client (§8.6)
 
 ---
 
@@ -677,29 +711,70 @@ token node shipped a five-and-five palette against a seven-and-seven system.
 
 ### 8.5 When Building a New Bundu Ecosystem App
 
-Install components via the shadcn CLI directly against the registry:
-
 ```bash
-npx shadcn@latest add https://mzizi.dev/api/v1/ui/button
-npx shadcn@latest add https://mzizi.dev/api/v1/ui/card
+npx mzizi init
+npx mzizi add button card nyuchi-header
 ```
+
+`mzizi` (the `mzizi` bin of `@nyuchi/mzizi-cli`) is the **first-party installer**. The shadcn
+CLI still works and is still supported — see §8.6 — but it is one client of the registry, not
+the way components are delivered.
 
 Every new app inherits the canonical typography (Noto Sans / Noto Serif / JetBrains Mono), the Seven African Minerals palette, the layered architecture, the pill-button identity, and the touch-target floor. Long-form product docs for any bundu app belong in `nyuchi/bundu-docs`; engineering docs belong in `nyuchi/nyuchi-docs`. Mzizi tooling (MCP, SDK, skills, console mini-app) is consumed from `nyuchi/mzizi-tools` as published npm packages.
 
-### 8.6 Distribution surface
+### 8.6 Distribution surface — our own CLI first, shadcn as a supported client
 
-Two live distribution paths from this repo:
+**The registry format is shadcn's; the delivery tool is ours.** Those are two separate
+decisions and this section used to conflate them, which is what made "install it with shadcn"
+read as doctrine rather than as one option.
+
+We keep the **schema** (`https://ui.shadcn.com/schema/registry.json`) because it is a good,
+widely-implemented contract and because holding to it means every shadcn user in the world can
+consume Mzizi with no tooling from us at all. We do **not** keep the shadcn CLI as the only
+path, for reasons that are already concrete rather than speculative:
+
+- **It cannot express a non-React component.** The registry is going bilingual — every
+  rendered component gains a Rust/Dioxus sibling, and N4/N5/N8–N12 move to Rust outright. A
+  `.rs` component has no `registry:ui` meaning to a tool built for a React project. `mzizi add
+--rust` does; `npx shadcn add` never will.
+- **`@mzizi/x` in `registryDependencies` needs a namespace the consumer has configured.** That
+  works — shadcn v4 supports `"registries": { "@mzizi": "https://mzizi.dev/r/{name}.json" }`
+  in `components.json` — but it is configuration we cannot assume, and 145 items shipped
+  depending on it before anyone checked. Our own resolver decides bare-vs-namespaced-vs-URL by
+  looking the name up, rather than hoping.
+- **Hundreds of components with a transitive graph is our problem to own.** 571 items today
+  and uncapped by design; the resolution, dedup and cycle behaviour across that graph is
+  load-bearing for us in a way it is not for an upstream tool.
+
+Four live distribution paths:
 
 ```bash
-# 1. shadcn CLI — components from the registry
+# 1. mzizi CLI — first-party, handles TS and Rust, resolves our graph
+npx mzizi add <component>
+npx mzizi add --rust <component>
+
+# 2. shadcn CLI — supported, React/TS only
 npx shadcn@latest add https://mzizi.dev/api/v1/ui/<component>
 
-# 2. Direct HTTP — raw payloads for any consumer
+# 3. shadcn CLI, namespaced (consumer configures @mzizi in components.json)
+npx shadcn@latest add @mzizi/<component>
+
+# 4. Direct HTTP — raw payloads for any consumer, no tooling at all
 GET https://mzizi.dev/api/v1/ui            # list
 GET https://mzizi.dev/api/v1/ui/{name}     # source + metadata
 GET https://mzizi.dev/api/v1/skills        # list
 GET https://mzizi.dev/api/v1/skills/{name} # full MDX body
 ```
+
+**Every path must serve byte-identical source for the same component.** A component that
+installs differently depending on which client asked is the same defect as two copies in two
+stores — it is just distributed across tools instead of databases.
+
+**Calling shadcn for genuine upstream primitives is correct, not a dependency to remove.**
+`button`, `card`, `dialog` and the other ~58 real ui.shadcn.com primitives are upstream work we
+benefit from; `mzizi add` shells out to `npx shadcn add` for those and resolves everything
+Mzizi-only itself. Independence means not being _unable to ship without them_, not refusing to
+use them.
 
 Mzizi tooling (CLI, agent, MCP transport, skills bundle, console mini-app) is published from `nyuchi/mzizi-tools` — not from this repo. The MCP server at `mzizi.dev/mcp` is the canonical reference implementation; the `mzizi-mcp` worker in `mzizi-tools` mirrors it for consumers that want a self-hostable Cloudflare Worker copy.
 
@@ -730,7 +805,8 @@ The portal dogfoods its own registry. The transitive closure of the brand compon
       "registryDependencies": ["other-registry-component-names"],
       "files": [
         {
-          "path": "components/ui/component-name.tsx",
+          "path": "components/registry/n2-primitives/component-name.tsx",
+          "target": "components/ui/component-name.tsx",
           "type": "registry:ui"
         }
       ]
@@ -738,6 +814,53 @@ The portal dogfoods its own registry. The transitive closure of the brand compon
   ]
 }
 ```
+
+**`path` and `target` are not the same field and the difference breaks installs.** `path` is
+where the file lives in **this** repo; `target` is where a client writes it in the
+**consumer's** project. Many existing rows put a consumer-shaped path in `path` and omit
+`target` entirely, which is survivable only because the clients guess from `type`. New and
+edited rows should carry both.
+
+**`registryDependencies` must be resolvable by the client that reads it.** Three forms are
+valid and they are not interchangeable:
+
+| Form                                        | Resolves against                    | Use for                                    |
+| ------------------------------------------- | ----------------------------------- | ------------------------------------------ |
+| `button`                                    | ui.shadcn.com                       | a genuine upstream primitive (~58 of them) |
+| `https://mzizi.dev/api/v1/ui/nyuchi-header` | us, explicitly                      | anything Mzizi-only                        |
+| `@mzizi/nyuchi-header`                      | a namespace the consumer configured | shadcn v4 clients that opted in            |
+
+A bare name that is **not** an upstream primitive is the defect that made 105 components
+uninstallable while the endpoint returned 200 the whole time. `pnpm registry:validate` is the
+gate: scope-prefixed and unresolvable deps are **errors**, bare Mzizi-only names are warnings.
+
+### 8.9 Per-node registries and the bilingual surface
+
+The registry is one **name**space with several **served** surfaces, and that is deliberate:
+a Dioxus app has no use for 371 React primitives, and a React app has no use for the `.rs`
+siblings.
+
+| Surface                            | Serves                                   | Consumer                                      |
+| ---------------------------------- | ---------------------------------------- | --------------------------------------------- |
+| `/api/v1/ui` · `/api/v1/ui/{name}` | TypeScript/React items                   | shadcn CLI, `mzizi add`                       |
+| `/api/v1/rs/{name}` _(planned)_    | the Rust/Dioxus sibling of the same item | `mzizi add --rust`                            |
+| `/r/{name}.json` _(planned)_       | static, pre-built registry items         | `@mzizi` namespace clients                    |
+| per-node index                     | one node's items only                    | apps that want N5 resilience and nothing else |
+
+Rules that hold across all of them:
+
+- **One row, one name, one component.** A component's TypeScript and Rust forms are the same
+  registry item with `files[]` partitioned by extension — not two items, not two names. Two
+  names would let the two drift, and the whole point of §6.1 is that drift is the enemy.
+- **A component with no Rust sibling 404s on `/rs`.** It does not fall back to the `.tsx`.
+  Installing a React component into a Dioxus project is worse than an error.
+- **`/api/v1/ui/{name}` stays byte-identical as the Rust work lands.** Every existing
+  `npx shadcn add` keeps working unchanged; that is a hard constraint on the bilingual
+  migration, not a nice-to-have.
+- **A `.rs` file in the registry must be compiled by CI before it is served.** A cargo
+  workspace with `cargo check`, `clippy -D warnings` and `fmt --check` lands in the _first_
+  Rust PR, before the first ported component. Without it a `.rs` file is exactly what a
+  `source_code` column was: bytes nothing verifies.
 
 ---
 
@@ -1024,9 +1147,28 @@ CI additionally runs `pnpm test`, `pnpm build`, and `pnpm registry:verify`.
 
 When working on this codebase as an AI assistant:
 
-1. **Supabase is the source of truth for everything except component source.** Docs, brand data, architecture data, AI instructions, changelog and document-route metadata all live in Supabase; do not reintroduce hardcoded JSON/TS files for those. **Component source is the exception and now lives on disk** under `components/registry/n<N>-<label>/` — it moved precisely because a JSON column is invisible to tsc, eslint and prettier, and every node that reached disk failed the build on first contact with defects consumers had already installed. One copy, in git. See §8.3 and `docs/component-source-migration.md`.
+1. **The registry is files in the repo; Supabase holds the metadata around them, and consumers
+   talk to our API — never Supabase's** (§6.1). Component source is
+   `components/registry/n<N>-<label>/<name>.<ext>`, in git, read only through
+   `lib/registry-source.ts` — it moved there precisely because a JSON column is invisible to tsc,
+   eslint and prettier, and every node that reached disk failed the build on first contact with
+   defects consumers had already installed. Docs, brand data, architecture data, AI instructions,
+   changelog and document metadata do live in Supabase; do not reintroduce hardcoded JSON/TS files
+   for those. Three things follow: **never put component code back in the database** (not a
+   column, not a nested JSON key, not a version snapshot); **never hand a consumer or a CLI a
+   PostgREST URL or an anon key and call it an API** — `/api/v1/*` is ours, so add a route and keep
+   the DB client behind `lib/db`; and **prefer no database at all where the answer is a file** — if
+   a build step can produce it, a build step should. See §8.3 and
+   `docs/component-source-migration.md`.
 2. **`registry.json` is generated, not authored.** Never hand-edit it. CI runs `pnpm registry:verify` to catch drift.
-3. **Never break the shadcn registry schema** — downstream apps depend on it.
+3. **Keep the shadcn registry schema; do not treat the shadcn CLI as the delivery mechanism**
+   (§8.6). The schema is a contract downstream apps depend on and we hold to it — never break it.
+   The _tool_ is replaceable, and `npx mzizi add` is the first-party path; it has to be, because a
+   `.rs` Dioxus sibling has no meaning to a React-shaped installer. Calling `npx shadcn add` for
+   genuine upstream primitives is correct — independence means not being unable to ship without
+   them, not refusing to use them. **Every distribution path must serve byte-identical source for
+   the same component**; one that installs differently depending on which client asked is the
+   two-copies defect, distributed across tools instead of databases.
 4. **Use the Seven African Minerals palette** (plus heritage / status / experimental sets — §7) — never introduce colors outside the token system.
 5. **Follow the CVA + Radix + cn() pattern** — every component uses this stack.
 6. **Keep components self-contained** — each file is independently installable via the registry.
@@ -1039,7 +1181,7 @@ When working on this codebase as an AI assistant:
 13. **Keep versions in sync** — `package.json`, `lib/mcp-server.ts` (`VERSION`), the `changelog` Supabase row, `components/landing/footer.tsx`, `components/landing/dashboard-sidebar.tsx`, `app/layout.tsx` (`softwareVersion`), `README.md`, and CLAUDE.md §1.
 14. **The mineral strip uses 5 mineral colors** and is always vertical (left-edge accent only).
 15. **Use the MCP server** — served at `/mcp` via `lib/mcp-server.ts` (`createMziziMcpServer`); reads `component_documents` only. The legacy relational MCP is retired; `design.nyuchi.com` is a 308 redirect to `mzizi.dev`.
-16. **Resilience patterns** (circuit-breaker, retry, timeout, fallback-chain, ai-safety, chaos) are vendored in `lib/` and also published as `registry:lib` items in Supabase. Consumer apps install them via the shadcn CLI.
+16. **Resilience patterns** (circuit-breaker, retry, timeout, fallback-chain, ai-safety, chaos) are vendored in `lib/` and also published as `registry:lib` items in the registry. Consumer apps install them with `npx mzizi add <name>` or any shadcn-compatible client (§8.6). These are the N5 patterns moving to Rust first — a resilience primitive is exactly the kind of code that should not depend on a JS runtime.
 17. **Long-form documentation lives outside this repo** — product docs in `nyuchi/bundu-docs` (Astro Starlight → `docs.bundu.org`), engineering docs in `nyuchi/nyuchi-docs` (Astro Starlight → `docs.nyuchi.com`). The portal is a registry + brand + architecture surface, not a docs site. The `documentation_pages` Supabase table is HISTORICAL — content was migrated to the Starlight repos; `/api/v1/docs/*` returns HTTP 410 with a `migrated_to` map; the `get_documentation_page` MCP tool is gone. The `changelog` Supabase table is unaffected — it remains the source of truth for the release-bump workflow.
 18. **The playground (`components/playground/`) reads from the API**, not from local files.
 19. **API is versioned under `/api/v1/`** — `openapi.yaml` is the contract; update it whenever a route or schema changes.
