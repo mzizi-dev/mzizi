@@ -61,7 +61,7 @@ preference.**
 
 ## 2. The split
 
-**Public** — `nyuchi/mzizi-tools` today, the Bundu Foundation org later:
+**Public** — `nyuchi/mzizi-tools` today, `mzizi-dev` later:
 
 - The language, compiler, primitives, RFCs. All of it.
 - The **entire correctness suite**: unit tests, contract tests, the parse gates, the
@@ -130,7 +130,7 @@ That last point needs a companion on the other side, or a dropped webhook become
 coverage gap: the private runner must also **poll** for public commits it has not yet
 measured. The dispatch is a latency optimisation; the poll is the correctness guarantee.
 
-The private side (to be created in `bundu-labs` — not in this PR; see §6 for when, and why
+The private side (to be created in `mzizi-dev` — not in this PR; see §6 for when, and why
 not yet):
 
 1. Receives the dispatch — or notices the commit on its own poll — checks out the public
@@ -166,10 +166,18 @@ branch name or a line number cannot.
 
 ## 6. Open questions
 
-1. **~~Where the private repository lives.~~** Settled: the Bundu Foundation org is
-   **`bundu-labs`**, and it already exists — an earlier draft of this RFC claimed otherwise,
-   which was simply wrong. The private repository goes there, in the same org as the public
-   one will, so ownership is never ambiguous and access is governed by one org's membership.
+1. **~~Where the private repository lives.~~** Settled: **`mzizi-dev`**, the dedicated
+   Foundation-governed Mzizi org, which already exists — earlier drafts of this RFC said no
+   such org existed, then named `bundu-labs`; both were wrong. `bundu-labs` is the
+   Foundation's general org and carries unrelated work, so it is the wrong boundary here.
+
+   A dedicated org is the better home for exactly the reason this RFC exists. The public
+   repository and the private held-out repository both live in `mzizi-dev`, so read access
+   to the held-out set is governed by one org's membership — which is the Mzizi maintainer
+   set and nothing wider. Putting the private half in a general-purpose org would tie the
+   most access-sensitive artifact in the project to a membership list maintained for
+   unrelated reasons, and §1.1's whole argument is that the held-out set stops being worth
+   anything the moment it leaks.
 
    **It should not be created yet**, and the reason is a design constraint rather than a
    scheduling one. Its whole job is to run the _public_ harness against a private input, so
