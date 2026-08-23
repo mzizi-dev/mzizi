@@ -1,0 +1,53 @@
+## A confirm/cancel pair. Exists to prove composition: it uses `button` and `alert` by
+## name, with no import line anywhere — see primitives/README.md on the flat namespace.
+component confirm_bar
+
+  prop message: text
+  prop confirm_label: text = "Confirm"
+  prop cancel_label: text = "Cancel"
+  prop destructive: bool = false
+  prop on_confirm: event(none)
+  prop on_cancel: event(none)
+
+  view
+    row
+      slot = "confirm-bar"
+      portal = "https://mzizi.dev/components/confirm-bar"
+      class = "flex flex-col gap-3"
+      when destructive
+        alert
+          variant = destructive
+          title = "Please confirm"
+          message = message
+        end
+      end
+      when not destructive
+        alert
+          variant = default
+          title = "Please confirm"
+          message = message
+        end
+      end
+      row
+        class = "flex items-center justify-end gap-2"
+        button
+          variant = ghost
+          label = cancel_label
+          on_tap = on_cancel
+        end
+        button
+          variant = default
+          label = confirm_label
+          on_tap = on_confirm
+        end
+      end
+    end
+  end
+
+  contract
+    slot is "confirm-bar"
+    uses button
+    uses alert
+  end
+
+end component confirm_bar
