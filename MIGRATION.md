@@ -266,6 +266,86 @@ entirely about the Foundation framework while the site lives in a Nyuchi-owned r
 today; a question the moment the Foundation wants editorial control of its own front page.
 Creating `mzizi-dev/docs` (§1) is how that gets resolved.
 
+## 7.1 The wider org topology (owner's plan, 2026-08-23)
+
+The move is one part of a three-way split along ownership and revenue lines:
+
+| Org         | Repo                                   | Holds                                                             | Visibility |
+| ----------- | -------------------------------------- | ----------------------------------------------------------------- | ---------- |
+| `mzizi-dev` | `framework`, `benchmark`, `docs`       | The Foundation framework, open                                    | public     |
+| `mzizi-dev` | `mzizi-tools` (moved)                  | Non-revenue tooling                                               | public     |
+| `nyuchi`    | `mzizi-agents` (new)                   | Proprietary Nyuchi tools built **on** Mzizi — the revenue surface | private    |
+| `nyuchi`    | `mzizi-console` (renamed from `mzizi`) | The registry / design portal                                      | public     |
+
+This is a good boundary: revenue vs non-revenue is simultaneously a licence line, a
+visibility line and an ownership line, which is exactly when a repo beats a directory.
+
+**The rule that makes it hold, and it is the same rule as RFC-0004 §3:**
+
+> `mzizi-agents` consumes `mzizi-dev/*`. `mzizi-dev/*` never consumes `mzizi-agents`.
+
+If the open framework ever depends on the proprietary layer, the open project is hollow — a
+fork gets a tree that cannot build. This is the identical failure mode RFC-0004 guards
+against for tests, and it deserves the identical treatment: the framework's CI must stay
+green with no access to `mzizi-agents` whatsoever.
+
+### 7.2 Four consequences to handle before executing
+
+**1. Moving `mzizi-mcp` out of the `nyuchi` org breaks its MCP registry publish. Hard
+blocker, not a cost.** `.github/workflows/publish-mzizi-mcp.yml` authenticates with
+`mcp-publisher github-oidc`, which proves the workflow is running from a repo owned by
+`nyuchi`. The namespace `io.github.nyuchi/mzizi-mcp` can therefore only be published from a
+`nyuchi`-owned repo. Three options, in order of preference:
+
+- Keep `mzizi-mcp` in the `nyuchi` org. Simplest, and nothing breaks.
+- Move it and republish as `io.github.mzizi-dev/mzizi-mcp`, with a deprecation on the old
+  entry. Every existing client config needs updating — the old name does not redirect.
+- Move the code but keep the publish workflow in a `nyuchi` repo. Works, and is the worst of
+  the three: the thing that publishes an artifact lives apart from the artifact.
+
+**2. `mzizi-console` collides with something that already exists.** `@nyuchi/mzizi-console-app`
+(0.2.0) is a published package inside `mzizi-tools`, and per that repo's own description the
+Nyuchi Console is `platform.nyuchi.com` — a different product from the design portal.
+`nyuchi/mzizi` is described as "The Nyuchi Design Portal — component registry, brand
+documentation hub, design system, and developer portal", homepage `design.nyuchi.com`.
+
+So `nyuchi/mzizi-console` would name the _registry_ after a _different_ product that already
+has a package of that name. If the intent is the registry, `mzizi-registry` or
+`mzizi-design` says what it is. If the intent really is the console, then
+`mzizi-console-app` should probably move into it and the collision resolves itself. Either
+resolution is fine; the ambiguous middle is what costs time later.
+
+**3. `mzizi-tools` is currently private, and going public needs an audit first.** It holds
+`fundi/` (WorkOS auth), `supabase/`, and a `docs/` directory covering service bindings and
+self-healing. `gitleaks` runs in CI and is green, which covers credentials — it does not
+cover internal hostnames, account IDs, org structure, or the WorkOS/Supabase project
+identifiers in config. Audit those before flipping visibility, and remember git history is
+public too: a secret removed in a later commit is still public once the repo is.
+
+**4. Renames redirect, but not everything follows.** GitHub redirects git remotes and web
+URLs after a repo rename, so clones and existing `git remote`s keep working. What does not
+automatically follow: any `raw.githubusercontent.com/nyuchi/mzizi/...` URL baked into
+`registryDependencies` or install instructions (redirects exist but are fragile as a
+contract), and the Cloudflare Workers Builds / Vercel project bindings should be verified
+rather than assumed — they bind by repo ID and normally survive, but "normally" is not
+"verified", and `mzizi.dev` plus `/api/v1/ui/{name}` are live public surfaces.
+
+### 7.3 Package mapping — needs the owner's call
+
+Revenue classification is a business fact, not something to infer from code. Proposed
+starting point only:
+
+| Package             | Today                            | Proposed home                                         | Confidence |
+| ------------------- | -------------------------------- | ----------------------------------------------------- | ---------- |
+| `mzizi-lang/`       | `mzizi-tools`                    | `mzizi-dev/framework`                                 | settled    |
+| `mzizi-skills`      | `@nyuchi/mzizi-skills`           | non-revenue → moves                                   | high       |
+| `mzizi-plugin`      | (unpublished)                    | non-revenue → moves                                   | high       |
+| `mzizi-mcp`         | `@nyuchi/mzizi-mcp`              | **stays in `nyuchi`** — see 7.2 §1                    | high       |
+| `mzizi-console-app` | `@nyuchi/mzizi-console-app`      | `mzizi-console`, or `mzizi-agents`                    | owner      |
+| `fundi`             | `@nyuchi/fundi-tester` (private) | `mzizi-agents`                                        | owner      |
+| `mzizi-cli`         | `@nyuchi/mzizi-cli`, bin `fundi` | `mzizi-agents`? bin name suggests it pairs with fundi | owner      |
+| `bushtrade-mcp`     | `@nyuchi/bushtrade-mcp`          | unrelated to Mzizi — its own repo                     | owner      |
+
 ## 8. Starting the next session
 
 Scope it to four repositories:
