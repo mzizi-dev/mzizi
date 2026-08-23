@@ -23,6 +23,11 @@ mzizi-lang/
 └── benchmarks/         # Phase 0 benchmark harness — public; the task set is not
 ```
 
+> **Moving to `mzizi-dev`.** See [`MIGRATION.md`](./MIGRATION.md) for the repository plan,
+> the history-preserving move, the work queue in dependency order, and the do-not-rename
+> list. It lives in this directory so a `git subtree split` carries it to the root of the new
+> repository.
+
 ## The RFCs
 
 | RFC                                                                        | What it settles                                                                                                                                                                                               |
