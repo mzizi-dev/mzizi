@@ -1,0 +1,48 @@
+## A status strip announcing the app's network state.
+## Corpus reference: n7-shell/nyuchi-connectivity-bar.
+component connectivity_bar
+
+  use motion
+
+  enum connection_state
+    online   label "Back online"      color "bg-malachite"
+    syncing  label "Syncing changes"  color "bg-gold"
+    cached   label "Viewing cached"   color "bg-sodalite"
+    offline  label "You are offline"  color "bg-terracotta"
+  end
+
+  prop state: connection_state
+  prop visible: bool = true
+  prop on_state_change: event(connection_state)
+
+  view
+    when not visible
+      nothing
+    end
+    strip
+      slot = "nyuchi-connectivity-bar"
+      class = "fixed inset-x-0 top-0 z-50 {state.color}"
+      role = "status"
+      text = state.label
+      when state is offline
+        button
+          text = "Retry"
+          class = "min-h-[48px]"
+          tap = retry
+        end
+      end
+    end
+  end
+
+  fn retry
+    emit on_state_change(syncing)
+  end
+
+  contract
+    online.label is "Back online"
+    offline.color is "bg-terracotta"
+    when offline shows button "Retry"
+    button "Retry" min_height 48
+  end
+
+end component connectivity_bar

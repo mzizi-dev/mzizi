@@ -3,4 +3,18 @@ name = "mzizi-lang-compiler"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Placeholder for the Mzizi-lang Phase 0 compiler prototype — no syntax designed yet, see ../CHARTER.md §7."
+description = "Mzizi-lang Phase 0 front end — lexer, recovering parser, and the agent NDJSON diagnostic protocol (RFC-0001, RFC-0002)."
+
+# No dependencies, deliberately. The house convention across the Rust crates is to
+# hand-roll small, fully-specified things (JSON emission here) rather than take a
+# dependency; and a compiler whose check loop must stay sub-second on a modest laptop
+# should not start life with a dependency tree to build first.
+[dependencies]
+
+[[bin]]
+name = "mz"
+path = "src/main.rs"
+
+[lib]
+name = "mzizi_lang_compiler"
+path = "src/lib.rs"
