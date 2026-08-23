@@ -10,8 +10,11 @@
 > **Interim location note:** this directory lives inside `nyuchi/mzizi-tools` only as a
 > temporary host. Per the charter's ownership line, this project is 100% Bundu Foundation
 > IP, distinct from the Nyuchi-owned Mzizi design system/registry (`nyuchi/mzizi`) and the
-> Mzizi console tooling elsewhere in this repo. It moves to its own repo under a Bundu
-> Foundation GitHub org once that org exists. Keep this directory self-contained (no
+> Mzizi console tooling elsewhere in this repo. It moves to its own repo under the Bundu
+> Foundation org, which is **`bundu-labs`** — it already exists, with org-wide lint defaults
+> in `bundu-labs/.github` and a Rust project (`bundu-labs/vocab`) alongside
+> `bundu-labs/bundu-docs`. So the move is scheduling, not a prerequisite. Keep this
+> directory self-contained (no
 > dependencies on the rest of this repo beyond what Phase 0 genuinely needs) so that move is
 > a straight copy, not a untangling exercise.
 
@@ -98,8 +101,8 @@ The charter originally flagged this as the one decision that had to be made befo
   [`design/RFC-0004-test-topology.md`](./design/RFC-0004-test-topology.md), which also fixes the
   rule that keeps the project forkable: private consumes public, public never consumes private.
 - **Repo/ownership:** work starts in the existing Nyuchi-accessible repos (this directory, inside
-  `mzizi-tools`) as an interim home. Mzizi-the-framework will move to its own repo under a
-  dedicated Bundu Foundation GitHub org once that org exists — see the interim-location note at
+  `mzizi-tools`) as an interim home. Mzizi-the-framework will move to its own repo under the
+  Bundu Foundation org, `bundu-labs`, which already exists — see the interim-location note at
   the top of this file.
 
 ## 7. Open questions (not yet resolved)

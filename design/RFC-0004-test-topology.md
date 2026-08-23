@@ -130,8 +130,8 @@ That last point needs a companion on the other side, or a dropped webhook become
 coverage gap: the private runner must also **poll** for public commits it has not yet
 measured. The dispatch is a latency optimisation; the poll is the correctness guarantee.
 
-The private side (to be created in the Foundation org — not in this PR, since it needs an
-org and a repository that do not exist yet):
+The private side (to be created in `bundu-labs` — not in this PR; see §6 for when, and why
+not yet):
 
 1. Receives the dispatch — or notices the commit on its own poll — checks out the public
    repo at that SHA, and builds `mz`.
@@ -166,8 +166,26 @@ branch name or a line number cannot.
 
 ## 6. Open questions
 
-1. **Where the private repository lives.** It should be in the same Bundu Foundation org as
-   the public one, so ownership is unambiguous. That org does not exist yet.
+1. **~~Where the private repository lives.~~** Settled: the Bundu Foundation org is
+   **`bundu-labs`**, and it already exists — an earlier draft of this RFC claimed otherwise,
+   which was simply wrong. The private repository goes there, in the same org as the public
+   one will, so ownership is never ambiguous and access is governed by one org's membership.
+
+   **It should not be created yet**, and the reason is a design constraint rather than a
+   scheduling one. Its whole job is to run the _public_ harness against a private input, so
+   if it exists before the harness does, the harness ends up shaped around the private
+   runner — the exact inversion §3 forbids. There is also nothing to put in it: the held-out
+   task set does not exist, and the harness mechanics are still open (charter §7).
+
+   And an empty private repository is an attractive nuisance. Today every test in this
+   project is public, which is correct. The moment the repository exists, the marginal cost
+   of filing a test there drops to zero; each individual "this one is easier to keep
+   private" is defensible, and the aggregate is the public-shell-around-private-testing
+   outcome §2 rules out. Creating it only when a held-out task set needs somewhere to live
+   means every file in it has to justify itself against a rule that already exists.
+
+   **Trigger:** the first held-out task. Not before.
+
 2. **Held-out set rotation.** A held-out set leaks slowly through published results. It
    needs a refresh policy — probably a fraction rotated per reported run.
 3. **Third-party verification.** If an outside party needs to reproduce a benchmark claim,
