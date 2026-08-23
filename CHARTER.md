@@ -89,6 +89,14 @@ The charter originally flagged this as the one decision that had to be made befo
   divergence. A syntax/compile error is not itself a "defect" for this metric — it's the normal,
   expected friction the compile-error-density design goal (§3) is trying to minimize; the defect
   rate measures what gets _past_ the compiler wrong.
+- **Task-set visibility:** the benchmark **harness** is public — runner, metric definitions,
+  scoring code, fixture format. The **held-out task set and its expected outputs are not**, and
+  live in a separate private repository. This is a measurement-validity requirement, not a
+  secrecy preference: a public task set gets scraped into training data, after which the
+  benchmark measures memorisation, and a contaminated benchmark looks like a successful one — so
+  the kill criterion below could never fire. See
+  [`design/RFC-0004-test-topology.md`](./design/RFC-0004-test-topology.md), which also fixes the
+  rule that keeps the project forkable: private consumes public, public never consumes private.
 - **Repo/ownership:** work starts in the existing Nyuchi-accessible repos (this directory, inside
   `mzizi-tools`) as an interim home. Mzizi-the-framework will move to its own repo under a
   dedicated Bundu Foundation GitHub org once that org exists — see the interim-location note at
@@ -96,10 +104,12 @@ The charter originally flagged this as the one decision that had to be made befo
 
 ## 7. Open questions (not yet resolved)
 
-- **The actual Mzizi-lang syntax and type system.** This is the core research contribution
-  (§1, §3) and has not been designed yet — nothing in this charter specifies what Mzizi source
-  code looks like. This is the next real design conversation, not something to invent
-  unilaterally inside a scaffold commit.
+- **~~The actual Mzizi-lang syntax and type system.~~** Designed, and a front end exists:
+  [RFC-0001](./design/RFC-0001-syntax.md) (syntax),
+  [RFC-0002](./design/RFC-0002-runtime-and-prior-art.md) (design target and prior art),
+  [RFC-0003](./design/RFC-0003-ir.md) (the content-addressed IR). What remains open inside it:
+  **contract evaluation** — contract blocks parse but are not yet checked, which is what makes
+  §6's defect metric toolchain-measured rather than standing in as a hand-written Rust test.
 - **Benchmark harness mechanics.** How agent runs are invoked, sandboxed, and scored
   end-to-end (which components from the 571+ corpus, how many per run, how "tokens consumed"
   and "iterations to clean compile" are actually measured and reported) is unspecified past the

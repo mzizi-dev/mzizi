@@ -14,3 +14,21 @@ agent runs are invoked/sandboxed, how "tokens consumed" and "iterations to a cle
 actually measured and reported end-to-end. Nothing here should be built until that's designed
 alongside the language syntax itself, since the harness has to invoke a compiler that doesn't
 exist yet.
+
+## Where the task set lives (RFC-0004)
+
+Everything in this directory is and stays **public**: the runner, the metric definitions, the
+scoring code, and a published fixture format so anyone can write their own task set and run it.
+
+The **held-out task set and its expected outputs are not public.** Not for secrecy — for
+measurement validity. If the tasks and answers are on the open web they get scraped into
+training data, after which the benchmark measures memorisation rather than the language, and
+reports a flattering number for exactly the wrong reason. That failure is invisible from the
+inside: a contaminated benchmark looks like a successful one. The charter gives Phase 0 a kill
+criterion, and a kill criterion that cannot fire is not a criterion.
+
+See [`../design/RFC-0004-test-topology.md`](../design/RFC-0004-test-topology.md) for the split,
+the dependency rule that keeps forks working (private consumes public; public never consumes
+private), and the reporting mechanism. The public half of that mechanism is
+`.github/workflows/mzizi-lang-benchmark-dispatch.yml`, which is inert until the private
+repository exists.
