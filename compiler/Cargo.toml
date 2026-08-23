@@ -1,0 +1,6 @@
+[package]
+name = "mzizi-lang-compiler"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Placeholder for the Mzizi-lang Phase 0 compiler prototype — no syntax designed yet, see ../CHARTER.md §7."
