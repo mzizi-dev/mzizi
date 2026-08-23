@@ -6,6 +6,12 @@
 agent-facing output protocol, and what lowers to what. Grammar formalism,
 the type system's internals, and the compiler architecture are later RFCs.
 
+> **Amended by RFC-0002.** This RFC was written optimizing for a frontier
+> model's experience. The design target is **small models** — see RFC-0002 §1,
+> which restores token efficiency to a first-order goal, adds two grammar
+> rules (locally predictable, small common-word keyword vocabulary), and
+> supplies the real rationale for §1.1's closer. Read the two together.
+
 ---
 
 ## 0. Method: design against named failure modes
@@ -98,6 +104,12 @@ localization; short inner blocks pay only a bare `end`.
 
 Indentation is canonical (§3) but **not significant** — the parser reads
 `end`, not whitespace, so whitespace mangling in transit can't change meaning.
+
+The deeper reason, per RFC-0002 §1: the echo is an **error-correcting code for
+weak long-range attention**. A parameter-constrained model cannot reliably
+track nesting depth across 200 lines; the closer hands it the answer locally
+instead of requiring it to reconstruct the stack. Parser locality is the
+secondary benefit, not the primary one.
 
 ### 1.2 One construct per intent — _FM-1_
 
