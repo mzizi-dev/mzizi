@@ -1,6 +1,6 @@
 # Mzizi — A Rust Framework for the Agentic Web
 
-### Bundu Foundation Research Charter, v0.1
+## Bundu Foundation Research Charter, v0.1
 
 **Owner:** Bundu Foundation (100% — Mzizi framework, components, and logic are Foundation IP)
 **Adjacent, Nyuchi-owned:** the Mzizi console ("Fundi"), active cyber testing
@@ -23,25 +23,25 @@ Every major web framework won by being unmistakably better at one thing first, n
 
 Mzizi's single sharp edge: **a Rust framework whose syntax, type system, and compiler feedback loop are designed for machine authorship, not just human ergonomics.** Every existing framework — Rust or otherwise — was designed assuming a human is typing, reading docs, and holding context in their head. None of them are designed for the actual bottleneck of 2026-and-beyond development: an agent iterating against a compiler in a tight loop, thousands of times, where compile speed, error density, and token-efficient representation are first-order metrics, not nice-to-haves.
 
-That's the claim worth making. Everything else — cross-platform reach, ML integration, edge deployment — is Mzizi *integrating* with what already exists well, not Mzizi out-building specialist projects at their own game.
+That's the claim worth making. Everything else — cross-platform reach, ML integration, edge deployment — is Mzizi _integrating_ with what already exists well, not Mzizi out-building specialist projects at their own game.
 
 ## 2. What Mzizi is (and isn't)
 
-| Layer | Approach |
-|---|---|
-| **Syntax + type system + compiler** | Novel. This is the actual research contribution and the thing worth defending as IP. |
-| **Cross-platform rendering** (server, web, mobile, desktop) | **Interop with Dioxus's existing renderer**, not a rebuilt rendering engine. Dioxus has already spent years solving "one codebase, four platforms." Reinventing it doesn't buy you anything the syntax/compiler layer needs — it only slows Phase 0 down. |
-| **ML workloads** | **Native integration with Candle.** Mzizi components declare and consume ML inference as a first-class capability; Mzizi does not build a competing tensor runtime. |
-| **Edge** | First-class deployment target from day one — this is the one place you already have real, working experience (Cloudflare Workers, `workers-rs`), so it's cheap to claim early and hard to fake if you skipped it. |
-| **Compiled artifact** | **WASM (and native, for desktop) is the actual target — not Astro, not any web framework.** Most Mzizi builds never touch Astro at all: mobile apps run the compiled artifact through Dioxus's mobile renderer, desktop through its native renderer, most web builds embed the raw WASM output directly. Astro is one thin, optional distribution surface among several that happens to consume this artifact — it is not a platform Mzizi targets. |
-| **Post-quantum cryptography** | **Explicitly deferred.** Named as a future research thread, not part of this charter's scope. Competing with `liboqs`/`pqcrypto` on PQC primitives is a separate, fully-loaded research bet — don't let it dilute Phase 0. |
+| Layer                                                       | Approach                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Syntax + type system + compiler**                         | Novel. This is the actual research contribution and the thing worth defending as IP.                                                                                                                                                                                                                                                                                                                                                                |
+| **Cross-platform rendering** (server, web, mobile, desktop) | **Interop with Dioxus's existing renderer**, not a rebuilt rendering engine. Dioxus has already spent years solving "one codebase, four platforms." Reinventing it doesn't buy you anything the syntax/compiler layer needs — it only slows Phase 0 down.                                                                                                                                                                                           |
+| **ML workloads**                                            | **Native integration with Candle.** Mzizi components declare and consume ML inference as a first-class capability; Mzizi does not build a competing tensor runtime.                                                                                                                                                                                                                                                                                 |
+| **Edge**                                                    | First-class deployment target from day one — this is the one place you already have real, working experience (Cloudflare Workers, `workers-rs`), so it's cheap to claim early and hard to fake if you skipped it.                                                                                                                                                                                                                                   |
+| **Compiled artifact**                                       | **WASM (and native, for desktop) is the actual target — not Astro, not any web framework.** Most Mzizi builds never touch Astro at all: mobile apps run the compiled artifact through Dioxus's mobile renderer, desktop through its native renderer, most web builds embed the raw WASM output directly. Astro is one thin, optional distribution surface among several that happens to consume this artifact — it is not a platform Mzizi targets. |
+| **Post-quantum cryptography**                               | **Explicitly deferred.** Named as a future research thread, not part of this charter's scope. Competing with `liboqs`/`pqcrypto` on PQC primitives is a separate, fully-loaded research bet — don't let it dilute Phase 0.                                                                                                                                                                                                                          |
 
 ## 3. What "built for machine authorship" concretely means
 
 This needs to cash out as measurable design goals, not a slogan:
 
 - **Low syntactic ambiguity.** Fewer distinct-but-equivalent ways to express the same intent. Every degree of freedom in "how you could have written this" is a degree of freedom an LLM can get subtly wrong. Optimize the surface syntax to minimize that space.
-- **Dense, high-signal compiler errors.** The agentic loop is: generate → compile → read error → fix → recompile. The quality of that loop is bounded by how much *actionable* information is packed into the compiler's error output per character. This is a compiler UX problem aimed at a machine reader, not a human one.
+- **Dense, high-signal compiler errors.** The agentic loop is: generate → compile → read error → fix → recompile. The quality of that loop is bounded by how much _actionable_ information is packed into the compiler's error output per character. This is a compiler UX problem aimed at a machine reader, not a human one.
 - **Fast incremental compilation.** Human developers tolerate a few seconds per iteration. An agent iterating hundreds of times per session treats compile latency as the dominant cost of the whole workflow. Compile speed is a Phase 0 success metric, not an optimization to defer.
 - **Token-efficient representation.** A codebase that fits more real logic into an LLM's context window per token spent is a codebase an agent can reason about more completely, with less summarization loss. This applies to both the syntax surface and any intermediate representation Mzizi tooling exposes to an agent.
 
@@ -53,7 +53,7 @@ Research portfolios ship one thread at a time or nothing ships. This is the orde
 A standalone compiler/syntax prototype with zero UI story. Success criterion: a defined benchmark where an LLM agent authors N equivalent components in Mzizi's syntax vs. raw Dioxus/Leptos, measured on tokens consumed, iterations to a clean compile, and defect rate. If this doesn't show a measurable advantage, nothing downstream matters — don't build Phase 1 until Phase 0 has a real number attached to it.
 
 **Phase 1 — Rendering interop, WASM/native as the real deliverable.**
-Wire Mzizi's compiler output into Dioxus's existing renderer for server/web/mobile/desktop. The artifact that comes out of this phase — a working WASM bundle (and native binary, for desktop) — *is* the cross-platform product. It must stand on its own, embeddable via a bare `<script type="module">`, a mobile WebView or native WASM host, or an edge runtime, with no framework-specific packaging assumed. This is integration work against Dioxus's renderer, not framework-building — treat any temptation to build a native renderer here as scope creep until interop has been tried and found genuinely insufficient.
+Wire Mzizi's compiler output into Dioxus's existing renderer for server/web/mobile/desktop. The artifact that comes out of this phase — a working WASM bundle (and native binary, for desktop) — _is_ the cross-platform product. It must stand on its own, embeddable via a bare `<script type="module">`, a mobile WebView or native WASM host, or an edge runtime, with no framework-specific packaging assumed. This is integration work against Dioxus's renderer, not framework-building — treat any temptation to build a native renderer here as scope creep until interop has been tried and found genuinely insufficient.
 
 **Phase 2 — Edge-first deployment.**
 Native target using existing Cloudflare/`workers-rs` experience. Cheapest phase to execute given current team capability.
@@ -88,7 +88,7 @@ The charter originally flagged this as the one decision that had to be made befo
   disk, and disagreement is the new code's fault unless it's a documented, deliberate
   divergence. A syntax/compile error is not itself a "defect" for this metric — it's the normal,
   expected friction the compile-error-density design goal (§3) is trying to minimize; the defect
-  rate measures what gets *past* the compiler wrong.
+  rate measures what gets _past_ the compiler wrong.
 - **Repo/ownership:** work starts in the existing Nyuchi-accessible repos (this directory, inside
   `mzizi-tools`) as an interim home. Mzizi-the-framework will move to its own repo under a
   dedicated Bundu Foundation GitHub org once that org exists — see the interim-location note at
