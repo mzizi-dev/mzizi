@@ -25,6 +25,90 @@ Rust Framework for the Agentic Web"), and `mzizi-dev/mzizi` would collide with t
 public GitHub Projects surface — but do not leave a roadmap living apart from the code it
 plans. Three of the stale-doc defects fixed on 2026-08-23 existed for exactly that reason.
 
+### 1.1 Creation spec — copy-paste ready
+
+**Create `framework` completely empty** — no README, no LICENSE, no `.gitignore`. The
+history-preserving push in §3 writes the first commit, and an initialised `main` turns that
+into a merge of unrelated histories or a force-push. `benchmark` and `docs` start empty
+anyway, so initialising them is harmless.
+
+#### `mzizi-dev/framework` — public
+
+| Field       | Value                                                                                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `Mzizi — a Rust framework for the agentic web. A language, compiler and runtime designed for machine authorship: syntax tuned for small open-weight models, a content-addressed IR, and contracts the toolchain checks. A Bundu Foundation research project.` |
+| Homepage    | `https://mzizi.dev`                                                                                                                                                                                                                                           |
+| Topics      | `rust` `compiler` `programming-language` `language-design` `agentic-ai` `llm-tooling` `dioxus` `wasm` `bundu-foundation` `africa`                                                                                                                             |
+| Licence     | Apache-2.0 — see the note below                                                                                                                                                                                                                               |
+| Initialise  | **Nothing.** Empty repo                                                                                                                                                                                                                                       |
+
+#### `mzizi-dev/benchmark` — public
+
+| Field       | Value                                                                                                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `Phase 0 benchmark for the Mzizi language — the public harness, metric definitions, scoring code and fixture format. Measures tokens, iterations to a clean compile, and defect rate for agents authoring components in Mzizi versus raw Rust UI frameworks.` |
+| Homepage    | —                                                                                                                                                                                                                                                             |
+| Topics      | `benchmark` `llm-evaluation` `rust` `mzizi` `agentic-ai` `small-language-models` `reproducible-research` `bundu-foundation`                                                                                                                                   |
+| Licence     | Apache-2.0                                                                                                                                                                                                                                                    |
+| Initialise  | README                                                                                                                                                                                                                                                        |
+
+#### `mzizi-dev/docs` — public
+
+| Field       | Value                                                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `Documentation for the Mzizi framework — mzizi.dev. Language reference, RFC index, runtime guides, and the agent-facing surfaces (llms.txt, MCP).` |
+| Homepage    | `https://mzizi.dev`                                                                                                                                |
+| Topics      | `documentation` `mzizi` `rust` `mcp` `llms-txt` `bundu-foundation`                                                                                 |
+| Licence     | Apache-2.0                                                                                                                                         |
+| Initialise  | README                                                                                                                                             |
+
+Deliberately no framework/stack topics on `docs` — the stack is whatever moves out of
+`nyuchi/mzizi`, and a topic asserting Astro or Next.js before that is decided is a guess.
+
+#### `mzizi-dev/heldout` — private, **only if** §5 shape 1 is chosen
+
+| Field       | Value                                                                                                                                                                                                                   |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `Held-out Phase 0 task set for the Mzizi benchmark. Consumes the public harness at mzizi-dev/benchmark; never consumed by it. Withheld so the benchmark measures the language rather than memorisation — see RFC-0004.` |
+| Topics      | `benchmark` `mzizi` `held-out`                                                                                                                                                                                          |
+| Initialise  | README                                                                                                                                                                                                                  |
+
+The description states the dependency direction on purpose. It is the rule most likely to be
+broken by someone acting in good faith, so it belongs where they will read it first.
+
+#### Settings for every repo above
+
+Matching the four existing Mzizi-ecosystem repos:
+
+| Setting                   | Value                   | Why                                                                      |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
+| Default branch            | `main`                  | House convention                                                         |
+| Allow merge commits       | **yes**                 | The ecosystem convention is merge-only; history stays truthful           |
+| Allow squash merging      | **no**                  | Squash discards the per-commit reasoning this project depends on         |
+| Allow rebase merging      | **no**                  | Same                                                                     |
+| Auto-delete head branches | yes                     |                                                                          |
+| Require commit signoff    | yes                     | All four existing repos set it                                           |
+| Downloads                 | off                     |                                                                          |
+| Discussions               | on for `framework` only | Language design attracts questions that are not issues                   |
+| Wiki                      | off                     | RFCs are the design record, in-repo and checkable                        |
+| Forking                   | allowed                 | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
+
+#### On the licence
+
+**Apache-2.0**, matching `nyuchi/mzizi`. The explicit patent grant matters more for a
+language and runtime than for a component library, and consistency inside the ecosystem is
+worth something on its own.
+
+The alternative worth knowing about is the Rust-ecosystem norm, **dual MIT OR Apache-2.0**,
+whose one concrete benefit is that some downstream organisations cannot accept
+Apache-2.0-only. If wide adoption by other people's companies is a goal — and per the
+charter it is — dual-licensing removes a real barrier at no cost. Either is defensible;
+Apache-2.0-only is the lower-effort default and dual is the more adoptable one.
+
+Separately, and unrelated to the choice: RFC-0002 §3's discipline requires a `NOTICE` file
+if any Apache-2.0 code is ever copied into the tree, and **GPL/AGPL code must never be**,
+whatever licence Mzizi itself carries.
+
 ### Not repositories
 
 - **The held-out task set is one directory, not a repo.** See §5.
