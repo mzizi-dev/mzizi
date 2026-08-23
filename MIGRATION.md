@@ -11,28 +11,30 @@ automatically — you should be reading it there.
 
 ## 1. Repositories to create
 
-| Repo                  | Visibility | Contents                                                                                             | When                     |
-| --------------------- | ---------- | ---------------------------------------------------------------------------------------------------- | ------------------------ |
-| `mzizi-dev/framework` | public     | Everything in `mzizi-lang/` — language, compiler, primitives, RFCs, charter                          | First                    |
-| `mzizi-dev/benchmark` | public     | Phase 0 harness: runner, metric definitions, scoring code, fixture format, a worked example task set | Second                   |
-| `mzizi-dev/docs`      | public     | mzizi.dev content, moved out of `nyuchi/mzizi`                                                       | After `framework` exists |
+| Repo                        | Visibility | Contents                                                                                             | When                 |
+| --------------------------- | ---------- | ---------------------------------------------------------------------------------------------------- | -------------------- |
+| `mzizi-dev/mzizi`           | public     | Everything in `mzizi-lang/` — language, compiler, primitives, RFCs, charter                          | First                |
+| `mzizi-dev/mzizi-benchmark` | public     | Phase 0 harness: runner, metric definitions, scoring code, fixture format, a worked example task set | Second               |
+| `mzizi-dev/mzizi-docs`      | public     | mzizi.dev content, moved out of `nyuchi/mzizi`                                                       | After `mzizi` exists |
 
-Named `framework` rather than `mzizi` deliberately: it is the charter's own word ("Mzizi — A
-Rust Framework for the Agentic Web"), and `mzizi-dev/mzizi` would collide with the existing
-`nyuchi/mzizi` — same clone directory, same shorthand, different owners.
+**Naming rule (owner's):** the language repo is plain `mzizi`; **everything else in the org
+is `mzizi-`-prefixed**. An earlier draft of this file argued for `framework` over `mzizi` to
+avoid colliding with `nyuchi/mzizi` — that objection dissolves once `nyuchi/mzizi` is renamed
+to `mzizi-registry` (§7.1), which is happening. With the collision gone, `mzizi-dev/mzizi`
+is the better name: the language is the project.
 
-`mzizi-dev/roadmap` already exists. Either fold it into `framework/design/` or keep it as a
+`mzizi-dev/roadmap` already exists. Either fold it into `mzizi/design/` or keep it as a
 public GitHub Projects surface — but do not leave a roadmap living apart from the code it
 plans. Three of the stale-doc defects fixed on 2026-08-23 existed for exactly that reason.
 
 ### 1.1 Creation spec — copy-paste ready
 
-**Create `framework` completely empty** — no README, no LICENSE, no `.gitignore`. The
+**Create `mzizi` completely empty** — no README, no LICENSE, no `.gitignore`. The
 history-preserving push in §3 writes the first commit, and an initialised `main` turns that
 into a merge of unrelated histories or a force-push. `benchmark` and `docs` start empty
 anyway, so initialising them is harmless.
 
-#### `mzizi-dev/framework` — public
+#### `mzizi-dev/mzizi` — public
 
 | Field       | Value                                                                                                                                                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -42,7 +44,7 @@ anyway, so initialising them is harmless.
 | Licence     | Apache-2.0 — see the note below                                                                                                                                                                                                                               |
 | Initialise  | **Nothing.** Empty repo                                                                                                                                                                                                                                       |
 
-#### `mzizi-dev/benchmark` — public
+#### `mzizi-dev/mzizi-benchmark` — public
 
 | Field       | Value                                                                                                                                                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -52,7 +54,7 @@ anyway, so initialising them is harmless.
 | Licence     | Apache-2.0                                                                                                                                                                                                                                                    |
 | Initialise  | README                                                                                                                                                                                                                                                        |
 
-#### `mzizi-dev/docs` — public
+#### `mzizi-dev/mzizi-docs` — public
 
 | Field       | Value                                                                                                                                              |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -67,11 +69,11 @@ Deliberately no framework/stack topics on `docs` — the stack is whatever moves
 
 #### `mzizi-dev/heldout` — private, **only if** §5 shape 1 is chosen
 
-| Field       | Value                                                                                                                                                                                                                   |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Description | `Held-out Phase 0 task set for the Mzizi benchmark. Consumes the public harness at mzizi-dev/benchmark; never consumed by it. Withheld so the benchmark measures the language rather than memorisation — see RFC-0004.` |
-| Topics      | `benchmark` `mzizi` `held-out`                                                                                                                                                                                          |
-| Initialise  | README                                                                                                                                                                                                                  |
+| Field       | Value                                                                                                                                                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `Held-out Phase 0 task set for the Mzizi benchmark. Consumes the public harness at mzizi-dev/mzizi-benchmark; never consumed by it. Withheld so the benchmark measures the language rather than memorisation — see RFC-0004.` |
+| Topics      | `benchmark` `mzizi` `held-out`                                                                                                                                                                                                |
+| Initialise  | README                                                                                                                                                                                                                        |
 
 The description states the dependency direction on purpose. It is the rule most likely to be
 broken by someone acting in good faith, so it belongs where they will read it first.
@@ -80,18 +82,18 @@ broken by someone acting in good faith, so it belongs where they will read it fi
 
 Matching the four existing Mzizi-ecosystem repos:
 
-| Setting                   | Value                   | Why                                                                      |
-| ------------------------- | ----------------------- | ------------------------------------------------------------------------ |
-| Default branch            | `main`                  | House convention                                                         |
-| Allow merge commits       | **yes**                 | The ecosystem convention is merge-only; history stays truthful           |
-| Allow squash merging      | **no**                  | Squash discards the per-commit reasoning this project depends on         |
-| Allow rebase merging      | **no**                  | Same                                                                     |
-| Auto-delete head branches | yes                     |                                                                          |
-| Require commit signoff    | yes                     | All four existing repos set it                                           |
-| Downloads                 | off                     |                                                                          |
-| Discussions               | on for `framework` only | Language design attracts questions that are not issues                   |
-| Wiki                      | off                     | RFCs are the design record, in-repo and checkable                        |
-| Forking                   | allowed                 | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
+| Setting                   | Value               | Why                                                                      |
+| ------------------------- | ------------------- | ------------------------------------------------------------------------ |
+| Default branch            | `main`              | House convention                                                         |
+| Allow merge commits       | **yes**             | The ecosystem convention is merge-only; history stays truthful           |
+| Allow squash merging      | **no**              | Squash discards the per-commit reasoning this project depends on         |
+| Allow rebase merging      | **no**              | Same                                                                     |
+| Auto-delete head branches | yes                 |                                                                          |
+| Require commit signoff    | yes                 | All four existing repos set it                                           |
+| Downloads                 | off                 |                                                                          |
+| Discussions               | on for `mzizi` only | Language design attracts questions that are not issues                   |
+| Wiki                      | off                 | RFCs are the design record, in-repo and checkable                        |
+| Forking                   | allowed             | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
 
 #### On the licence
 
@@ -148,7 +150,7 @@ copy-paste move discards it.
 ```bash
 # in a clone of nyuchi/mzizi-tools
 git subtree split -P mzizi-lang -b mzizi-lang-only
-git push git@github.com:mzizi-dev/framework.git mzizi-lang-only:main
+git push git@github.com:mzizi-dev/mzizi.git mzizi-lang-only:main
 ```
 
 **Two things the split will not carry, because they live outside the directory.** The
@@ -264,7 +266,7 @@ console and the React design system are Nyuchi's.
 One tension to be deliberate about rather than let drift: mzizi.dev's content is now
 entirely about the Foundation framework while the site lives in a Nyuchi-owned repo. Fine
 today; a question the moment the Foundation wants editorial control of its own front page.
-Creating `mzizi-dev/docs` (§1) is how that gets resolved.
+Creating `mzizi-dev/mzizi-docs` (§1) is how that gets resolved.
 
 ## 7.1 The wider org topology (owner's plan, 2026-08-23)
 
@@ -272,14 +274,23 @@ The move is one part of a three-way split along ownership and revenue lines:
 
 | Org         | Repo                                    | Holds                                                               | Visibility   |
 | ----------- | --------------------------------------- | ------------------------------------------------------------------- | ------------ |
-| `mzizi-dev` | `framework`, `benchmark`, `docs`        | The Foundation framework, open                                      | public       |
-| `mzizi-dev` | `mzizi-tools` (moved)                   | Non-revenue tooling                                                 | public       |
-| `nyuchi`    | `mzizi-agents` (new)                    | Proprietary Nyuchi tools built **on** Mzizi — the revenue surface   | private      |
+| `mzizi-dev` | `mzizi`                                 | The language: compiler, primitives, RFCs, charter                   | public       |
+| `mzizi-dev` | `mzizi-benchmark`                       | Phase 0 harness, metric definitions, fixture format                 | public       |
+| `mzizi-dev` | `mzizi-docs`                            | mzizi.dev content                                                   | public       |
+| `mzizi-dev` | `mzizi-agents` (new)                    | The MCP server, skills bundle, and plugins                          | public       |
+| `nyuchi`    | `mzizi-tools` (**stays**)               | Revenue tooling, Fundi, the console packages                        | private      |
 | `nyuchi`    | `mzizi-registry` (renamed from `mzizi`) | The component registry — `mzizi.dev`, `/api/v1/ui/{name}`           | public       |
 | `nyuchi`    | `mzizi-console` (new)                   | The console app, extracted from `mzizi-tools` → `console.mzizi.dev` | owner's call |
 
+The naming rule holds throughout: the language is `mzizi`, everything else is `mzizi-`.
+
 This is a good boundary: revenue vs non-revenue is simultaneously a licence line, a
-visibility line and an ownership line, which is exactly when a repo beats a directory.
+visibility line and an ownership line, which is exactly when a repo beats a directory. Note
+the assignment moved between drafts — `mzizi-agents` now holds the **open** ecosystem
+surfaces (MCP, skills, plugins) and `mzizi-tools` **stays in `nyuchi`** for revenue tooling
+and Fundi. That is the better cut: the three things an outside adopter needs in order to use
+Mzizi travel together and stay public, and nothing about the revenue layer has to move at
+all.
 
 **The rule that makes it hold, and it is the same rule as RFC-0004 §3:**
 
@@ -297,6 +308,9 @@ name.** `.github/workflows/publish-mzizi-mcp.yml` authenticates with
 `mcp-publisher github-oidc`, which proves the workflow is running from a repo owned by
 `nyuchi`. The namespace `io.github.nyuchi/mzizi-mcp` can therefore only be published from a
 `nyuchi`-owned repo.
+
+`mzizi-mcp` moving into `mzizi-dev/mzizi-agents` therefore triggers this, and it is now on
+the critical path rather than hypothetical.
 
 **Owner's decision: accept the rename and notify customers** with new links and connect
 instructions. That makes this a planned migration rather than a blocker. What it requires:
@@ -373,29 +387,68 @@ Deleting the historical references would erase the record of _why_ the name is r
 is what stops it being reintroduced. Widening the existing guard past page titles is the
 change that makes the purge stick rather than recur.
 
-### 7.3 Package mapping — needs the owner's call
+### 7.2b File extensions: `.mz` and `.rs`
 
-Revenue classification is a business fact, not something to infer from code. Proposed
-starting point only:
+`.mz` and `.rs` are **two different languages**, not two formats for the same thing. `.mz` is
+Mzizi source; `.rs` is Rust. Nothing is ever "the `.mz` version of" a `.rs` file.
 
-| Package             | Today                            | Proposed home                                         | Confidence |
-| ------------------- | -------------------------------- | ----------------------------------------------------- | ---------- |
-| `mzizi-lang/`       | `mzizi-tools`                    | `mzizi-dev/framework`                                 | settled    |
-| `mzizi-skills`      | `@nyuchi/mzizi-skills`           | non-revenue → moves                                   | high       |
-| `mzizi-plugin`      | (unpublished)                    | non-revenue → moves                                   | high       |
-| `mzizi-mcp`         | `@nyuchi/mzizi-mcp`              | **stays in `nyuchi`** — see 7.2 §1                    | high       |
-| `mzizi-console-app` | `@nyuchi/mzizi-console-app`      | own repo → `console.mzizi.dev`                        | settled    |
-| `fundi`             | `@nyuchi/fundi-tester` (private) | `mzizi-agents`                                        | owner      |
-| `mzizi-cli`         | `@nyuchi/mzizi-cli`, bin `fundi` | `mzizi-agents`? bin name suggests it pairs with fundi | owner      |
-| `bushtrade-mcp`     | `@nyuchi/bushtrade-mcp`          | unrelated to Mzizi — its own repo                     | owner      |
+There are four categories, and today only three of them exist:
+
+| Category                  | Extension | Where                                                                                              | Committed?                                               |
+| ------------------------- | --------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Mzizi source              | `.mz`     | `primitives/`, `examples/` — 10 files today                                                        | **yes**, it is the source of truth                       |
+| The toolchain             | `.rs`     | `compiler/src/`                                                                                    | yes — the compiler is written in Rust and always will be |
+| Reference implementations | `.rs`     | `nyuchi/mzizi`'s `components/registry/n*/` — 37 files, verified by the `mzizi-rs/` cargo workspace | yes                                                      |
+| **Lowered output**        | `.rs`     | does not exist yet — lowering is unimplemented                                                     | **no. Never.**                                           |
+
+**One extension for all Mzizi source.** No separate extension for primitives, apps, or
+interfaces — `mz outline` already emits valid Mzizi (RFC-0003 §4) precisely so there is no
+second format, no second parser and no second extension. `.mz` also matches the `mz` binary,
+which is worth something to a model completing a filename.
+
+**Lowered `.rs` must never be committed, and this is not a style preference.** Generated code
+in the source tree is reading barrier **RB-5** in RFC-0003 — one of the eight barriers the
+IR exists to remove. An agent reading the repository must not have to work out which `.rs` is
+authoritative and which is output. Committing it also recreates exactly the two-copies defect
+class that `nyuchi/mzizi` spent PRs #204–#215 removing from the `source_code` column: two
+representations of one truth, drifting silently, with no gate that can tell you which is
+stale.
+
+So: `mz build` writes lowered Rust into a gitignored directory. For distribution — `npx
+shadcn add` needs real Rust files — the artifact is generated at build time and served by the
+registry, the same shape as serving component source from disk rather than from a database
+column.
+
+**The 37 hand-written `.rs` files do not become obsolete when lowering lands.** They become
+the benchmark's ground truth, which the charter already assigns them: §6 says the agent
+authors components in Mzizi "against the existing `.tsx`/`.rs` implementations as ground
+truth". That is why they are worth keeping hand-written and eventually **frozen** rather than
+maintained — a reference implementation that keeps changing is not a reference. When lowering
+exists, the generated output is compared against them; it does not replace them in place.
+
+### 7.3 Package mapping
+
+Mostly settled by §7.1's assignment. Only the last two rows are still business calls:
+
+| Package             | Today                            | Proposed home                                                      | Confidence |
+| ------------------- | -------------------------------- | ------------------------------------------------------------------ | ---------- |
+| `mzizi-lang/`       | `mzizi-tools`                    | `mzizi-dev/mzizi`                                                  | settled    |
+| `mzizi-skills`      | `@nyuchi/mzizi-skills`           | `mzizi-dev/mzizi-agents`                                           | settled    |
+| `mzizi-plugin`      | (unpublished)                    | `mzizi-dev/mzizi-agents`                                           | settled    |
+| `mzizi-mcp`         | `@nyuchi/mzizi-mcp`              | `mzizi-dev/mzizi-agents` — triggers the registry rename, §7.2 no.1 | settled    |
+| `mzizi-console-app` | `@nyuchi/mzizi-console-app`      | own repo → `console.mzizi.dev`                                     | settled    |
+| `fundi`             | `@nyuchi/fundi-tester` (private) | stays in `nyuchi/mzizi-tools`                                      | settled    |
+| `mzizi-cli`         | `@nyuchi/mzizi-cli`, bin `fundi` | stays in `nyuchi/mzizi-tools` — the bin is `fundi`                 | high       |
+| `bushtrade-mcp`     | `@nyuchi/bushtrade-mcp`          | unrelated to Mzizi — its own repo                                  | owner      |
 
 ## 8. Starting the next session
 
 Scope it to four repositories:
 
-- `mzizi-dev/framework` — the work
-- `mzizi-dev/benchmark` — the harness
-- `nyuchi/mzizi` — **required**: the benchmark corpus and ground truth
+- `mzizi-dev/mzizi` — the work
+- `mzizi-dev/mzizi-benchmark` — the harness
+- `nyuchi/mzizi-registry` — **required**: the benchmark corpus and ground truth, including the
+  37 hand-written `.rs` reference implementations (§7.2b)
 - `nyuchi/mzizi-tools` — until `mzizi-lang/` is deleted from it
 
 First task: **§4.1, contract evaluation.** Read `design/RFC-0001` §1.6 for what contracts are
@@ -407,7 +460,7 @@ meant to do and `primitives/button.mz` for the canonical case.
    charter says `@bundu`, everything shipped today says `@nyuchi/`, and the
    registryDependencies migration task says `@mzizi/`. One-way door once published.
 2. **The held-out set's home** — §5.
-3. **`mzizi-dev/roadmap`** — fold into `framework`, or keep as a Projects surface.
+3. **`mzizi-dev/roadmap`** — fold into `mzizi`, or keep as a Projects surface.
 4. **Whether `nyuchi/mzizi` is eventually renamed** to say what it is (the React design
    system), now that the Mzizi name means the framework. Not urgent; the collision is
    cosmetic until someone has both cloned.
