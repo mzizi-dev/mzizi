@@ -270,12 +270,13 @@ Creating `mzizi-dev/docs` (§1) is how that gets resolved.
 
 The move is one part of a three-way split along ownership and revenue lines:
 
-| Org         | Repo                                   | Holds                                                             | Visibility |
-| ----------- | -------------------------------------- | ----------------------------------------------------------------- | ---------- |
-| `mzizi-dev` | `framework`, `benchmark`, `docs`       | The Foundation framework, open                                    | public     |
-| `mzizi-dev` | `mzizi-tools` (moved)                  | Non-revenue tooling                                               | public     |
-| `nyuchi`    | `mzizi-agents` (new)                   | Proprietary Nyuchi tools built **on** Mzizi — the revenue surface | private    |
-| `nyuchi`    | `mzizi-console` (renamed from `mzizi`) | The registry / design portal                                      | public     |
+| Org         | Repo                                    | Holds                                                               | Visibility   |
+| ----------- | --------------------------------------- | ------------------------------------------------------------------- | ------------ |
+| `mzizi-dev` | `framework`, `benchmark`, `docs`        | The Foundation framework, open                                      | public       |
+| `mzizi-dev` | `mzizi-tools` (moved)                   | Non-revenue tooling                                                 | public       |
+| `nyuchi`    | `mzizi-agents` (new)                    | Proprietary Nyuchi tools built **on** Mzizi — the revenue surface   | private      |
+| `nyuchi`    | `mzizi-registry` (renamed from `mzizi`) | The component registry — `mzizi.dev`, `/api/v1/ui/{name}`           | public       |
+| `nyuchi`    | `mzizi-console` (new)                   | The console app, extracted from `mzizi-tools` → `console.mzizi.dev` | owner's call |
 
 This is a good boundary: revenue vs non-revenue is simultaneously a licence line, a
 visibility line and an ownership line, which is exactly when a repo beats a directory.
@@ -291,29 +292,39 @@ green with no access to `mzizi-agents` whatsoever.
 
 ### 7.2 Four consequences to handle before executing
 
-**1. Moving `mzizi-mcp` out of the `nyuchi` org breaks its MCP registry publish. Hard
-blocker, not a cost.** `.github/workflows/publish-mzizi-mcp.yml` authenticates with
+**1. Moving `mzizi-mcp` out of the `nyuchi` org requires republishing under a new registry
+name.** `.github/workflows/publish-mzizi-mcp.yml` authenticates with
 `mcp-publisher github-oidc`, which proves the workflow is running from a repo owned by
 `nyuchi`. The namespace `io.github.nyuchi/mzizi-mcp` can therefore only be published from a
-`nyuchi`-owned repo. Three options, in order of preference:
+`nyuchi`-owned repo.
 
-- Keep `mzizi-mcp` in the `nyuchi` org. Simplest, and nothing breaks.
-- Move it and republish as `io.github.mzizi-dev/mzizi-mcp`, with a deprecation on the old
-  entry. Every existing client config needs updating — the old name does not redirect.
-- Move the code but keep the publish workflow in a `nyuchi` repo. Works, and is the worst of
-  the three: the thing that publishes an artifact lives apart from the artifact.
+**Owner's decision: accept the rename and notify customers** with new links and connect
+instructions. That makes this a planned migration rather than a blocker. What it requires:
 
-**2. `mzizi-console` collides with something that already exists.** `@nyuchi/mzizi-console-app`
-(0.2.0) is a published package inside `mzizi-tools`, and per that repo's own description the
-Nyuchi Console is `platform.nyuchi.com` — a different product from the design portal.
-`nyuchi/mzizi` is described as "The Nyuchi Design Portal — component registry, brand
-documentation hub, design system, and developer portal", homepage `design.nyuchi.com`.
+- Publish `io.github.mzizi-dev/mzizi-mcp`, and mark the `io.github.nyuchi/*` entry
+  **deprecated rather than deleted** — a deleted entry gives a client an error, a deprecated
+  one gives it a pointer.
+- **The old name does not redirect.** MCP registry names are identifiers, not URLs; there is
+  no 308 equivalent. Every existing client config breaks the day the old entry stops
+  resolving, which is what makes the notification load-bearing rather than courteous.
+- Keep the old entry resolving for an overlap window after the announcement. Customers
+  configure an MCP server once and forget it; a rename with no overlap is indistinguishable
+  from an outage.
+- The same applies if `@nyuchi/mzizi-mcp` becomes `@bundu/*` or `@mzizi/*`. npm _does_
+  support `npm deprecate` with a message — the cheapest notification channel available, and
+  it should carry the new name.
 
-So `nyuchi/mzizi-console` would name the _registry_ after a _different_ product that already
-has a package of that name. If the intent is the registry, `mzizi-registry` or
-`mzizi-design` says what it is. If the intent really is the console, then
-`mzizi-console-app` should probably move into it and the collision resolves itself. Either
-resolution is fine; the ambiguous middle is what costs time later.
+**2. ~~`mzizi-console` collides.~~ Resolved by separating the two products.** The console
+app moves out of `mzizi-tools` into its own repo, deployed at **`console.mzizi.dev`**. So
+`mzizi-console` names the console, and `nyuchi/mzizi` — the component registry — becomes
+**`mzizi-registry`**, which says what it is.
+
+That leaves one live question. **If `mzizi.dev` becomes the framework's site, where does the
+registry API live?** Today `mzizi.dev` serves both the site and `/api/v1/ui/{name}`, which
+571 components and every `npx shadcn add` URL in the wild depend on. Either a
+`registry.mzizi.dev` subdomain, or keep `/api/v1/*` on the apex and give the framework docs
+its own host. Decide it **before** the docs move: moving the site first and the API second
+breaks installs in the gap.
 
 **3. `mzizi-tools` is currently private, and going public needs an audit first.** It holds
 `fundi/` (WorkOS auth), `supabase/`, and a `docs/` directory covering service bindings and
@@ -330,6 +341,38 @@ contract), and the Cloudflare Workers Builds / Vercel project bindings should be
 rather than assumed — they bind by repo ID and normally survive, but "normally" is not
 "verified", and `mzizi.dev` plus `/api/v1/ui/{name}` are live public surfaces.
 
+### 7.2a Retiring the old naming
+
+**"Nyuchi Design Portal" and `design.nyuchi.com` are retired and must not appear as live
+naming anywhere.** `design.nyuchi.com` is already a 308 to `mzizi.dev`, and `nyuchi/mzizi`
+already carries a guard proving the intent — `__tests__/metadata-titles.test.ts` has a
+`RETIRED` list including `/nyuchi design portal/i`.
+
+That guard only checks page metadata titles. **47 occurrences remain in `nyuchi/mzizi`**, two
+of which reach users:
+
+- `app/api/v1/stats/route.ts` returns `"Nyuchi Design Portal — Usage Statistics"` in a
+  **public API response**
+- `components/registry/n2-primitives/sidebar-01.tsx` **renders**
+  `nyuchi design portal v4.0.1`
+
+Plus `supabase/functions/*` headers, `app/api/openapi/route.ts`, the bug-report issue
+template, and `content/doctrine/documentation/*.mdx` front matter.
+
+Also live and wrong: the **GitHub repo description and homepage** on `nyuchi/mzizi` still
+read "The Nyuchi Design Portal" and `design.nyuchi.com`. That is the most-seen surface of the
+lot, and it points at a retired domain.
+
+Two categories, which must not be treated the same:
+
+| Keep                                                                                                                            | Remove                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Historical and doctrinal references — "replaces the legacy `design.nyuchi.com` MCP", the `RETIRED` test list, CHANGELOG entries | Live naming — API responses, rendered UI, page titles, repo metadata, doc front matter, and comments describing current behaviour |
+
+Deleting the historical references would erase the record of _why_ the name is retired, which
+is what stops it being reintroduced. Widening the existing guard past page titles is the
+change that makes the purge stick rather than recur.
+
 ### 7.3 Package mapping — needs the owner's call
 
 Revenue classification is a business fact, not something to infer from code. Proposed
@@ -341,7 +384,7 @@ starting point only:
 | `mzizi-skills`      | `@nyuchi/mzizi-skills`           | non-revenue → moves                                   | high       |
 | `mzizi-plugin`      | (unpublished)                    | non-revenue → moves                                   | high       |
 | `mzizi-mcp`         | `@nyuchi/mzizi-mcp`              | **stays in `nyuchi`** — see 7.2 §1                    | high       |
-| `mzizi-console-app` | `@nyuchi/mzizi-console-app`      | `mzizi-console`, or `mzizi-agents`                    | owner      |
+| `mzizi-console-app` | `@nyuchi/mzizi-console-app`      | own repo → `console.mzizi.dev`                        | settled    |
 | `fundi`             | `@nyuchi/fundi-tester` (private) | `mzizi-agents`                                        | owner      |
 | `mzizi-cli`         | `@nyuchi/mzizi-cli`, bin `fundi` | `mzizi-agents`? bin name suggests it pairs with fundi | owner      |
 | `bushtrade-mcp`     | `@nyuchi/bushtrade-mcp`          | unrelated to Mzizi — its own repo                     | owner      |
