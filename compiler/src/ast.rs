@@ -55,6 +55,9 @@ pub struct PropDecl {
     pub ty: String,
     /// Whether a default was supplied.
     pub has_default: bool,
+    /// The default value as written, when there is one. Part of the interface: a caller
+    /// needs to know what happens when the prop is omitted.
+    pub default: Option<String>,
 }
 
 /// A view element: a word, its attributes, and its children.

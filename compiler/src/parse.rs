@@ -607,9 +607,11 @@ impl Parser {
         };
 
         let mut has_default = false;
+        let mut default = None;
         if matches!(self.peek(), Tok::Equals) {
             self.bump();
-            has_default = self.value().is_some();
+            default = self.value();
+            has_default = default.is_some();
         }
 
         self.recover_line();
@@ -617,6 +619,7 @@ impl Parser {
             name,
             ty,
             has_default,
+            default,
         })
     }
 
