@@ -17,7 +17,7 @@
  */
 
 import SOURCES from "./registry-source.generated.json"
-import { basename, extname, join } from "node:path"
+import { basename, extname } from "node:path"
 
 /**
  * Resolved against `process.cwd()` so it works in `next dev`, in a Vercel
