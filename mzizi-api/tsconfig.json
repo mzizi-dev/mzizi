@@ -1,7 +1,4 @@
 {
-  // Extends the root config so `@/*` resolves to the repo root — the API
-  // Worker imports `app/api/**` and `lib/**` directly, and those modules use
-  // the `@/` alias among themselves.
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "types": ["@cloudflare/workers-types"],

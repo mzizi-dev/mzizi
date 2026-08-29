@@ -69,10 +69,3 @@ components/ui/
 # as `registry.json` and `content/doctrine/` above. See CLAUDE.md §8.10.
 lib/samples/props.generated.ts
 lib/registry-source.generated.json
-
-# The inlined OpenAPI document — `scripts/generate-openapi.mjs` emits it as a
-# single JSON-escaped string and `openapi:generate:check` compares byte-for-byte.
-# Prettier would wrap the literal, so with both active `format:check` and the
-# drift gate cannot pass at the same time. The generator owns its formatting,
-# same as `registry.json` and `lib/samples/props.generated.ts` above.
-lib/openapi.generated.ts

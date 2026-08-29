@@ -21,6 +21,7 @@
 import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs"
 import { join, relative, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
+import prettier from "prettier"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const API_DIR = join(ROOT, "app", "api")
@@ -28,6 +29,26 @@ const OUT = join(ROOT, "mzizi-api", "src", "routes.generated.ts")
 
 /** Every HTTP method Next recognises as a route export. */
 const METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+
+/**
+ * Format through prettier rather than imitating it.
+ *
+ * The committed artifact is compared byte-for-byte by `--check`, and the repo
+ * also runs `prettier --check` over the tree — so if this emitted anything
+ * prettier would rewrite, the two gates could never be green at the same time.
+ * That is not hypothetical: the first version of this generator wrote
+ * `["GET","OPTIONS"]`, prettier's pre-commit hook rewrote it to
+ * `["GET", "OPTIONS"]`, and CI then reported the artifact as out of date with
+ * a source that had not changed.
+ *
+ * Asking prettier is the fix rather than matching its output by hand, because
+ * a template that imitates the formatter re-breaks the moment its config
+ * changes. Same reasoning as `scripts/sync-tokens.ts` (#262).
+ */
+async function prettified(filePath, source) {
+  const config = await prettier.resolveConfig(filePath)
+  return prettier.format(source, { ...config, filepath: filePath })
+}
 
 function walk(dir, acc = []) {
   for (const entry of readdirSync(dir).sort()) {
@@ -136,7 +157,7 @@ const body = routes
   )
   .join("\n")
 
-const output = `${header}${body}\n]\n`
+const output = await prettified(OUT, `${header}${body}\n]\n`)
 
 if (process.argv.includes("--check")) {
   let current = ""
