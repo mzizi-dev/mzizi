@@ -66,5 +66,20 @@ rotating a key does not need a rebuild.
 
 ## Deploying
 
-Not wired to a workflow yet, deliberately: publishing this Worker and pointing
-`api.mzizi.dev` at it is a cutover decision, not a side effect of merging.
+`.github/workflows/deploy-api-worker.yml`, `workflow_dispatch` only behind a
+typed confirmation. Publishing this Worker and pointing `api.mzizi.dev` at it is
+a cutover decision, not a side effect of merging — so turning on `on: push` is a
+separate, deliberate step.
+
+It needs two repository secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+and two **Worker** secrets set once out of band:
+
+```bash
+wrangler secret put NEXT_PUBLIC_SUPABASE_URL --config mzizi-api/wrangler.jsonc
+wrangler secret put NEXT_PUBLIC_SUPABASE_ANON_KEY --config mzizi-api/wrangler.jsonc
+```
+
+Worker secrets, not build variables — this Worker reads them at request time, so
+passing them to the workflow would do nothing. The smoke test hits `/v1/brand`
+specifically because it is database-backed: without those two secrets `lib/db`
+answers 503 and every data endpoint degrades quietly.

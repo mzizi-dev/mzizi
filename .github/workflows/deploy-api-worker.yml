@@ -1,0 +1,141 @@
+# Deploy api.mzizi.dev to Cloudflare Workers.
+#
+# Same shape as deploy-worker.yml (the portal) and mzizi-tools'
+# deploy-mzizi-mcp.yml, so all three Workers ship the same way. The differences
+# are all consequences of what this Worker is:
+#
+#   NO BUILD STEP. The portal has to run `opennextjs-cloudflare build` first;
+#   wrangler bundles this one from source. So there is nothing to inline, and
+#   nothing that needs credentials at build time.
+#
+#   SUPABASE VALUES ARE RUNTIME, NOT BUILD-TIME. The portal inlines
+#   NEXT_PUBLIC_* when Next compiles. This Worker reads `process.env` at request
+#   time under `nodejs_compat`, so the same two values are Worker SECRETS —
+#   `wrangler secret put`, once, out of band. Passing them here would do
+#   nothing. The upside is that rotating the key does not need a redeploy.
+#
+# ONE-TIME SETUP:
+#
+#   Repository secrets — Settings → Secrets and variables → Actions
+#     CLOUDFLARE_API_TOKEN    Workers Scripts:Edit (+ Workers Routes:Edit and
+#                             DNS:Edit once api.mzizi.dev is attached)
+#     CLOUDFLARE_ACCOUNT_ID   the account hosting the Worker
+#
+#   Worker secrets — run once locally, they persist across deploys:
+#     wrangler secret put NEXT_PUBLIC_SUPABASE_URL --config mzizi-api/wrangler.jsonc
+#     wrangler secret put NEXT_PUBLIC_SUPABASE_ANON_KEY --config mzizi-api/wrangler.jsonc
+#
+# WHY MANUAL, NOT ON PUSH. Same reasoning as the portal: turning on `on: push`
+# is the cutover. It should be a deliberate act by someone who can also point
+# DNS, not a side effect of merging this file.
+
+name: Deploy Worker (api.mzizi.dev)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm publishing to Cloudflare'
+        required: true
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Guard the confirmation input
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM" != "deploy" ]; then
+            echo "::error::Publishing is gated. Re-run and type 'deploy' to confirm."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+      # The route table is derived from `app/api/`. A stale one means an
+      # endpoint that exists in the app and 404s here — which no other check
+      # would catch, because every test would still pass.
+      - name: Verify the route table matches app/api/
+        run: |
+          set -euo pipefail
+          pnpm api:routes:check
+          pnpm openapi:generate:check
+
+      - name: Publish to Cloudflare Workers
+        id: publish
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config mzizi-api/wrangler.jsonc
+
+      # Verified against what is live, not against the deploy log.
+      #
+      # The URL comes from wrangler's own output rather than a hardcoded
+      # workers.dev hostname: guessing the account subdomain would turn a
+      # healthy deploy into a wall of connection failures.
+      - name: Smoke-test the deployed Worker
+        env:
+          BASE: ${{ steps.publish.outputs.deployment-url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE:-}" ]; then
+            echo "::error::wrangler reported no deployment URL; cannot verify the deploy."
+            exit 1
+          fi
+          echo "Verifying $BASE"
+          fail=0
+          check() {
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X "${3:-GET}" --max-time 30 "$BASE$1" || echo 000)
+            if [ "$code" != "$2" ]; then
+              echo "::error::${3:-GET} $1 returned $code, expected $2"
+              fail=1
+            else
+              echo "  ok  ${3:-GET} $1 -> $code"
+            fi
+          }
+          # A route with no database dependency, so a 500 here is the Worker
+          # itself rather than Supabase.
+          check /v1/skills 200
+          # A route that DOES read the database. This is what proves the two
+          # Worker secrets are actually set — without them `lib/db` answers 503
+          # and every data endpoint degrades silently.
+          check /v1/brand 200
+          # Served from the inlined document; 404 here means the artifact did
+          # not ship.
+          check /openapi 200
+          # The published path form must keep working, or every existing
+          # consumer of mzizi.dev/api/v1/* breaks when traffic moves here.
+          check /api/v1/skills 200
+          # Correct non-200s. A TypeScript-only component must not 200 from the
+          # Rust registry, and an unknown path must not be swallowed by a
+          # parameterised route.
+          check /v1/rs/data-table 404
+          check /v1/nope 404
+          # Next-parity behaviours the router implements deliberately. A failed
+          # OPTIONS breaks every browser preflight while curl still passes, so
+          # it is checked here rather than assumed.
+          check /v1/skills 204 OPTIONS
+          check /v1/skills 200 HEAD
+          exit "$fail"
