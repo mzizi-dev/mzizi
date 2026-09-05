@@ -75,8 +75,8 @@ export type ColumnDef<TData extends RowData, TValue = unknown> = TanstackColumnD
 // ── DataTable ───────────────────────────────────────────────────────
 
 interface DataTableProps<TData extends RowData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
+  columns?: ColumnDef<TData, TValue>[]
+  data?: TData[]
   /** Column key to use for the search/filter input. Omit to hide the filter. */
   filterColumn?: string
   /** Placeholder text for the filter input */
@@ -91,8 +91,8 @@ interface DataTableProps<TData extends RowData, TValue> {
 }
 
 function DataTable<TData extends RowData, TValue>({
-  columns,
-  data,
+  columns = [],
+  data = [],
   filterColumn,
   filterPlaceholder = "Filter...",
   showColumnToggle = true,
@@ -253,9 +253,9 @@ interface DataTableColumnHeaderProps extends React.HTMLAttributes<HTMLDivElement
   title: string
 }
 
-function DataTableColumnHeader({ title, className }: DataTableColumnHeaderProps) {
+function DataTableColumnHeader({ title, className, ...rest }: DataTableColumnHeaderProps) {
   return (
-    <div className={cn("flex items-center gap-2", className)}>
+    <div className={cn("flex items-center gap-2", className)} {...rest}>
       {title}
       <ArrowUpDown className="size-4" />
     </div>
