@@ -158,7 +158,7 @@ importers:
         version: 9.2.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       autoprefixer:
         specifier: ^10.5.4
-        version: 10.5.4(postcss@8.5.25)
+        version: 10.5.4(postcss@8.5.26)
       chart.js:
         specifier: ^4.5.1
         version: 4.5.1
@@ -309,7 +309,7 @@ importers:
         version: 1.5.2
       postcss:
         specifier: ^8.5.18
-        version: 8.5.25
+        version: 8.5.26
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
@@ -1686,21 +1686,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@inquirer/ansi@2.0.7':
-    resolution: {integrity: sha512-3eTuUO1vH2cZm2ZKHeQxnOqlTi9EfZDGgIe3BL3I4u+rJHocr9Fz86M4fjYABPvFnQG/gGK551HqDiIcETwU6Q==}
+  '@inquirer/ansi@2.0.8':
+    resolution: {integrity: sha512-WpQM+Ti6Z40EFwwt+uL2p4UabT+W179zHp6HhLVOzfbwnVn05IPO/eXIZXGNqcT1jbQ15SujNLzQ39k4QPPxBQ==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
 
-  '@inquirer/confirm@6.3.0':
-    resolution: {integrity: sha512-pZHXJImFtERmSNMBHcjwuz8Ck5vEFEYNUZnwbb8aJpjHv/TwGuFErNxF2Hp8+V+pNJs2EYPMlyWscvFEqO9jOQ==}
-    engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
-
-  '@inquirer/core@12.0.1':
-    resolution: {integrity: sha512-JMD5Jy/ScL5TZE18m83Nw25HjqGFLoWXwnEkW7IdwwAhZpB9Bus55/WU7zn3UqR1MOCjjTQOIYpiD4vjWA3LPw==}
+  '@inquirer/confirm@6.3.1':
+    resolution: {integrity: sha512-HvnOHal39DTenOVoRpIy8Z+n4YYfNa3Qhi/P8zFqn9/d1crpmQG0DPx34rwOeOFvotgKr9Vov/14OmKR/Iwfjw==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
     peerDependencies:
       '@types/node': '>=18'
@@ -1708,12 +1699,21 @@ packages:
       '@types/node':
         optional: true
 
-  '@inquirer/figures@2.0.8':
-    resolution: {integrity: sha512-tApbon79GM9ry56ja/Ud3SY2CL4TQsao9fIwDQbgTeNY55025GdMzQ2+UdegV/lx51VNGUB59M0v0nMpybYY4Q==}
+  '@inquirer/core@12.0.2':
+    resolution: {integrity: sha512-9pBhkxE14uUlnHhs8lOt7qVPtS4caRY6CjADl8COejl9Mf7w8i6Uoe3DrljCqYtmYM3Iv2Q6EmPxx/oTYbvTAQ==}
+    engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
+  '@inquirer/figures@2.0.9':
+    resolution: {integrity: sha512-EAWgUTGQ/Umgga51dE3B2PUHbufuXarDfg86uVgoSgNHNNQnyFKcOrQLWVqYMghuSyHh8+2HUH0Js9cTC1WAdg==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
 
-  '@inquirer/type@4.1.0':
-    resolution: {integrity: sha512-FMiJpuHUG3Dk0ex+UIXkre7i+i4OcwHWk9YdcVtZHFwb/r2rnrU2ipTCNAB7A+QOP0ryzIcqOfy76fRyyvOEAw==}
+  '@inquirer/type@4.1.1':
+    resolution: {integrity: sha512-yJoHYrMnxIsJZCY+0Vb66Dy3he3kL3e2wOBKhoSwWWAzZAY82emlxwgprCtp6yRixvNRNq9ztfRWQYPNr3Go7A==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^20.17.0'}
     peerDependencies:
       '@types/node': '>=18'
@@ -3309,8 +3309,8 @@ packages:
   '@types/node@26.2.0':
     resolution: {integrity: sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg==}
 
-  '@types/node@26.4.0':
-    resolution: {integrity: sha512-faiGnoIrLH/V8cibOMEAZ8pMw6oXqSukl29ra4mN8GdaB2ZewzeaLj+INpV5N+Z1eKWzY+IzaIZH2EIR6YZRNQ==}
+  '@types/node@26.4.1':
+    resolution: {integrity: sha512-k97ENvZWtvA6yqz5/FS6a7duDgOPEeOQOc2iKS/nY6mX6qJUKtLnWzQS+Xj6tXweyj6ZcTAK2Qecetnvi9nCLA==}
 
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
@@ -5588,8 +5588,8 @@ packages:
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
-  postcss@8.5.25:
-    resolution: {integrity: sha512-DTPx3RWSSnWyzLxQnlH0rJP+EW5ekl16ZU4/psbIhA0e53kJfdgaN5vKM+xP7yJtXVu+nfdVFmlgFDEKAe4Pyw==}
+  postcss@8.5.26:
+    resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   potpack@1.0.2:
@@ -6314,8 +6314,8 @@ packages:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
 
-  type-fest@5.8.0:
-    resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
+  type-fest@5.9.0:
+    resolution: {integrity: sha512-yANm3Jr3GiJ1qgJlxGAVxTOIcEOk1rhQHamlXtnrCK7EHP4HeM9OGxtMg/W7HFdrVzw/ZWJKGVIJusVH85sLtw==}
     engines: {node: '>=20'}
 
   type-is@2.1.0:
@@ -8119,22 +8119,22 @@ snapshots:
   '@img/sharp-win32-x64@0.35.4':
     optional: true
 
-  '@inquirer/ansi@2.0.7':
+  '@inquirer/ansi@2.0.8':
     optional: true
 
-  '@inquirer/confirm@6.3.0(@types/node@26.1.2)':
+  '@inquirer/confirm@6.3.1(@types/node@26.1.2)':
     dependencies:
-      '@inquirer/core': 12.0.1(@types/node@26.1.2)
-      '@inquirer/type': 4.1.0(@types/node@26.1.2)
+      '@inquirer/core': 12.0.2(@types/node@26.1.2)
+      '@inquirer/type': 4.1.1(@types/node@26.1.2)
     optionalDependencies:
       '@types/node': 26.1.2
     optional: true
 
-  '@inquirer/core@12.0.1(@types/node@26.1.2)':
+  '@inquirer/core@12.0.2(@types/node@26.1.2)':
     dependencies:
-      '@inquirer/ansi': 2.0.7
-      '@inquirer/figures': 2.0.8
-      '@inquirer/type': 4.1.0(@types/node@26.1.2)
+      '@inquirer/ansi': 2.0.8
+      '@inquirer/figures': 2.0.9
+      '@inquirer/type': 4.1.1(@types/node@26.1.2)
       cli-width: 4.1.0
       fast-wrap-ansi: 0.2.2
       mute-stream: 3.0.0
@@ -8143,10 +8143,10 @@ snapshots:
       '@types/node': 26.1.2
     optional: true
 
-  '@inquirer/figures@2.0.8':
+  '@inquirer/figures@2.0.9':
     optional: true
 
-  '@inquirer/type@4.1.0(@types/node@26.1.2)':
+  '@inquirer/type@4.1.1(@types/node@26.1.2)':
     optionalDependencies:
       '@types/node': 26.1.2
     optional: true
@@ -9674,7 +9674,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
-      postcss: 8.5.25
+      postcss: 8.5.26
       tailwindcss: 4.3.3
 
   '@tanstack/react-store@0.11.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
@@ -9840,7 +9840,7 @@ snapshots:
     dependencies:
       undici-types: 8.3.0
 
-  '@types/node@26.4.0':
+  '@types/node@26.4.1':
     dependencies:
       undici-types: 8.3.0
     optional: true
@@ -9865,7 +9865,7 @@ snapshots:
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
-      '@types/node': 26.4.0
+      '@types/node': 26.4.1
     optional: true
 
   '@types/stats.js@0.17.4': {}
@@ -10137,13 +10137,13 @@ snapshots:
 
   atomically@1.7.0: {}
 
-  autoprefixer@10.5.4(postcss@8.5.25):
+  autoprefixer@10.5.4(postcss@8.5.26):
     dependencies:
       browserslist: 4.28.7
       caniuse-lite: 1.0.30001806
       fraction.js: 5.3.4
       picocolors: 1.1.1
-      postcss: 8.5.25
+      postcss: 8.5.26
       postcss-value-parser: 4.2.0
 
   aws4fetch@1.0.20: {}
@@ -12134,7 +12134,7 @@ snapshots:
 
   msw@2.13.4(@types/node@26.1.2)(typescript@6.0.3):
     dependencies:
-      '@inquirer/confirm': 6.3.0(@types/node@26.1.2)
+      '@inquirer/confirm': 6.3.1(@types/node@26.1.2)
       '@mswjs/interceptors': 0.41.9
       '@open-draft/deferred-promise': 3.0.0
       '@types/statuses': 2.0.6
@@ -12149,7 +12149,7 @@ snapshots:
       statuses: 2.0.2
       strict-event-emitter: 0.5.1
       tough-cookie: 6.0.2
-      type-fest: 5.8.0
+      type-fest: 5.9.0
       until-async: 3.0.2
       yargs: 17.7.3
     optionalDependencies:
@@ -12178,7 +12178,7 @@ snapshots:
       '@swc/helpers': 0.5.23
       baseline-browser-mapping: 2.11.5
       caniuse-lite: 1.0.30001806
-      postcss: 8.5.25
+      postcss: 8.5.26
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
       styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.2.8)
@@ -12399,7 +12399,7 @@ snapshots:
 
   postcss-value-parser@4.2.0: {}
 
-  postcss@8.5.25:
+  postcss@8.5.26:
     dependencies:
       nanoid: 3.3.18
       picocolors: 1.1.1
@@ -12813,7 +12813,7 @@ snapshots:
       is-plain-object: 5.0.0
       launder: 1.7.1
       parse-srcset: 1.0.2
-      postcss: 8.5.25
+      postcss: 8.5.26
 
   saxes@6.0.0:
     dependencies:
@@ -12877,7 +12877,7 @@ snapshots:
       kleur: 4.1.5
       open: 11.0.0
       ora: 8.2.0
-      postcss: 8.5.25
+      postcss: 8.5.26
       postcss-selector-parser: 7.1.4
       prompts: 2.4.2
       recast: 0.23.12
@@ -13261,7 +13261,7 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
 
-  type-fest@5.8.0:
+  type-fest@5.9.0:
     dependencies:
       tagged-tag: 1.0.0
     optional: true
@@ -13429,7 +13429,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.5
-      postcss: 8.5.25
+      postcss: 8.5.26
       rolldown: 1.2.6
       tinyglobby: 0.2.17
     optionalDependencies:
