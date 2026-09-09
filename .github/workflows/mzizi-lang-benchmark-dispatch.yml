@@ -1,0 +1,90 @@
+name: mzizi-lang held-out benchmark (dispatch)
+
+# Notifies the private held-out benchmark repository that a new mzizi-lang
+# commit exists. See design/RFC-0004-test-topology.md.
+#
+# The rule this workflow exists to respect: **private consumes public, public
+# never consumes private.** This job sends a notification and nothing else. It
+# reads no private result, gates nothing, and cannot fail the build. A fork with
+# no secrets skips it entirely and still gets a fully green CI run, because the
+# whole correctness suite lives in the public repo (ci.yml, job `compiler`).
+
+on:
+  push:
+    branches: [main]
+    # The old copy filtered on `mzizi-lang/**`, because it sat in a repository
+    # that was mostly not the language. Here the language IS the repository, so
+    # the filter would be `**` — which is to say, no filter.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mzizi-lang-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notify:
+    name: Notify held-out runner
+    # Forks never reach the dispatch step even if a secret of the same name
+    # happens to exist in their settings.
+    if: github.repository == 'mzizi-dev/mzizi'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Two things must be configured for a dispatch to happen, and neither is
+      # a default: the target repository (vars.MZIZI_HELDOUT_REPO, "owner/name")
+      # and a token with `contents:write` on it (secrets.MZIZI_DISPATCH_TOKEN).
+      # The target will live in the mzizi-dev org alongside the public repo, so
+      # read access to the held-out set is one org's membership. Until that
+      # repository exists this workflow runs and reports "not configured" —
+      # the intended steady state, not a failure.
+      - name: Dispatch
+        env:
+          TARGET: ${{ vars.MZIZI_HELDOUT_REPO }}
+          TOKEN: ${{ secrets.MZIZI_DISPATCH_TOKEN }}
+        run: |
+          set -u
+          if [ -z "${TARGET}" ] || [ -z "${TOKEN}" ]; then
+            echo "Held-out benchmark runner is not configured for this repository."
+            echo "Set the MZIZI_HELDOUT_REPO variable and the MZIZI_DISPATCH_TOKEN"
+            echo "secret to enable it. Skipping — this is not an error."
+            echo "held-out benchmark: not configured (skipped)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # The payload carries only public facts: which commit to check out,
+          # and where it came from. The private runner resolves everything else
+          # itself. Nothing about the held-out set travels in this direction.
+          payload=$(
+            printf '{"event_type":"mzizi-lang-commit","client_payload":{"sha":"%s","ref":"%s","repository":"%s","run_id":"%s"}}' \
+              "${GITHUB_SHA}" "${GITHUB_REF}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}"
+          )
+
+          status=$(
+            curl --silent --show-error --output /tmp/dispatch-response.txt \
+                 --write-out '%{http_code}' \
+                 --max-time 30 --retry 2 --retry-connrefused \
+                 --request POST \
+                 --header "Accept: application/vnd.github+json" \
+                 --header "Authorization: Bearer ${TOKEN}" \
+                 --header "X-GitHub-Api-Version: 2022-11-28" \
+                 --data "${payload}" \
+                 "https://api.github.com/repos/${TARGET}/dispatches"
+          ) || status="000"
+
+          if [ "${status}" = "204" ]; then
+            echo "Dispatched ${GITHUB_SHA} to ${TARGET}."
+            echo "held-out benchmark: dispatched \`${GITHUB_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A dispatch failure means a notification was missed. It does not mean
+          # this commit is bad, so it must not turn the build red. The private
+          # runner also polls, so a missed notification is recoverable; a false
+          # red on main is not, it just teaches people to ignore the signal.
+          echo "::warning::Dispatch to ${TARGET} failed with HTTP ${status}; the held-out run was not triggered."
+          sed -e 's/^/  /' /tmp/dispatch-response.txt || true
+          echo "held-out benchmark: dispatch failed (HTTP ${status}) — not gating" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
