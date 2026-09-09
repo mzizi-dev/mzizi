@@ -1,0 +1,69 @@
+name: CI
+
+# Recreated here from the `mzizi-lang` job of nyuchi/mzizi-tools'
+# .github/workflows/ci.yml. The `git subtree split` that produced this repo
+# carried only what lived inside the old `mzizi-lang/` directory; CI lives at a
+# repo root by necessity, so it did not travel. See MIGRATION.md §3.
+#
+# The only intended change is the path prefix: the crate that was
+# `mzizi-lang/compiler` is now `compiler`, and the corpus it checks is now one
+# level up from it rather than two.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # Not just main. Stacked pull requests target the branch below them in the
+    # stack, and a filter of [main] silently gives every layer but the bottom
+    # one zero checks — a green PR with nothing run looks identical to a
+    # passing one.
+    branches: [main, "claude/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  compiler:
+    name: compiler
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: compiler
+
+      - name: cargo fmt --check
+        working-directory: compiler
+        run: cargo fmt -- --check
+
+      - name: cargo clippy -D warnings
+        working-directory: compiler
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: compiler
+        run: cargo test
+
+      # The example and every primitive must stay parseable by the shipped binary, not just
+      # by the test harness — the charter's rule is that unverified bytes are worthless.
+      - name: mz check the corpus example
+        working-directory: compiler
+        run: cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
+
+      - name: mz check every primitive
+        working-directory: compiler
+        run: |
+          for f in ../primitives/*.mz; do
+            echo "checking $f"
+            cargo run --quiet --bin mz -- check "$f"
+          done
