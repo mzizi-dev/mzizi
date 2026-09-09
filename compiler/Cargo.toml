@@ -2,6 +2,12 @@
 name = "mzizi-lang-compiler"
 version = "0.0.0"
 edition = "2024"
+# Restored here after being lost in transit: mzizi-dev/agent-tools#103 added this
+# line while mzizi-dev/agent-tools#106 deleted the directory it lived in. Git
+# merged both cleanly, so nothing failed and nothing warned — the line simply
+# ceased to exist. The repo-level LICENSE has always been Apache-2.0; this makes
+# the crate metadata say so too.
+license = "Apache-2.0"
 publish = false
 description = "Mzizi-lang Phase 0 front end — lexer, recovering parser, and the agent NDJSON diagnostic protocol (RFC-0001, RFC-0002)."
 
