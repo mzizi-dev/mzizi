@@ -1,7 +1,9 @@
 name: CI
 
-# Recreated here from the `mzizi-lang` job of nyuchi/mzizi-tools'
-# .github/workflows/ci.yml. The `git subtree split` that produced this repo
+# Recreated here from the `mzizi-lang` job of mzizi-dev/agent-tools'
+# .github/workflows/ci.yml (the repo MIGRATION.md still calls
+# `nyuchi/mzizi-tools`; it has since been renamed). The `git subtree split`
+# that produced this repo
 # carried only what lived inside the old `mzizi-lang/` directory; CI lives at a
 # repo root by necessity, so it did not travel. See MIGRATION.md §3.
 #
