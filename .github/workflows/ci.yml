@@ -67,3 +67,31 @@ jobs:
             echo "checking $f"
             cargo run --quiet --bin mz -- check "$f"
           done
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history, not the default single commit. This repo's history
+          # was produced by `git subtree split` out of another repository, so
+          # every one of its commits is arriving under CI for the first time —
+          # a scan of the tip would say nothing about the fifteen commits
+          # underneath it.
+          fetch-depth: 0
+
+      # The gitleaks/gitleaks-action wrapper requires a paid licence for org
+      # repos. The binary is MIT-licensed, so it runs directly and stays free.
+      - name: Install gitleaks
+        env:
+          VERSION: "8.21.2"
+        run: |
+          set -euo pipefail
+          curl -sSL --fail -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          sudo tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - run: gitleaks detect --source . --redact --no-banner --verbose
