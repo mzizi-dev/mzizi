@@ -154,7 +154,7 @@ figure recorded before contracts were lowered, and RFC-0003 §7.2 records why: n
 fourteen were ten copies of an empty `contract` placeholder collapsing into one.
 
 **Not done, and load-bearing:** ~~contract bodies parse but are **not evaluated**~~ — done
-2026-09-11, see §4.1. What is still not done is comparing a component against a *reference*
+2026-09-11, see §4.1. What is still not done is comparing a component against a _reference_
 implementation, which is the other half of the charter's defect metric.
 
 ## 3. Moving `mzizi-lang/` without losing history
@@ -215,7 +215,7 @@ Three candidate designs, none chosen — RFC-0006 §10.1:
 
 1. `mz contract --against <reference>`, with the comparison inside the compiler.
 2. Harness-side comparison, with `mz contract --agent`'s NDJSON as the input.
-3. Contract *generation* from a `.rs` reference, so the assertions themselves are ground
+3. Contract _generation_ from a `.rs` reference, so the assertions themselves are ground
    truth rather than the author's own claims.
 
 This is now the highest-value piece of work available, and §4.2 depends on it.
@@ -224,10 +224,10 @@ This is now the highest-value piece of work available, and §4.2 depends on it.
 
 Depends on 4.1a for its most important metric. Three measurements:
 
-| Metric                      | Source                                              |
-| --------------------------- | --------------------------------------------------- |
-| Tokens consumed             | The agent adapter reports it                        |
-| Iterations to clean compile | Count `mz check` rounds until zero errors           |
+| Metric                      | Source                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Tokens consumed             | The agent adapter reports it                                                                          |
+| Iterations to clean compile | Count `mz check` rounds until zero errors                                                             |
 | Defect rate                 | `mz contract` after a clean compile — the runner exists; scoring against the reference **needs 4.1a** |
 
 Design constraints, all from RFC-0004:

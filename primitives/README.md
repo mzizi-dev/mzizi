@@ -90,7 +90,7 @@ TypeScript violated in five separate components — because there, the heights l
 inside Tailwind class strings where nothing could check them. Here the height is data on
 the variant, so one line holds the whole table to the floor.
 
-And since [RFC-0006](../design/RFC-0006-contracts.md) it is *run*: `mz contract
+And since [RFC-0006](../design/RFC-0006-contracts.md) it is _run_: `mz contract
 ../primitives/button.mz` evaluates that line against the table and exits 1 if any variant
 falls below 48. Drop `sm` to 40 and `mz check` still reports zero errors while
 `mz contract` reports the defect — which is precisely the shape CHARTER.md §6 calls a Phase

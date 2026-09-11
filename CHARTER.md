@@ -115,7 +115,7 @@ The charter originally flagged this as the one decision that had to be made befo
   it: **the reference-implementation half of §6's defect metric.** `mz contract` evaluates a
   component's assertions against that component, so the metric can be expressed and run in
   the language rather than as a hand-written Rust test. §6 defines a defect as failing a
-  contract test *against the reference implementation*, and nothing yet reads the `.rs`
+  contract test _against the reference implementation_, and nothing yet reads the `.rs`
   reference off disk and compares. RFC-0006 §10.1.
 - **Benchmark harness mechanics.** How agent runs are invoked, sandboxed, and scored
   end-to-end (which components from the 571+ corpus, how many per run, how "tokens consumed"

@@ -115,8 +115,8 @@ Contract evaluation **is** gated, but read what it proves narrowly. `mz contract
 component against its own declarations: its variant tables, its view tree, its prop
 defaults. It does not execute anything, and it does not compare against a reference
 implementation — which is what CHARTER.md §6's defect metric actually requires
-([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means *the
-corpus lexes, parses, lowers to IR, keeps its own promises, and the shipped binary agrees* —
+([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means _the
+corpus lexes, parses, lowers to IR, keeps its own promises, and the shipped binary agrees_ —
 it does not mean any component matches the ground truth the benchmark will score against.
 
 ## Merge commits only — and why that is a research decision, not a style preference
@@ -131,11 +131,11 @@ gh pr merge <n> --merge --delete-branch
 The reason is recorded in [`MIGRATION.md`](./MIGRATION.md) §1.1, in the settings table
 applied to every repository in the org:
 
-| Setting              | Value   | Why                                                                |
-| -------------------- | ------- | ------------------------------------------------------------------ |
-| Allow merge commits  | **yes** | The ecosystem convention is merge-only; history stays truthful     |
-| Allow squash merging | **no**  | Squash discards the per-commit reasoning this project depends on   |
-| Allow rebase merging | **no**  | Same                                                               |
+| Setting              | Value   | Why                                                              |
+| -------------------- | ------- | ---------------------------------------------------------------- |
+| Allow merge commits  | **yes** | The ecosystem convention is merge-only; history stays truthful   |
+| Allow squash merging | **no**  | Squash discards the per-commit reasoning this project depends on |
+| Allow rebase merging | **no**  | Same                                                             |
 
 Read that middle row literally. **The commit messages in this repository are the research
 record.** This is a project whose entire output so far is a set of design decisions and the
@@ -158,7 +158,7 @@ Practical consequences:
 - **Do not squash your own branch before opening a PR.** If your work took four commits with
   four different reasons, keep four commits. A tidy branch is not a goal here.
 - **Do fix commits that are genuinely noise** — `wip`, `fix typo`, `address review`. Those
-  carry no reasoning and amending or fixup-rebasing them *before* pushing loses nothing.
+  carry no reasoning and amending or fixup-rebasing them _before_ pushing loses nothing.
   The rule protects reasoning, not commit count.
 - **Stacked pull requests are supported.** CI runs on `pull_request` targeting `main` **and**
   `claude/**`, precisely so a PR stacked on another branch gets checks instead of silently
@@ -251,9 +251,9 @@ names its own boundaries in its second sentence.
 RFCs share and the strongest convention in the set. RFC-0001 §0 opens with a table of nine
 failure modes (`FM-1` … `FM-9`) — concrete things that go wrong when a model authors code —
 and then every section heading cites the ones it answers:
-`### 1.1 `end` with name echo, not braces — _FM-2_`. RFC-0003 does the same for *reading*
-code with eight reading barriers (`RB-1` … `RB-8`). RFC-0001 states the rule outright: *if a
-decision doesn't trace to a failure mode, it doesn't belong in the language.* A proposal
+`### 1.1`end`with name echo, not braces — _FM-2_`. RFC-0003 does the same for _reading_
+code with eight reading barriers (`RB-1` … `RB-8`). RFC-0001 states the rule outright: _if a
+decision doesn't trace to a failure mode, it doesn't belong in the language._ A proposal
 that cannot name the failure it removes will be asked to.
 
 **Examples come from the benchmark corpus, never invented.** RFC-0001 §1 says so explicitly
@@ -301,7 +301,7 @@ readable.
   is gated by `mz check` in CI, and `compiler/tests/ir_measured.rs` measures the IR across
   the whole set. Adding a primitive changes those measurements; adding one that does not
   exercise something new is not an improvement. `primitives/README.md` records what each of
-  the nine is *for*, and a tenth should be able to fill in that column.
+  the nine is _for_, and a tenth should be able to fill in that column.
 - **`compiler/` changes need a test in `compiler/tests/`**, which stays public permanently —
   RFC-0004 §2 commits to that, including the entire correctness suite. §1.2 goes further
   for security work: a crash seed corpus may be withheld, but "never to the fix or the
