@@ -12,6 +12,8 @@ subcommand rather than part of `mz check`. Lowering contracts to Rust `#[test]`s
 > the catalogue-and-language RFC before this one was written, and it is still open. The
 > number is left free rather than reused.
 
+<!-- Two separate amendment notes; this separator keeps them distinct. -->
+
 > **Answers RFC-0003 §8.4**, which left "contract evaluation semantics — the subject
 > language for assertions like `every button_size height at_least 48`" as an open question
 > addressed to a later RFC. This is that RFC.
@@ -28,12 +30,12 @@ across the whole design record.
 
 Each of these was observed in this repository or its corpus, not imagined.
 
-| ID        | Failure mode                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **FM-10** | **The unverified promise.** An assertion that is parsed and discarded reads, to every later reader, as verification that has already happened. Before this RFC the compiler set `has_contract: bool` and threw the body away, while `primitives/README.md` said contracts were what held the corpus to its touch floor. Nothing was checking it.                                                                                                       |
+| ID        | Failure mode                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **FM-10** | **The unverified promise.** An assertion that is parsed and discarded reads, to every later reader, as verification that has already happened. Before this RFC the compiler set `has_contract: bool` and threw the body away, while `primitives/README.md` said contracts were what held the corpus to its touch floor. Nothing was checking it.                                                                                                      |
 | **FM-11** | **Parallel truth.** One rule written twice drifts. RFC-0001 §1.3 names the `Record<state, string>` version. The same shape reappeared _inside this repo_: the 48px floor lived both in `button.mz`'s `contract` block and in a hand-written Rust assertion in `compiler/tests/primitives.rs`, which labelled itself "this test is the check until the contract evaluator lands". Two copies of one rule, one of them in a language that is not Mzizi. |
-| **FM-12** | **The silently-inapplicable assertion.** If an assertion the evaluator cannot apply defaults to passing, an unevaluable contract is indistinguishable from a satisfied one — which is strictly worse than no contract, because it reads as proof. `card.mz` shipped `card_radius uses "--radius-lg"`, naming a subject that appears nowhere in the file. It looked like a check for as long as nothing tried to run it.                                |
-| **FM-13** | **Metric conflation.** CHARTER.md §6 measures two different things and is explicit that they are different: "a syntax/compile error is not itself a 'defect' for this metric… the defect rate measures what gets _past_ the compiler wrong". A single exit status covering both makes the Phase 0 defect metric unreadable — a run that failed to parse and a run that parsed and lied become the same observation.                                    |
+| **FM-12** | **The silently-inapplicable assertion.** If an assertion the evaluator cannot apply defaults to passing, an unevaluable contract is indistinguishable from a satisfied one — which is strictly worse than no contract, because it reads as proof. `card.mz` shipped `card_radius uses "--radius-lg"`, naming a subject that appears nowhere in the file. It looked like a check for as long as nothing tried to run it.                               |
+| **FM-13** | **Metric conflation.** CHARTER.md §6 measures two different things and is explicit that they are different: "a syntax/compile error is not itself a 'defect' for this metric… the defect rate measures what gets _past_ the compiler wrong". A single exit status covering both makes the Phase 0 defect metric unreadable — a run that failed to parse and a run that parsed and lied become the same observation.                                   |
 
 ## 1. What a contract is — _FM-10_
 
@@ -68,31 +70,31 @@ Every form below is taken from `primitives/` or `examples/connectivity_bar.mz` �
 rule is that examples come from the corpus and are never invented. The corpus's thirty-three
 assertions across ten files use exactly these shapes and no others.
 
-**Subjects**
+### Subjects
 
-| Form                        | Means                                              | Corpus line                                    |
-| --------------------------- | -------------------------------------------------- | ---------------------------------------------- |
-| `every <enum> <column>`     | every variant's cell in that column                | `every button_size height at_least 48`         |
-| `<enum>.<variant> <column>` | one cell                                           | `button_size.default height is 56`             |
-| `<variant>.<column>`        | one cell, with the enum inferred (§3)              | `offline.color is "bg-terracotta"`             |
-| `<name>`                    | a view attribute, else a prop default (§3)         | `slot is "button"`, `announce not_empty`       |
-| `<element> "<text>"`        | the view element carrying that text                | `button "Retry" min_height 48`                 |
-| `when <variant>`            | the branch of the view guarded on that variant     | `when offline shows button "Retry"`            |
-| _(none)_                    | the component itself                               | `uses button`                                  |
+| Form                        | Means                                          | Corpus line                              |
+| --------------------------- | ---------------------------------------------- | ---------------------------------------- |
+| `every <enum> <column>`     | every variant's cell in that column            | `every button_size height at_least 48`   |
+| `<enum>.<variant> <column>` | one cell                                       | `button_size.default height is 56`       |
+| `<variant>.<column>`        | one cell, with the enum inferred (§3)          | `offline.color is "bg-terracotta"`       |
+| `<name>`                    | a view attribute, else a prop default (§3)     | `slot is "button"`, `announce not_empty` |
+| `<element> "<text>"`        | the view element carrying that text            | `button "Retry" min_height 48`           |
+| `when <variant>`            | the branch of the view guarded on that variant | `when offline shows button "Retry"`      |
+| _(none)_                    | the component itself                           | `uses button`                            |
 
-**Predicates**
+### Predicates
 
-| Form              | Holds when                                         | Corpus line                                 |
-| ----------------- | --------------------------------------------------- | ------------------------------------------- |
-| `is <value>`      | the value is exactly that, as written               | `alert_variant.destructive announce is "alert"` |
-| `contains "<s>"`  | a string value contains that substring              | `avatar_size.default class contains "size-10"` |
-| `not_empty`       | a string value has non-whitespace in it             | `every avatar_size text_class not_empty`    |
-| `at_least <n>`    | a numeric value is at least _n_                     | `every input_size height at_least 48`       |
-| `in "<a>" "<b>"`  | a string value is one of a closed set               | `every alert_variant announce in "status" "alert"` |
-| `uses "--token"`  | the value reads `var(--token…)`                     | `class uses "--radius-lg"` (see §8.3)       |
-| `uses <name>`     | the view composes that component                    | `uses button`                               |
-| `shows <el> "<t>"` | the guarded branch renders that element            | `when offline shows button "Retry"`         |
-| `min_height <n>`  | the element's declared height is at least _n_ px    | `button "Retry" min_height 48`              |
+| Form               | Holds when                                       | Corpus line                                        |
+| ------------------ | ------------------------------------------------ | -------------------------------------------------- |
+| `is <value>`       | the value is exactly that, as written            | `alert_variant.destructive announce is "alert"`    |
+| `contains "<s>"`   | a string value contains that substring           | `avatar_size.default class contains "size-10"`     |
+| `not_empty`        | a string value has non-whitespace in it          | `every avatar_size text_class not_empty`           |
+| `at_least <n>`     | a numeric value is at least _n_                  | `every input_size height at_least 48`              |
+| `in "<a>" "<b>"`   | a string value is one of a closed set            | `every alert_variant announce in "status" "alert"` |
+| `uses "--token"`   | the value reads `var(--token…)`                  | `class uses "--radius-lg"` (see §8.3)              |
+| `uses <name>`      | the view composes that component                 | `uses button`                                      |
+| `shows <el> "<t>"` | the guarded branch renders that element          | `when offline shows button "Retry"`                |
+| `min_height <n>`   | the element's declared height is at least _n_ px | `button "Retry" min_height 48`                     |
 
 `is` and `in` are existing keywords. The other seven are ordinary identifiers, reserved only
 in predicate position — RFC-0002 §1 asks for a small keyword vocabulary, and a word that is
@@ -147,17 +149,17 @@ the ROADMAP have all now been corrected to match it.
 **It does not check:**
 
 - **Anything rendered.** There is no renderer (CHARTER.md Phase 1). `when offline shows
-  button "Retry"` is a claim about the *shape of the view tree*, not about what a browser
+button "Retry"` is a claim about the _shape of the view tree_, not about what a browser
   paints. A `when` whose condition the evaluator cannot interpret is matched by the variant
   name appearing in the condition, which is weaker than evaluating the condition.
-- **Anything against a reference implementation.** `mz contract` is a *self*-consistency
+- **Anything against a reference implementation.** `mz contract` is a _self_-consistency
   check: it asks whether a component does what it says. Scoring a Mzizi port against the
   hand-written `.rs` in `mzizi-dev/mzizi-registry` is a second, separate comparison, and it
   belongs to the benchmark harness that does not exist yet (§10.1). **The Phase 0 defect
   metric needs both halves; this RFC delivers one of them.**
 - **Tailwind scale classes.** `h-12` is 48px in one Tailwind version and need not be in
   another. The evaluator reads only bracketed pixel values and reports `h-12` as
-  *unevaluable* rather than guessing, because a check that silently disagrees with what
+  _unevaluable_ rather than guessing, because a check that silently disagrees with what
   renders is FM-12 wearing a different hat.
 - **Cross-file anything.** `uses button` checks that the view has a `button` element. It
   does not load `button.mz` or check that the props passed to it exist. That needs the
@@ -198,7 +200,7 @@ Two details follow from §1's "a contract is a set":
 
 RFC-0003 §7 reported **127 shared nodes vs 141 isolated — 14 saved across 10 files**. With
 contract bodies in the IR the same measurement now reads **169 vs 174 — 5 saved**, and the
-difference is not noise. Before this PR every component lowered its contract to the *same*
+difference is not noise. Before this PR every component lowered its contract to the _same_
 empty `contract` marker node, so nine of the fourteen "saved" nodes were ten copies of a
 placeholder collapsing into one. Genuine sharing of authored content was five, and still is.
 
@@ -228,21 +230,21 @@ Consequences, all of which the implementation honours:
   with parse errors. `compiler/tests/contracts.rs` asserts this directly.
 - **Malformed clauses are still `mz check` errors.** The clause grammar is grammar, so
   `MZ0601` and `MZ0602` come out of the parser and fail an ordinary check. Only the
-  *evaluation* is deferred to the second command.
+  _evaluation_ is deferred to the second command.
 - **The diagnostic protocol is unchanged, and extended.** `mz contract --agent` emits the
   same NDJSON, and RFC-0001 §4.4's summary line gains `contract_clauses` and
   `contract_failures` — which §4.4 always specified ("`mz: 3 errors (2 exact-fixable), 1
-  contract failure, 480ms`") and the implementation had not yet had anything to put there.
+contract failure, 480ms`") and the implementation had not yet had anything to put there.
 
 ### 7.1 Diagnostic codes
 
-| Code      | Severity | Means                                                            |
-| --------- | -------- | ---------------------------------------------------------------- |
-| `MZ0209`  | error    | a second `contract` block in one component                        |
-| `MZ0601`  | error    | a clause the grammar does not recognize                           |
-| `MZ0602`  | error    | a clause with no predicate — carries an `exact` fix (§8.2)        |
-| `MZ0603`  | error    | **an assertion that does not hold** — the Phase 0 defect          |
-| `MZ0605`  | error    | an assertion that cannot be evaluated (§5)                        |
+| Code     | Severity | Means                                                      |
+| -------- | -------- | ---------------------------------------------------------- |
+| `MZ0209` | error    | a second `contract` block in one component                 |
+| `MZ0601` | error    | a clause the grammar does not recognize                    |
+| `MZ0602` | error    | a clause with no predicate — carries an `exact` fix (§8.2) |
+| `MZ0603` | error    | **an assertion that does not hold** — the Phase 0 defect   |
+| `MZ0605` | error    | an assertion that cannot be evaluated (§5)                 |
 
 `MZ0603` is the code a benchmark harness counts. It is emitted only by `mz contract`, and
 only on a file that compiled.
@@ -278,7 +280,7 @@ corpus files write neither colon, and this RFC's grammar has none. §1.6 is amen
 exactly one form per intent, and the reason is FM-1: every choice point is a place to be
 subtly inconsistent.
 
-So the bare operand is `MZ0602`, and it carries an `exact` fix that inserts `is ` — a purely
+So the bare operand is `MZ0602`, and it carries an `exact` fix that inserts `is` — a purely
 mechanical repair `mz fix` can apply with no model in the loop. Three lines across two
 primitives were corrected in this PR.
 
@@ -341,7 +343,7 @@ reference implementations. See §10.1.
 1. **The other half of the defect metric.** `mz contract` proves a component keeps its own
    promises. CHARTER.md §6 requires comparing against a reference implementation read from
    disk. Whether that is a `mz contract --against <ref>` mode, a harness-side comparison, or
-   contract *generation* from a `.rs` reference is undecided, and it is the last thing
+   contract _generation_ from a `.rs` reference is undecided, and it is the last thing
    between here and a first benchmark run.
 2. **Cross-file contracts.** `uses button` currently checks a tag in the view. With the
    manifest's name→hash namespace it could check that the composed component exists, that

@@ -12,6 +12,8 @@ the type system's internals, and the compiler architecture are later RFCs.
 > rules (locally predictable, small common-word keyword vocabulary), and
 > supplies the real rationale for §1.1's closer. Read the two together.
 
+<!-- Two separate amendment notes; this separator keeps them distinct. -->
+
 > **Amended by RFC-0006**, in two places where this document disagreed with the
 > code for as long as the code existed. **§1.5:** view attributes are written
 > `name = value`; the `=` is required, because `name value` and a child element

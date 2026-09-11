@@ -157,7 +157,7 @@ Designed here, next in implementation order:
   can be evaluated against the tree — which is what finally makes the Phase 0 defect metric
   (compiles clean, behaviourally wrong) measurable by the toolchain rather than by a Rust
   test standing in for it. **Done**, in [RFC-0006](./RFC-0006-contracts.md) and
-  `mz contract`; the half that still needs a harness is comparison against a *reference*
+  `mz contract`; the half that still needs a harness is comparison against a _reference_
   implementation (RFC-0006 §10.1).
 - **Incremental compilation keyed on hashes.** Only changed hashes and their ancestors
   recompile. This is the cheapest available route to the sub-second check loop the charter
@@ -199,7 +199,7 @@ permanently stable identity is the hash.** Inserting a sibling can shift an
 ordinal-disambiguated path, so anything holding a reference across edits should hold the
 hash, not the path.
 
-### 7.2 A correction the *next* implementation forced
+### 7.2 A correction the _next_ implementation forced
 
 The 14-saved figure this table used to report was mostly measuring a placeholder. Contract
 bodies were not lowered, so every component contributed the identical empty `contract`
