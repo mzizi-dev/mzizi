@@ -64,7 +64,10 @@ pub fn outline(component: &Component) -> String {
         out.push_str("\n  end\n");
     }
 
-    if component.has_contract {
+    // The contract's *existence* is interface — a caller wants to know the component's
+    // behaviour is asserted at all. The assertions themselves are body: they constrain the
+    // implementation, and reading them is `mz contract`'s job, not a dependency's.
+    if component.has_contract() {
         out.push_str("  contract\n  end\n");
     }
 
@@ -153,7 +156,7 @@ end component a
         assert_eq!(r.name, "a");
         assert_eq!(r.uses, vec!["motion"]);
         assert_eq!(r.props.len(), 1);
-        assert!(r.has_contract);
+        assert!(r.has_contract());
     }
 
     #[test]

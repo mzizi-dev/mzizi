@@ -298,3 +298,78 @@ fn the_summary_reports_how_many_errors_mz_fix_would_resolve() {
     assert_eq!(report.exact_fixable(), 2);
     assert!(report.to_ndjson(1).contains(r#""errors":2"#));
 }
+
+#[test]
+fn three_broken_contract_clauses_produce_exactly_three_diagnostics() {
+    // The recovery guarantee, extended to the contract sub-grammar. A contract block is
+    // where an agent writes the least familiar syntax in the language, so a cascade here
+    // would be expensive exactly where it can least be afforded.
+    let src = "\
+component a
+  enum e
+    one k \"1\"
+  end
+  contract
+    every e
+    e.one k 1
+    k wobble \"x\"
+  end
+end component a
+";
+    let found = errors(src);
+    assert_eq!(
+        found.len(),
+        3,
+        "expected exactly 3 diagnostics, got: {found:#?}"
+    );
+}
+
+#[test]
+fn a_bare_operand_in_a_contract_clause_carries_the_exact_repair() {
+    // `button_size.default height 56` is how the corpus wrote it. RFC-0001 §1.2 allows one
+    // form per intent, so the abbreviation is an error — but a purely mechanical one, so it
+    // must be fixable with no model in the loop.
+    let src = "\
+component a
+  enum e
+    one k 56
+  end
+  contract
+    e.one k 56
+  end
+end component a
+";
+    let report = check(src, "t.mz");
+    let d = report
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "MZ0602")
+        .expect("a missing predicate must be reported");
+    let fix = d.fix.as_ref().expect("and must carry a repair");
+    assert_eq!(fix.replace, "is ");
+    assert_eq!(fix.confidence, Confidence::Exact);
+    // A pure insertion: it adds the missing word and deletes nothing.
+    assert_eq!(fix.span.start_col, fix.span.end_col);
+}
+
+#[test]
+fn a_broken_contract_clause_does_not_swallow_the_rest_of_the_block() {
+    // "Never fix one to see the next", inside a contract: a clause the grammar rejects must
+    // not cost the assertions written after it.
+    let src = "\
+component a
+  enum e
+    one k \"1\"
+  end
+  contract
+    e.one k wobble
+    every e k not_empty
+  end
+end component a
+";
+    let (report, tally) = mzizi_lang_compiler::check_contract(src, "t.mz");
+    assert_eq!(report.error_count(), 1, "{:#?}", report.diagnostics);
+    // The file does not compile, so nothing was evaluated — but the parser still saw the
+    // second clause, which is what keeps the next iteration to one round trip.
+    assert_eq!(tally.clauses, 0);
+}
