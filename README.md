@@ -40,7 +40,7 @@ disproved and the narrower claim that replaced it.
 mzizi/
 ├── CHARTER.md          # the charter: thesis, phasing, non-goals, kill criterion
 ├── MIGRATION.md        # the record of the move out of agent-tools, and the work queue
-├── design/             # the RFCs — read these first
+├── design/             # the RFCs, and ROADMAP.md — read these first
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
 ├── examples/           # one real corpus component, ported by hand
@@ -88,6 +88,12 @@ RFC ends with open questions addressed to the next one, and resolved questions a
 through in place rather than deleted, so the document records what was believed as well as
 what is believed now.
 
+[`design/ROADMAP.md`](./design/ROADMAP.md) sits alongside them as the index of where every
+plan in the Mzizi ecosystem lives — the language's work queue, the benchmark, the registry
+epic that supplies the benchmark's ground truth — and of what has and has not been
+measured. It holds no work items of its own, deliberately: plans live next to the code they
+plan.
+
 To propose a language change, write an RFC. [`CONTRIBUTING.md`](./CONTRIBUTING.md)
 describes the conventions the four existing ones follow.
 
@@ -103,7 +109,7 @@ Foundation-governed Mzizi org. The naming rule is that **the language repo is pl
 | [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)                   | Documentation content for mzizi.dev — language reference, RFC index, runtime guides, agent-facing surfaces.                                            | Documents this repo. The RFCs stay **here**, next to the code they govern, so tests like `compiler/tests/ir_measured.rs` can verify their numeric claims. |
 | [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)                   | mzizi.dev — the live site tying the language, the registry and the docs together.                                                                     | Publishes; is not depended on.                                                                                                                           |
 | [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway)     | api.mzizi.dev — the registry API, as a pure-Rust Cloudflare Worker.                                                                                   | Serves the registry, not the language.                                                                                                                   |
-| [`mzizi-roadmap`](https://github.com/mzizi-dev/mzizi-roadmap)             | The public roadmap.                                                                                                                                   | Plans; does not build.                                                                                                                                   |
+| ~~`mzizi-roadmap`~~                                                       | **Archived 2026-09-11.** Folded into [`design/ROADMAP.md`](./design/ROADMAP.md).                                                                       | A roadmap living apart from the code it plans is how plans go stale; it now lives here.                                                                  |
 | `mzizi-benchmark`                                                         | **Planned, not yet created.** The public Phase 0 harness: runner, metric definitions, scoring code, fixture format. Today `benchmarks/` holds only the design. | Will consume `mz` from this repo.                                                                                                                        |
 
 **The rule that makes the ecosystem honest, and it is RFC-0004 §3 applied to code instead
