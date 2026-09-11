@@ -25,7 +25,7 @@ component card
 
   contract
     slot is "card"
-    card_radius uses "--radius-lg"
+    class uses "--radius-lg"
   end
 
 end component card
