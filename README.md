@@ -114,8 +114,9 @@ the rest.
 | [0006 — contracts](./design/RFC-0006-contracts.md)                         | Four more named failure modes, the contract clause grammar and subject language, what `mz contract` proves and what it cannot, why contracts are part of the IR hash, and the four divergences the corpus forced. |
 
 RFC-0005 is reserved for the catalogue-and-language RFC drafted as
-[`mzizi-dev/agent-tools#76`](https://github.com/mzizi-dev/agent-tools/issues/76) and not yet
-written; the number is left free rather than reused.
+`mzizi-dev/agent-tools#76` and not yet written; the number is left free rather than reused.
+That repository is **private**, so the issue is named rather than linked — a link to it
+returns 404 for any reader without access, which is worse than no link.
 
 RFC-0001 was amended by RFC-0002 and by RFC-0006, and carries notes saying so; RFC-0003 was
 amended by RFC-0006. Read amended RFCs with their amendments. Every
