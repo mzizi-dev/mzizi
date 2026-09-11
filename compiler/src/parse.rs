@@ -11,6 +11,7 @@
 //!   are newline-terminated, the next line is always a valid resynchronization point.
 
 use crate::ast::{Component, Element, EnumDecl, PropDecl, Variant};
+use crate::contract::{Clause, Contract, PREDICATE_WORDS, Predicate, Subject};
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::lex::{Tok, Token, lex};
 
@@ -217,7 +218,7 @@ impl Parser {
             props: Vec::new(),
             view: None,
             fns: Vec::new(),
-            has_contract: false,
+            contract: None,
         };
 
         self.recover_line();
@@ -286,14 +287,30 @@ impl Parser {
                 }
                 Tok::Keyword("contract") => {
                     self.bump();
-                    component.has_contract = true;
                     stack.push(Open {
                         kind: BlockKind::Contract,
                         name: String::new(),
                         line: self.peek_span().start_line,
                     });
                     self.recover_line();
-                    self.skip_block_body(&mut stack);
+                    // A second `contract` block would silently replace the first. Keep the
+                    // first and report the second, so no assertion is lost without a word.
+                    let parsed = self.parse_contract(&mut stack);
+                    if component.contract.is_some() {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0209",
+                            &self.file,
+                            span,
+                            format!(
+                                "`component {}` already has a `contract` block — merge these {} assertion(s) into it",
+                                component.name,
+                                parsed.clauses.len()
+                            ),
+                        ));
+                    } else {
+                        component.contract = Some(parsed);
+                    }
                 }
                 Tok::Keyword("end") => {
                     self.parse_end(&mut stack);
@@ -343,7 +360,7 @@ impl Parser {
             );
         }
 
-        if !component.has_contract {
+        if component.contract.is_none() {
             self.diags.push(Diagnostic::warning(
                 "MZ0501",
                 &self.file,
@@ -770,7 +787,300 @@ impl Parser {
         })
     }
 
-    /// Consume a block body without modelling it (fn and contract bodies, for now).
+    /// The `contract` block body — the clause grammar from RFC-0006 §2.
+    ///
+    /// Recovery is the same line-oriented rule as everywhere else: a clause the grammar
+    /// does not recognize produces one diagnostic and the next line is parsed normally, so
+    /// a typo in the first assertion never hides the other four (FM-5).
+    fn parse_contract(&mut self, stack: &mut Vec<Open>) -> Contract {
+        let depth = stack.len();
+        let mut clauses = Vec::new();
+        while !self.at_eof() && stack.len() >= depth {
+            self.skip_newlines();
+            if self.at_eof() {
+                break;
+            }
+            if matches!(self.peek(), Tok::Keyword("end")) {
+                self.parse_end(stack);
+                if stack.len() < depth {
+                    break;
+                }
+                continue;
+            }
+            if let Some(clause) = self.parse_clause() {
+                clauses.push(clause);
+            }
+        }
+        Contract { clauses }
+    }
+
+    /// One assertion, `<subject> <predicate>`, spanning exactly one line.
+    fn parse_clause(&mut self) -> Option<Clause> {
+        let start = self.peek_span();
+        let parts = self.clause_parts();
+
+        // A clause that parsed but left tokens behind means the author wrote something the
+        // compiler ignored — the silent-acceptance failure a contract can least afford.
+        if parts.is_some() && !matches!(self.peek(), Tok::Newline | Tok::Eof) {
+            let span = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0601",
+                &self.file,
+                span,
+                format!(
+                    "{} is left over at the end of a contract clause — one assertion per line",
+                    describe(self.peek())
+                ),
+            ));
+        }
+
+        // Span the whole line, so a diagnostic points at the assertion rather than a word.
+        let mut end = self.pos;
+        while end < self.tokens.len() && !matches!(self.tokens[end].kind, Tok::Newline | Tok::Eof) {
+            end += 1;
+        }
+        let end_span = self.tokens[end.min(self.tokens.len() - 1)].span;
+        self.recover_line();
+
+        let (subject, predicate) = parts?;
+        Some(Clause {
+            span: Span {
+                start_line: start.start_line,
+                start_col: start.start_col,
+                end_line: end_span.start_line,
+                end_col: end_span.start_col,
+            },
+            subject,
+            predicate,
+        })
+    }
+
+    fn clause_parts(&mut self) -> Option<(Subject, Predicate)> {
+        // `uses <component>` — a claim about the whole component, so it carries no subject.
+        if matches!(self.peek(), Tok::Ident(w) if w == "uses")
+            && matches!(
+                self.tokens.get(self.pos + 1).map(|t| &t.kind),
+                Some(Tok::Ident(_))
+            )
+        {
+            self.bump();
+            let name = self.expect_ident("`uses`")?;
+            return Some((Subject::Whole, Predicate::Composes(name)));
+        }
+
+        // `every <enum> <column> <predicate>` — the whole column of a variant table.
+        if matches!(self.peek(), Tok::Ident(w) if w == "every") {
+            self.bump();
+            let enum_name = self.expect_ident("`every`")?;
+            let column = self.expect_ident(&format!("`every {enum_name}`"))?;
+            let predicate = self.parse_predicate()?;
+            return Some((Subject::EveryVariant { enum_name, column }, predicate));
+        }
+
+        // `when <variant> shows <tag> "<text>"` — what a guarded branch renders.
+        if matches!(self.peek(), Tok::Keyword("when")) {
+            self.bump();
+            let variant = self.expect_ident("`when`")?;
+            if !matches!(self.peek(), Tok::Ident(w) if w == "shows") {
+                let span = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0601",
+                    &self.file,
+                    span,
+                    format!(
+                        "`when {variant}` asserts what that branch renders: write `when {variant} shows <element> \"<text>\"`"
+                    ),
+                ));
+                return None;
+            }
+            self.bump();
+            let tag = self.expect_ident("`shows`")?;
+            let text = self.expect_string(&format!("`shows {tag}`"))?;
+            return Some((
+                Subject::WhenVariant(variant),
+                Predicate::Shows { tag, text },
+            ));
+        }
+
+        // Everything else opens with a name.
+        let head = self.expect_ident("a contract clause")?;
+        let subject = if matches!(self.peek(), Tok::Dot) {
+            self.bump();
+            let member = self.expect_ident(&format!("`{head}.`"))?;
+            // A third bare word is the column: `button_size.default height is 56`. A
+            // predicate word there means the clause named only variant and column:
+            // `offline.color is "bg-terracotta"`.
+            let column = match self.peek().clone() {
+                Tok::Ident(word) if !PREDICATE_WORDS.contains(&word.as_str()) => {
+                    self.bump();
+                    Some(word)
+                }
+                _ => None,
+            };
+            Subject::Cell {
+                qualifier: head,
+                member,
+                column,
+            }
+        } else if let Tok::Str(text) = self.peek().clone() {
+            self.bump();
+            Subject::Element { tag: head, text }
+        } else {
+            Subject::Named(head)
+        };
+        let predicate = self.parse_predicate()?;
+        Some((subject, predicate))
+    }
+
+    fn parse_predicate(&mut self) -> Option<Predicate> {
+        match self.peek().clone() {
+            Tok::Keyword("is") => {
+                self.bump();
+                match self.value() {
+                    Some(v) => Some(Predicate::Is(v)),
+                    None => {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0601",
+                            &self.file,
+                            span,
+                            format!("`is` needs a value, found {}", describe(self.peek())),
+                        ));
+                        None
+                    }
+                }
+            }
+            Tok::Keyword("in") => {
+                self.bump();
+                let mut set = Vec::new();
+                while let Tok::Str(text) = self.peek().clone() {
+                    self.bump();
+                    set.push(text);
+                }
+                if set.is_empty() {
+                    let span = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0601",
+                        &self.file,
+                        span,
+                        "`in` needs at least one allowed value, e.g. `in \"status\" \"alert\"`",
+                    ));
+                    return None;
+                }
+                Some(Predicate::OneOf(set))
+            }
+            Tok::Ident(word) => match word.as_str() {
+                "contains" => {
+                    self.bump();
+                    self.expect_string("`contains`").map(Predicate::Contains)
+                }
+                "not_empty" => {
+                    self.bump();
+                    Some(Predicate::NotEmpty)
+                }
+                "at_least" => {
+                    self.bump();
+                    self.expect_int("`at_least`").map(Predicate::AtLeast)
+                }
+                "uses" => {
+                    self.bump();
+                    self.expect_string("`uses`").map(Predicate::UsesToken)
+                }
+                "min_height" => {
+                    self.bump();
+                    self.expect_int("`min_height`").map(Predicate::MinHeight)
+                }
+                _ => self.missing_predicate(),
+            },
+            _ => self.missing_predicate(),
+        }
+    }
+
+    /// No predicate where one was required.
+    ///
+    /// The corpus wrote `button_size.default height 56` — a bare operand where `is` was
+    /// meant. RFC-0001 §1.2 allows exactly one form per intent, so the abbreviation is an
+    /// error rather than a second accepted spelling, and it carries the `exact` repair that
+    /// lets `mz fix` close it with no model in the loop.
+    fn missing_predicate(&mut self) -> Option<Predicate> {
+        let span = self.peek_span();
+        let mut d = Diagnostic::error(
+            "MZ0602",
+            &self.file,
+            span,
+            format!(
+                "a contract clause needs a predicate ({}), found {}",
+                PREDICATE_WORDS.join(" / "),
+                describe(self.peek())
+            ),
+        );
+        if matches!(self.peek(), Tok::Str(_) | Tok::Int(_)) {
+            d = d.with_fix(
+                Span::single(span.start_line, span.start_col, 0),
+                "is ",
+                Confidence::Exact,
+            );
+        }
+        self.diags.push(d);
+        None
+    }
+
+    fn expect_ident(&mut self, what: &str) -> Option<String> {
+        match self.ident() {
+            Some((name, _)) => Some(name),
+            None => {
+                let span = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0601",
+                    &self.file,
+                    span,
+                    format!("{what} needs a name, found {}", describe(self.peek())),
+                ));
+                None
+            }
+        }
+    }
+
+    fn expect_string(&mut self, what: &str) -> Option<String> {
+        match self.peek().clone() {
+            Tok::Str(text) => {
+                self.bump();
+                Some(text)
+            }
+            other => {
+                let span = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0601",
+                    &self.file,
+                    span,
+                    format!("{what} needs a string, found {}", describe(&other)),
+                ));
+                None
+            }
+        }
+    }
+
+    fn expect_int(&mut self, what: &str) -> Option<i64> {
+        match self.peek().clone() {
+            Tok::Int(value) => {
+                self.bump();
+                Some(value)
+            }
+            other => {
+                let span = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0601",
+                    &self.file,
+                    span,
+                    format!("{what} needs a number, found {}", describe(&other)),
+                ));
+                None
+            }
+        }
+    }
+
+    /// Consume a `fn` body without modelling it — statements are not part of the
+    /// prototype's grammar yet (RFC-0001 §7.1).
     fn skip_block_body(&mut self, stack: &mut Vec<Open>) {
         let depth = stack.len();
         while !self.at_eof() && stack.len() >= depth {
