@@ -139,17 +139,23 @@ Merged in `nyuchi/mzizi-tools`, PRs #62–#69:
 | `design/RFC-0002` | Design target is **small open-weight models**, not frontier ones. Runtime-as-product. 13 languages mined, with licence discipline                                                                        |
 | `design/RFC-0003` | Content-addressed IR. Eight agent _reading_ barriers and the single decision that answers them                                                                                                           |
 | `design/RFC-0004` | Test topology. What is public, what is withheld, and the dependency rule                                                                                                                                 |
-| `compiler/`       | `mz` binary: lexer, recovering parser, agent NDJSON protocol, SHA-256, IR store, `outline`. 75 tests                                                                                                     |
+| `design/RFC-0006` | Contract evaluation. Four more failure modes, the clause grammar and subject language, what `mz contract` proves and what it cannot. RFC-0005 is reserved for `agent-tools#76` and unwritten             |
+| `compiler/`       | `mz` binary: lexer, recovering parser, agent NDJSON protocol, SHA-256, IR store, `outline`, `contract`. 107 tests                                                                                        |
 | `primitives/`     | Nine primitives written in Mzizi itself                                                                                                                                                                  |
 | `examples/`       | One real corpus component ported by hand                                                                                                                                                                 |
 
-Measured, not asserted (`compiler/tests/ir_measured.rs`): structural sharing 127 shared vs
-141 isolated nodes across 10 files; outline worst case 38% of source; parse+lower of the
-whole set ~4.3ms; renaming every component changes zero nodes. The sharing figure is
-small-corpus — the registry-scale claim is labelled a prediction, and should stay labelled
-that until measured.
+Measured, not asserted (`compiler/tests/ir_measured.rs`, `compiler/tests/contracts.rs`):
+structural sharing 169 shared vs 174 isolated nodes across 10 files; outline worst case 38%
+of source; parse+lower of the whole set ~7ms; parse+evaluate ~1.3ms; 33 contract assertions
+across those 10 files, all evaluated, none failing; renaming every component changes zero
+nodes. The sharing figure is small-corpus — the registry-scale claim is labelled a
+prediction, and should stay labelled that until measured. It also **fell** from the 14-saved
+figure recorded before contracts were lowered, and RFC-0003 §7.2 records why: nine of those
+fourteen were ten copies of an empty `contract` placeholder collapsing into one.
 
-**Not done, and load-bearing:** contract bodies parse but are **not evaluated**. See §4.
+**Not done, and load-bearing:** ~~contract bodies parse but are **not evaluated**~~ — done
+2026-09-11, see §4.1. What is still not done is comparing a component against a *reference*
+implementation, which is the other half of the charter's defect metric.
 
 ## 3. Moving `mzizi-lang/` without losing history
 
@@ -183,31 +189,46 @@ this ecosystem spent PRs #204–#215 removing.
 
 ## 4. Work queue, in dependency order
 
-### 4.1 Contract evaluation — do this first
+### 4.1 ~~Contract evaluation — do this first~~ — done 2026-09-11
 
-`contract` blocks parse and are stored; nothing checks them. Until they are checked, the
-charter's defect metric — "compiles cleanly but behaviourally wrong" — is measured by
-hand-written Rust tests standing in for the toolchain. That makes the Phase 0 number a
-measurement of something adjacent to the claim.
+`mz contract <file>` evaluates a component's assertions against its own declarations and
+exits 1 when one does not hold, through the existing `Diagnostic`/NDJSON surface. Every
+assertion form the primitives use is covered; 33 assertions across ten files are evaluated
+rather than counted, and CI runs it over the example and every primitive.
+[RFC-0006](./design/RFC-0006-contracts.md) is the design record, including the three
+corpus lines it had to correct and the sharing figure in RFC-0003 §7 it moved.
 
-Scope: evaluate the assertion forms the primitives already use — `every <enum> <column>
-at_least <n>`, `<enum>.<variant> <column> <value>` — over the enum data columns the parser
-already produces, and emit results through the existing `Diagnostic`/NDJSON surface so an
-agent needs no second protocol. `primitives/button.mz` and `primitives/alert.mz` are the
-worked cases; `button.mz`'s 48px touch-floor contract is the canonical one.
+The paragraph this replaces said contract evaluation is "what turns the whole Phase 0
+apparatus from plausible into measured". That was half right, and the half it got wrong is
+now §4.1a.
 
-This is the highest-value piece of work available. It is what turns the whole Phase 0
-apparatus from plausible into measured.
+### 4.1a Reference-implementation comparison — do this next
+
+CHARTER.md §6 defines a defect as code that "passes the compiler but fails a
+contract/behavior test **against the reference implementation**", with the reference read
+from disk and disagreement being the new code's fault. `mz contract` does not do that: it
+asks whether a component keeps its own promises, which is self-consistency, not
+ground truth. An agent that authored both the component and its contract can satisfy
+`mz contract` while diverging from the `.rs` the charter scores against.
+
+Three candidate designs, none chosen — RFC-0006 §10.1:
+
+1. `mz contract --against <reference>`, with the comparison inside the compiler.
+2. Harness-side comparison, with `mz contract --agent`'s NDJSON as the input.
+3. Contract *generation* from a `.rs` reference, so the assertions themselves are ground
+   truth rather than the author's own claims.
+
+This is now the highest-value piece of work available, and §4.2 depends on it.
 
 ### 4.2 The benchmark harness
 
-Depends on 4.1 for its most important metric. Three measurements:
+Depends on 4.1a for its most important metric. Three measurements:
 
 | Metric                      | Source                                              |
 | --------------------------- | --------------------------------------------------- |
 | Tokens consumed             | The agent adapter reports it                        |
 | Iterations to clean compile | Count `mz check` rounds until zero errors           |
-| Defect rate                 | `mz contract` after a clean compile — **needs 4.1** |
+| Defect rate                 | `mz contract` after a clean compile — the runner exists; scoring against the reference **needs 4.1a** |
 
 Design constraints, all from RFC-0004:
 
@@ -460,7 +481,8 @@ Scope it to four repositories:
   37 hand-written `.rs` reference implementations (§7.2b)
 - `nyuchi/mzizi-tools` — until `mzizi-lang/` is deleted from it
 
-First task: **§4.1, contract evaluation.** Read `design/RFC-0001` §1.6 for what contracts are
+First task: **§4.1a, reference-implementation comparison** — §4.1 itself is done. Read
+`design/RFC-0006` first, then `design/RFC-0001` §1.6 for what contracts are
 meant to do and `primitives/button.mz` for the canonical case.
 
 ## 9. Decisions the owner still has to make

@@ -225,8 +225,28 @@ pub fn lower(component: &Component, store: &mut Store) -> Hash {
         children.push(store.put(Node::leaf("fn", Some(f))));
     }
 
-    if component.has_contract {
-        children.push(store.put(Node::leaf("contract", None)));
+    if let Some(contract) = &component.contract {
+        // Contracts participate in the hash (RFC-0006 §6). A component that promises more
+        // about its behaviour is not the same component, and RB-6's "re-verify a recorded
+        // fact by asking whether that hash still exists" is only true if the hash covers
+        // the promise. It costs nothing: the Merkle structure means changing an assertion
+        // leaves every implementation subtree's hash untouched.
+        //
+        // Clause children are sorted by hash and de-duplicated, because a contract is a
+        // set of assertions rather than a sequence — reordering the lines of a contract
+        // changes no meaning and must therefore change no identity.
+        let mut clause_hashes: Vec<Hash> = contract
+            .clauses
+            .iter()
+            .map(|c| store.put(Node::leaf("clause", None).field("assert", c.canonical())))
+            .collect();
+        clause_hashes.sort();
+        clause_hashes.dedup();
+        let mut node = Node::leaf("contract", None);
+        for clause in clause_hashes {
+            node = node.child(clause);
+        }
+        children.push(store.put(node));
     }
 
     let mut root = Node::leaf("component", Some(&component.name));
@@ -420,6 +440,63 @@ mod tests {
         let a = Node::leaf("element", Some("x")).field("a", "b:c").hash();
         let b = Node::leaf("element", Some("x")).field("a:b", "c").hash();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn reordering_a_contract_does_not_change_identity() {
+        // A contract is a set of assertions, not a sequence: saying the same four things in
+        // a different order is the same promise. Clause children are therefore sorted
+        // before hashing, unlike a view's children, whose order is meaning.
+        let (_, a) = lowered(
+            "component a\n  enum e\n    one k \"1\"\n  end\n  contract\n    every e k not_empty\n    e.one k is \"1\"\n  end\nend component a\n",
+        );
+        let (_, b) = lowered(
+            "component a\n  enum e\n    one k \"1\"\n  end\n  contract\n    e.one k is \"1\"\n    every e k not_empty\n  end\nend component a\n",
+        );
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn changing_an_assertion_changes_the_root_hash() {
+        // The reason contracts participate in the hash at all (RFC-0006 §6): a component
+        // that promises something different is a different component, and RB-6's
+        // re-verification story is only sound if the hash covers the promise.
+        let (_, base) = lowered(
+            "component a\n  enum e\n    one k \"1\"\n  end\n  contract\n    every e k not_empty\n  end\nend component a\n",
+        );
+        let (_, changed) = lowered(
+            "component a\n  enum e\n    one k \"1\"\n  end\n  contract\n    every e k contains \"1\"\n  end\nend component a\n",
+        );
+        assert_ne!(base, changed);
+    }
+
+    #[test]
+    fn a_contract_change_leaves_the_implementation_subtrees_untouched() {
+        // What makes participating in the hash cheap: only the contract node and the root
+        // move, so incremental compilation of the implementation is unaffected and it is
+        // the assertions, not the code, that get re-run.
+        let before =
+            "component a\n  prop x: bool\n  contract\n    x is true\n  end\nend component a\n";
+        let after =
+            "component a\n  prop x: bool\n  contract\n    x is false\n  end\nend component a\n";
+        let (store_a, root_a) = lowered(before);
+        let (store_b, root_b) = lowered(after);
+        assert_ne!(root_a, root_b);
+        let prop_a = store_a
+            .get(root_a)
+            .unwrap()
+            .children
+            .iter()
+            .find(|h| store_a.get(**h).map(|n| n.kind.as_str()) == Some("prop"))
+            .copied();
+        let prop_b = store_b
+            .get(root_b)
+            .unwrap()
+            .children
+            .iter()
+            .find(|h| store_b.get(**h).map(|n| n.kind.as_str()) == Some("prop"))
+            .copied();
+        assert_eq!(prop_a, prop_b, "the prop node must keep its hash");
     }
 
     #[test]

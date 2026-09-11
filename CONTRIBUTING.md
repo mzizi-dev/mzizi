@@ -25,9 +25,12 @@ Read, in this order, before proposing anything substantial:
 3. [RFC-0001](./design/RFC-0001-syntax.md) — the surface syntax, the canonical-form rule,
    and the `mz check --agent` protocol. Read it with [RFC-0002](./design/RFC-0002-runtime-and-prior-art.md),
    which amends its design target.
-4. [RFC-0003](./design/RFC-0003-ir.md) and [RFC-0004](./design/RFC-0004-test-topology.md) —
+4. [RFC-0006](./design/RFC-0006-contracts.md) — what a `contract` block means, what
+   `mz contract` proves, and the four divergences between the RFCs and the code that
+   evaluating contracts exposed.
+5. [RFC-0003](./design/RFC-0003-ir.md) and [RFC-0004](./design/RFC-0004-test-topology.md) —
    the IR, and what is tested in public versus held out.
-5. [`design/ROADMAP.md`](./design/ROADMAP.md) — the index of where every plan in the
+6. [`design/ROADMAP.md`](./design/ROADMAP.md) — the index of where every plan in the
    ecosystem lives, and what has and has not been measured. It holds pointers and gates,
    not work items; if a row there disagrees with what it links to, the link is right.
 
@@ -61,13 +64,17 @@ cd compiler
 
 cargo fmt -- --check                        # formatting, not negotiable
 cargo clippy --all-targets -- -D warnings   # every lint is an error, including in tests
-cargo test                                  # 75 tests
+cargo test                                  # 107 tests
 
-# The two that are the point:
+# The ones that are the point — the shipped binary, not the test harness:
 cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
 for f in ../primitives/*.mz; do
   echo "checking $f"
   cargo run --quiet --bin mz -- check "$f"
+done
+for f in ../examples/*.mz ../primitives/*.mz; do
+  echo "evaluating $f"
+  cargo run --quiet --bin mz -- contract "$f"
 done
 ```
 
@@ -102,11 +109,15 @@ in a test fixture.
 
 ### What CI does not check
 
-There is no lowering, no runtime and no rendering, so there is nothing there to gate. There
-is also no contract evaluation: `button.mz`'s `contract` block parses and is then ignored.
-A green CI run today means *the corpus lexes, parses, lowers to IR, and the shipped binary
-agrees* — it does not mean any component behaves correctly, because nothing in this
-repository can yet execute one.
+There is no lowering, no runtime and no rendering, so there is nothing there to gate.
+
+Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
+component against its own declarations: its variant tables, its view tree, its prop
+defaults. It does not execute anything, and it does not compare against a reference
+implementation — which is what CHARTER.md §6's defect metric actually requires
+([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means *the
+corpus lexes, parses, lowers to IR, keeps its own promises, and the shipped binary agrees* —
+it does not mean any component matches the ground truth the benchmark will score against.
 
 ## Merge commits only — and why that is a research decision, not a style preference
 
@@ -206,7 +217,12 @@ the commit.
 Anything that changes the surface syntax, the type system, the IR node model, the
 `mz check --agent` protocol, or the public/private test boundary goes through an RFC in
 [`design/`](./design/). The process is not written down anywhere else, so it is written down
-here, described from what RFC-0001 through RFC-0004 actually do rather than invented.
+here, described from what RFC-0001 through RFC-0006 actually do rather than invented.
+
+**Numbers are not reused.** RFC-0005 is reserved by
+[`mzizi-dev/agent-tools#76`](https://github.com/mzizi-dev/agent-tools/issues/76) and not yet
+written, so RFC-0006 is the contracts RFC. Check the open issues as well as `design/` before
+claiming a number.
 
 **File and title.** `design/RFC-NNNN-kebab-case-topic.md`, four digits, next free number.
 The H1 is `# RFC-NNNN — <sentence describing what it settles>`. RFC numbers are permanent;
@@ -307,11 +323,11 @@ request implementing a later phase will be held, not merged, however good it is 
 what "research portfolios ship one thread at a time or nothing ships" means in practice.
 
 [`design/ROADMAP.md`](./design/ROADMAP.md) is the current index of what is gated on what.
-The most useful work available today is, roughly in order: contract evaluation (charter §7
-names it as the one open item inside the language, and MIGRATION.md §4.1 says do it first),
-the benchmark harness mechanics, and anything that makes `mz check --agent`'s output denser
-or its recovery better against RFC-0001 §4's stated target of at most one diagnostic per
-true author error.
+The most useful work available today is, roughly in order: **reference-implementation
+comparison** — the half of the charter's defect metric that `mz contract` does not do
+(RFC-0006 §10.1, MIGRATION.md §4.1a) — then the benchmark harness mechanics, then anything
+that makes `mz check --agent`'s output denser or its recovery better against RFC-0001 §4's
+stated target of at most one diagnostic per true author error.
 
 ## Reporting bugs
 

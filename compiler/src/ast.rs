@@ -1,6 +1,7 @@
 //! The AST. Deliberately shallow: the prototype's job is to prove the grammar and the
 //! diagnostic loop, not to lower anything yet (lowering waits on the IR — RFC-0002 §2.1).
 
+use crate::contract::Contract;
 use crate::diagnostic::Span;
 
 /// A whole `.mz` file: exactly one component (RFC-0001 §7.4 — one component, one file).
@@ -22,8 +23,21 @@ pub struct Component {
     pub view: Option<Vec<Element>>,
     /// Function names declared (bodies are not modelled in the prototype).
     pub fns: Vec<String>,
-    /// Whether a `contract` block was present — its absence is a warning (RFC-0001 §1.6).
-    pub has_contract: bool,
+    /// The `contract` block, when one was present — its absence is a warning
+    /// (RFC-0001 §1.6).
+    ///
+    /// The body used to be parsed and thrown away behind a `has_contract: bool`, which
+    /// made the charter's defect metric unmeasurable: a presence flag cannot tell you
+    /// whether the behaviour a component promises is the behaviour it has. Retaining the
+    /// assertions is what `mz contract` evaluates (RFC-0006).
+    pub contract: Option<Contract>,
+}
+
+impl Component {
+    /// Whether a `contract` block was present at all.
+    pub fn has_contract(&self) -> bool {
+        self.contract.is_some()
+    }
 }
 
 /// An enum whose variants carry data columns (RFC-0001 §1.3).

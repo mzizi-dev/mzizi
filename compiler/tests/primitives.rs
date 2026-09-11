@@ -56,7 +56,7 @@ fn every_primitive_declares_a_contract() {
     for (name, src) in every_primitive() {
         let (component, _) = check_with_ast(&src, &name);
         let c = component.unwrap_or_else(|| panic!("{name} did not parse into a component"));
-        assert!(c.has_contract, "{name} has no contract block");
+        assert!(c.has_contract(), "{name} has no contract block");
     }
 }
 
@@ -82,75 +82,39 @@ fn every_primitive_documents_itself() {
 }
 
 #[test]
-fn the_interactive_primitives_hold_the_forty_eight_pixel_floor() {
-    // The corpus violated this in five separate components because the height lived only
-    // in a Tailwind class string. Here it is data on the variant, so it is checkable — and
-    // this test is the check until the contract evaluator lands with the IR.
-    for file in ["button.mz", "input.mz"] {
+fn the_rules_the_corpus_kept_breaking_are_expressed_as_contract_assertions() {
+    // These checks used to be re-implemented in Rust here, with a comment saying so: "this
+    // test is the check until the contract evaluator lands". That is FM-11 (RFC-0006 §0) —
+    // one rule written twice, in two languages, free to drift. The evaluator has landed, so
+    // this test no longer restates the rules; it asserts that each primitive still
+    // *expresses* them, and `tests/contracts.rs` is what runs them.
+    let expected: &[(&str, &[&str])] = &[
+        // The 48px touch floor, violated five separate times in the .tsx corpus.
+        ("button.mz", &["every button_size height at_least 48"]),
+        ("input.mz", &["every input_size height at_least 48"]),
+        // `announce` pins the ARIA role to the severity so the two cannot drift apart.
+        (
+            "alert.mz",
+            &[
+                "every alert_variant announce in \"status\" \"alert\"",
+                "alert_variant.destructive announce is \"alert\"",
+            ],
+        ),
+    ];
+    for (file, required) in expected {
         let src = read(&primitives_dir().join(file));
         let (component, _) = check_with_ast(&src, file);
-        let c = component.unwrap();
-        let size_enum = c
-            .enums
-            .iter()
-            .find(|e| e.name.ends_with("_size"))
-            .unwrap_or_else(|| panic!("{file} must declare a size enum"));
-        assert!(!size_enum.variants.is_empty());
-        for v in &size_enum.variants {
-            let height = v
-                .columns
-                .iter()
-                .find(|(col, _)| col == "height")
-                .unwrap_or_else(|| panic!("{file}: `{}` has no height column", v.name));
-            let value: i64 = height.1.parse().unwrap_or_else(|_| {
-                panic!("{file}: `{}` height `{}` is not a number", v.name, height.1)
-            });
+        let contract = component
+            .and_then(|c| c.contract)
+            .unwrap_or_else(|| panic!("{file} has no contract block"));
+        let written: Vec<String> = contract.clauses.iter().map(|c| c.canonical()).collect();
+        for clause in *required {
             assert!(
-                value >= 48,
-                "{file}: `{}` is {value}px, below the 48px floor",
-                v.name
+                written.iter().any(|w| w == clause),
+                "{file} no longer asserts `{clause}`; it says {written:#?}"
             );
         }
     }
-}
-
-#[test]
-fn the_alert_pins_its_aria_role_to_its_severity() {
-    // `announce` is a non-styling column: the a11y role and the colour are one decision per
-    // severity, so they cannot drift apart the way parallel maps did.
-    let src = read(&primitives_dir().join("alert.mz"));
-    let (component, _) = check_with_ast(&src, "alert.mz");
-    let c = component.unwrap();
-    let variants = &c
-        .enums
-        .iter()
-        .find(|e| e.name == "alert_variant")
-        .unwrap()
-        .variants;
-    for v in variants {
-        let announce = v
-            .columns
-            .iter()
-            .find(|(col, _)| col == "announce")
-            .unwrap_or_else(|| panic!("`{}` has no announce column", v.name));
-        assert!(
-            announce.1 == "\"status\"" || announce.1 == "\"alert\"",
-            "`{}` announces {}, which is not an ARIA live role",
-            v.name,
-            announce.1
-        );
-    }
-    let destructive = variants.iter().find(|v| v.name == "destructive").unwrap();
-    let announce = &destructive
-        .columns
-        .iter()
-        .find(|(c, _)| c == "announce")
-        .unwrap()
-        .1;
-    assert_eq!(
-        announce, "\"alert\"",
-        "a destructive alert must announce assertively"
-    );
 }
 
 #[test]

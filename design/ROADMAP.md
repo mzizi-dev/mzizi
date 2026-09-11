@@ -43,8 +43,14 @@ Two things are load-bearing and absent:
 
 | Gap | Evidence | Consequence |
 | --- | --- | --- |
-| **Contract bodies parse but are not evaluated** | `mz` accepts `check`, `outline`, `hash`, `ir` and no `contract` subcommand (`compiler/src/main.rs`) | The charter's defect metric — "compiles cleanly but is behaviourally wrong" ([`CHARTER.md`](../CHARTER.md) §6) — has no toolchain that can measure it. [`MIGRATION.md`](../MIGRATION.md) §4.1 calls this the highest-value work available, and it is first in the queue for that reason. |
+| **Half the defect metric has no toolchain** | `mz contract` evaluates a component against *its own* declarations ([RFC-0006](./RFC-0006-contracts.md)). [`CHARTER.md`](../CHARTER.md) §6 defines a defect as failing "a contract/behavior test **against the reference implementation**", read from disk. Nothing compares a `.mz` component against the hand-written `.rs` in `mzizi-dev/mzizi-registry`. | The metric can now be *expressed and run*, but not yet *scored against ground truth*. [RFC-0006](./RFC-0006-contracts.md) §10.1 states the three candidate designs and settles none. |
 | **The benchmark harness does not exist** | [`benchmarks/`](../benchmarks/README.md) holds the resolved decisions and no runner | Its most important metric depends on the row above. [`MIGRATION.md`](../MIGRATION.md) §4.2. |
+
+~~**Contract bodies parse but are not evaluated.**~~ Resolved 2026-09-11:
+`mz contract <file>` evaluates them, CI runs it over the corpus example and every
+primitive, and 33 assertions across ten files are evaluated rather than counted. The row
+above is what is left of that gap, and it is a smaller and more specific thing than the one
+it replaces.
 
 ## Phases
 
@@ -65,8 +71,8 @@ Every one of these is next to the code it plans. That is the point.
 
 | Area | The plan | Where |
 | --- | --- | --- |
-| The language and compiler | Work queue in dependency order: contract evaluation → benchmark harness → `mz patch`/`refs`/`diff`, IR store persistence, local state → Phase 1 | [`MIGRATION.md`](../MIGRATION.md) §4, in this repo beside `compiler/` |
-| Language design | RFC-0001 syntax, RFC-0002 runtime and prior art, RFC-0003 IR, RFC-0004 test topology | [`design/`](.) |
+| The language and compiler | Work queue in dependency order: ~~contract evaluation~~ (done) → reference-implementation comparison → benchmark harness → `mz patch`/`refs`/`diff`, IR store persistence, local state → Phase 1 | [`MIGRATION.md`](../MIGRATION.md) §4, in this repo beside `compiler/` |
+| Language design | RFC-0001 syntax, RFC-0002 runtime and prior art, RFC-0003 IR, RFC-0004 test topology, RFC-0006 contracts | [`design/`](.) |
 | Phase 0 benchmark | Corpus, defect definition and visibility split resolved; harness mechanics unresolved | [`benchmarks/README.md`](../benchmarks/README.md), [`CHARTER.md`](../CHARTER.md) §6, [RFC-0004](./RFC-0004-test-topology.md) |
 | The benchmark corpus — the Rust reference implementations Phase 0 scores against | Epic plus four dependency-ordered waves | [`mzizi-dev/mzizi-registry#222`](https://github.com/mzizi-dev/mzizi-registry/issues/222) → [#223](https://github.com/mzizi-dev/mzizi-registry/issues/223), [#224](https://github.com/mzizi-dev/mzizi-registry/issues/224), [#225](https://github.com/mzizi-dev/mzizi-registry/issues/225), [#226](https://github.com/mzizi-dev/mzizi-registry/issues/226) |
 | The registry's own correctness backlog | Open issues, labelled | [`mzizi-dev/mzizi-registry` issues](https://github.com/mzizi-dev/mzizi-registry/issues) |
@@ -128,5 +134,5 @@ Four rules, in the order they matter:
 
 1. **This file owns no work items.** It cannot go stale about a plan it does not contain. Every time something here starts to look like a task list, that is the signal to delete it and link instead.
 2. **Snapshot numbers carry their source and their date.** The two in this file — 358/3, and the org listing — say where they came from and when they were read, so a reader can re-derive them. Registry [#226](https://github.com/mzizi-dev/mzizi-registry/issues/226) makes the same point about the same numbers and asks for them to be generated from `/api/v1/stats`; when that lands, this file should link to the endpoint and delete the figures.
-3. **Three edits are required to keep it honest**, and each has an obvious trigger: a `contract` subcommand landing in `mz` retires the first gap row; a runner landing in `benchmarks/` retires the second; a number from a benchmark run replaces the whole "Status, stated plainly" section.
+3. **Three edits are required to keep it honest**, and each has an obvious trigger. The first fired on 2026-09-11: the `contract` subcommand landed, and the gap row it retired was replaced by the narrower one that survived it — comparison against a reference implementation. The other two stand: a runner landing in `benchmarks/` retires the second row; a number from a benchmark run replaces the whole "Status, stated plainly" section.
 4. **Nothing here may imply measurement that has not happened.** That is the failure mode a roadmap has, and the charter's kill criterion is worthless if this document quietly asserts the thing the criterion is supposed to be able to refute.
