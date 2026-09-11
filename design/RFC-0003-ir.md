@@ -6,6 +6,12 @@
 structural sharing, `mz outline`, and the query/patch surface an agent drives.
 Implements RFC-0002 §2.1. Contract evaluation and lowering are later RFCs.
 
+> **Amended by RFC-0006.** §8.4's open question — contract evaluation semantics — is
+> answered there, and answering it moved two things here. Contracts now lower into the
+> store and **participate in the hash** (RFC-0006 §6), and §7's structural-sharing figure
+> is corrected accordingly: see §7.2, which records what the old number was actually
+> counting.
+
 ---
 
 ## 1. Designed against the barriers, not against a wish list
@@ -150,7 +156,9 @@ Designed here, next in implementation order:
 - **Contract evaluation.** Contract bodies currently parse but do nothing. With an IR they
   can be evaluated against the tree — which is what finally makes the Phase 0 defect metric
   (compiles clean, behaviourally wrong) measurable by the toolchain rather than by a Rust
-  test standing in for it.
+  test standing in for it. **Done**, in [RFC-0006](./RFC-0006-contracts.md) and
+  `mz contract`; the half that still needs a harness is comparison against a *reference*
+  implementation (RFC-0006 §10.1).
 - **Incremental compilation keyed on hashes.** Only changed hashes and their ancestors
   recompile. This is the cheapest available route to the sub-second check loop the charter
   names as a Phase 0 success metric.
@@ -164,18 +172,18 @@ so they are reproducible rather than asserted:
 
 | Claim                    | Measured                                                                                                   |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Structural sharing       | **127 shared nodes vs 141 isolated** — 14 saved across 10 files                                            |
+| Structural sharing       | **169 shared nodes vs 174 isolated** — 5 saved across 10 files (was 127 vs 141; see §7.2)                  |
 | Outline cost             | **worst case 38% of source** (`spinner.mz`); the test fails above 75%                                      |
-| Parse + lower, whole set | **~4.3 ms** for 10 files; budget 400 ms                                                                    |
+| Parse + lower, whole set | **~7 ms** for 10 files; budget 400 ms                                                                      |
 | Identity stability       | same source → same root hash; blank-line changes do not alter it; a variant column change reaches the root |
 | Rename cost              | renaming every component in the store changes **zero** nodes                                               |
 
 The sharing number is honest but small, and worth reading correctly: ten files is a tiny
 corpus, and sharing pays off in proportion to repetition. The saving here comes from
-genuinely identical subtrees (props of the same name and type, `contract` markers). At the
-scale of the real 571-component registry, where the same prop ceremony recurs hundreds of
-times, the ratio should improve substantially — but that is a prediction, and it stays
-labelled as one until the registry is lowered.
+genuinely identical subtrees — props of the same name and type. At the scale of the real
+571-component registry, where the same prop ceremony recurs hundreds of times, the ratio
+should improve substantially — but that is a prediction, and it stays labelled as one until
+the registry is lowered.
 
 ### 7.1 A correction the implementation forced
 
@@ -191,6 +199,18 @@ permanently stable identity is the hash.** Inserting a sibling can shift an
 ordinal-disambiguated path, so anything holding a reference across edits should hold the
 hash, not the path.
 
+### 7.2 A correction the *next* implementation forced
+
+The 14-saved figure this table used to report was mostly measuring a placeholder. Contract
+bodies were not lowered, so every component contributed the identical empty `contract`
+marker node — ten copies collapsing into one. **Nine of the fourteen "saved" nodes were
+that.** Genuine sharing of authored content was five, and after RFC-0006 lowered real
+contract clauses into the store it still is.
+
+The lesson is narrower than "the number was wrong" and worth keeping: a compression figure
+measured over a corpus that contains a stub is measuring the stub. Any future sharing claim
+should say which node kinds it is counting.
+
 ## 8. Open questions for RFC-0004
 
 1. **Local state.** Still open from RFC-0001, and now with an added constraint: signal
@@ -199,5 +219,7 @@ hash, not the path.
    patching the same node must not silently pick a winner.
 3. **Store persistence.** In-memory today. On-disk format, and whether the store is shared
    between projects, is a real decision with a caching payoff and a trust question attached.
-4. **Contract evaluation semantics** — the subject language for assertions like
-   `every button_size height at_least 48`.
+4. ~~**Contract evaluation semantics** — the subject language for assertions like
+   `every button_size height at_least 48`.~~ — _Answered by
+   [RFC-0006](./RFC-0006-contracts.md), which also settles §6's "contract bodies currently
+   parse but do nothing" and decides that contracts participate in the hash._

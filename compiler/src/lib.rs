@@ -25,6 +25,7 @@
 #![deny(missing_docs)]
 
 pub mod ast;
+pub mod contract;
 pub mod diagnostic;
 pub mod hash;
 pub mod ir;
@@ -40,6 +41,30 @@ pub fn check(src: &str, file: &str) -> CheckReport {
     let mut report = CheckReport { diagnostics };
     report.sort();
     report
+}
+
+/// Check one file and evaluate its `contract` block (RFC-0006).
+///
+/// Returns the report — parse diagnostics and contract failures together, in source order —
+/// and the tally of how many assertions ran.
+///
+/// A file that does not compile has its contract **skipped**, deliberately. CHARTER.md §6
+/// separates the two things being measured: "a syntax/compile error is not itself a defect
+/// for this metric — the defect rate measures what gets _past_ the compiler wrong". Running
+/// assertions against a tree the parser had to guess at would blur exactly that line.
+pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
+    let (component, diagnostics) = parse::parse(src, file);
+    let mut report = CheckReport { diagnostics };
+    let mut tally = contract::Tally::default();
+    if report.error_count() == 0
+        && let Some(component) = &component
+    {
+        let (evaluated, mut failures) = contract::evaluate(component, file);
+        tally = evaluated;
+        report.diagnostics.append(&mut failures);
+    }
+    report.sort();
+    (report, tally)
 }
 
 /// Check a file and also return the parsed component, for callers that need the tree.

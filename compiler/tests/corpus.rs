@@ -131,10 +131,12 @@ fn the_view_tree_and_contract_are_both_present() {
     let src = example("connectivity_bar");
     let (component, _) = check_with_ast(&src, "connectivity_bar.mz");
     let c = component.unwrap();
+    assert!(c.has_contract(), "the example declares a contract");
+    // The body is retained, not just its presence — the four assertions RFC-0001 §1 shows.
+    assert_eq!(c.contract.as_ref().unwrap().clauses.len(), 4);
+    assert_eq!(c.fns, vec!["retry"]);
     let view = c.view.expect("the example has a view block");
     assert!(!view.is_empty(), "the view must have elements");
-    assert!(c.has_contract, "the example declares a contract");
-    assert_eq!(c.fns, vec!["retry"]);
 }
 
 #[test]

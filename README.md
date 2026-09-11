@@ -16,12 +16,22 @@ the kill criterion.
 Read this before anything else in the repository.
 
 **What exists and is tested:** the lexer, the recovering parser, the agent diagnostic
-protocol (`mz check --agent`), the content-addressed IR, `mz outline`, and nine primitives
-written in Mzizi itself. 75 tests, all of it gated in CI.
+protocol (`mz check --agent`), the content-addressed IR, `mz outline`, contract evaluation
+(`mz contract`), and nine primitives written in Mzizi itself. 107 tests, all of it gated
+in CI.
 
-**What does not exist:** contract evaluation — `contract` blocks parse and are then
-ignored. There is no lowering to Rust, no code generation, no runtime, no rendering, no
-release, and no published binary.
+**What contract evaluation does and does not do.** `mz contract <file>` evaluates a
+component's `contract` block against that component's own declarations — its variant
+tables, its view tree, its prop defaults — and exits 1 if an assertion does not hold. All
+33 assertions in the corpus are evaluated, none merely counted, and a clause the evaluator
+cannot apply is an error rather than a silent pass. It checks nothing rendered, and
+**nothing against a reference implementation**: it asks whether a component does what it
+says, not whether it matches the hand-written `.rs` the charter scores against. That second
+comparison is the other half of the Phase 0 defect metric and it does not exist yet. See
+[RFC-0006](./design/RFC-0006-contracts.md) §5 and §10.1.
+
+**What does not exist:** comparison against a reference implementation, lowering to Rust,
+code generation, a runtime, rendering, a release, and a published binary.
 
 **What has not been measured:** the Phase 0 benchmark has not run, so **nothing here has yet
 been measured against the charter's kill criteria**. The charter is unambiguous about what
@@ -54,21 +64,27 @@ dependencies, deliberately (see `compiler/Cargo.toml`).
 
 ```bash
 cd compiler
-cargo test                            # 75 tests
+cargo test                            # 107 tests
 
 cargo run --bin mz -- check    ../primitives/button.mz
 cargo run --bin mz -- check --agent ../examples/connectivity_bar.mz   # NDJSON for an agent
+cargo run --bin mz -- contract ../primitives/button.mz                # evaluate the contract block
 cargo run --bin mz -- outline  ../primitives/alert.mz                 # the interface, as valid Mzizi
 cargo run --bin mz -- ir       ../primitives/card.mz                  # nodes, hashes, structural paths
 ```
+
+`check` and `contract` are separate commands on purpose. `mz check` answers "does this
+compile"; `mz contract` answers "does it do what it says". CHARTER.md §6 counts those as two
+different metrics and says a compile error is not a defect, so one exit status cannot report
+both.
 
 `mz check --agent` is the surface an agent should use: whole-program NDJSON, deterministic
 order, at most one diagnostic per real error, every message written for a reader with no
 prior context, and machine-applicable fixes tagged `exact` or `guess`. See RFC-0001 §4.
 
 CI gates this repository on `cargo fmt -- --check`, `cargo clippy --all-targets -D warnings`,
-`cargo test`, and a `mz check` over the corpus example and every primitive, plus a
-full-history secret scan — see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
+`cargo test`, and `mz check` plus `mz contract` over the corpus example and every primitive,
+plus a full-history secret scan — see [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 The two `mz check` steps are not redundant with `cargo test`: `cargo test` proves the test
 harness parses the corpus, `mz check` proves the binary this project ships does, and only
 the second is the claim the charter makes. [`CONTRIBUTING.md`](./CONTRIBUTING.md) explains
@@ -82,8 +98,14 @@ the rest.
 | [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md) | The design-target correction: small models, not frontier ones. Why the runtime is the product. Thirteen languages mined for ideas, with the licence discipline that keeps the tree clean.                     |
 | [0003 — IR](./design/RFC-0003-ir.md)                                       | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them. One decision buying incremental compiles, semantic patching, caching and free renames.                 |
 | [0004 — test topology](./design/RFC-0004-test-topology.md)                 | What testing is public (nearly all of it) and what is private (a held-out benchmark set), why, and the dependency rule — private consumes public, never the reverse — that keeps forks working.               |
+| [0006 — contracts](./design/RFC-0006-contracts.md)                         | Four more named failure modes, the contract clause grammar and subject language, what `mz contract` proves and what it cannot, why contracts are part of the IR hash, and the four divergences the corpus forced. |
 
-RFC-0001 was amended by RFC-0002 and carries a note saying so; read the two together. Every
+RFC-0005 is reserved for the catalogue-and-language RFC drafted as
+[`mzizi-dev/agent-tools#76`](https://github.com/mzizi-dev/agent-tools/issues/76) and not yet
+written; the number is left free rather than reused.
+
+RFC-0001 was amended by RFC-0002 and by RFC-0006, and carries notes saying so; RFC-0003 was
+amended by RFC-0006. Read amended RFCs with their amendments. Every
 RFC ends with open questions addressed to the next one, and resolved questions are struck
 through in place rather than deleted, so the document records what was believed as well as
 what is believed now.

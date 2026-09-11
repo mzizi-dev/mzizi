@@ -30,7 +30,7 @@ component input
 
   contract
     every input_size height at_least 48
-    input_size.default height 56
+    input_size.default height is 56
     slot is "input"
   end
 
