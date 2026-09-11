@@ -246,8 +246,8 @@ from the corpus, or one of the nine primitives.
 measurements beside them, produced by `compiler/tests/ir_measured.rs` over the nine
 primitives and the corpus example. That test exists so the RFC's numeric claims are
 verifiable and stay true — it is also why RFCs live next to the code they govern rather
-than in a separate `rfcs` repository (MIGRATION.md §1.1: "Split them and the RFCs become
-documentation nobody checks"). If your RFC claims a number, land a test that measures it,
+than in a separate `rfcs` repository (MIGRATION.md §1, "Not repositories": "Split them and
+the RFCs become documentation nobody checks"). If your RFC claims a number, land a test that measures it,
 and label a prediction as a prediction: RFC-0003 §7 does exactly that with its structural-
 sharing figure.
 
@@ -284,9 +284,9 @@ readable.
   exercise something new is not an improvement. `primitives/README.md` records what each of
   the nine is *for*, and a tenth should be able to fill in that column.
 - **`compiler/` changes need a test in `compiler/tests/`**, which stays public permanently —
-  RFC-0004 §2 commits to that, including the entire correctness suite, and the regression
-  test for any crash or unsoundness fix is explicitly named as public even when the seed
-  corpus that found it is not.
+  RFC-0004 §2 commits to that, including the entire correctness suite. §1.2 goes further
+  for security work: a crash seed corpus may be withheld, but "never to the fix or the
+  regression test for it, both of which belong in public".
 - **Do not commit lowered `.rs` output.** MIGRATION.md §7.2b makes this load-bearing:
   generated code in the source tree is reading barrier RB-5, one of the eight the IR exists
   to remove, and committing it recreates a defect class this ecosystem has already paid to
