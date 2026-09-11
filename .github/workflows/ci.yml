@@ -70,6 +70,18 @@ jobs:
             cargo run --quiet --bin mz -- check "$f"
           done
 
+      # `mz contract` is a second gate, not a duplicate of the first. `mz check` proves the
+      # corpus compiles; this proves it does what it says it does. CHARTER.md §6 keeps those
+      # two apart deliberately — "a syntax/compile error is not itself a defect for this
+      # metric" — and so do these two steps, so a red run says which of the two broke.
+      - name: mz contract the corpus example and every primitive
+        working-directory: compiler
+        run: |
+          for f in ../examples/*.mz ../primitives/*.mz; do
+            echo "evaluating $f"
+            cargo run --quiet --bin mz -- contract "$f"
+          done
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest
