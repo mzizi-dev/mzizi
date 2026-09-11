@@ -238,21 +238,38 @@ impl CheckReport {
 
     /// The whole report as NDJSON plus RFC-0001 §4.4's summary line.
     pub fn to_ndjson(&self, elapsed_ms: u128) -> String {
+        self.to_ndjson_with(elapsed_ms, None)
+    }
+
+    /// The same, with RFC-0001 §4.4's contract counts appended to the summary.
+    ///
+    /// §4.4 fixes the summary line as `mz: 3 errors (2 exact-fixable), 1 contract failure,
+    /// 480ms` — contract results were always part of the protocol. They are two extra keys
+    /// rather than a second line, so a consumer that reads the last line still gets
+    /// everything, and one written before contracts existed sees the keys it knows.
+    pub fn to_ndjson_with(&self, elapsed_ms: u128, contract: Option<(usize, usize)>) -> String {
         let mut out = String::new();
         for d in &self.diagnostics {
             out.push_str(&d.to_ndjson());
             out.push('\n');
         }
         let warnings = self.diagnostics.len() - self.error_count();
-        writeln!(
+        write!(
             out,
-            r#"{{"summary":true,"errors":{},"warnings":{},"exact_fixable":{},"ms":{}}}"#,
+            r#"{{"summary":true,"errors":{},"warnings":{},"exact_fixable":{}"#,
             self.error_count(),
             warnings,
             self.exact_fixable(),
-            elapsed_ms
         )
         .unwrap();
+        if let Some((clauses, failed)) = contract {
+            write!(
+                out,
+                r#","contract_clauses":{clauses},"contract_failures":{failed}"#
+            )
+            .unwrap();
+        }
+        writeln!(out, r#","ms":{elapsed_ms}}}"#).unwrap();
         out
     }
 }
