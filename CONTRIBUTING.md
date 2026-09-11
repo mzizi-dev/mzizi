@@ -27,6 +27,9 @@ Read, in this order, before proposing anything substantial:
    which amends its design target.
 4. [RFC-0003](./design/RFC-0003-ir.md) and [RFC-0004](./design/RFC-0004-test-topology.md) —
    the IR, and what is tested in public versus held out.
+5. [`design/ROADMAP.md`](./design/ROADMAP.md) — the index of where every plan in the
+   ecosystem lives, and what has and has not been measured. It holds pointers and gates,
+   not work items; if a row there disagrees with what it links to, the link is right.
 
 ## Getting set up
 
@@ -303,6 +306,7 @@ rendering work does not start until Phase 0 has a benchmark number attached to i
 request implementing a later phase will be held, not merged, however good it is — that is
 what "research portfolios ship one thread at a time or nothing ships" means in practice.
 
+[`design/ROADMAP.md`](./design/ROADMAP.md) is the current index of what is gated on what.
 The most useful work available today is, roughly in order: contract evaluation (charter §7
 names it as the one open item inside the language, and MIGRATION.md §4.1 says do it first),
 the benchmark harness mechanics, and anything that makes `mz check --agent`'s output denser
