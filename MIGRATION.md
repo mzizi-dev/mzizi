@@ -23,9 +23,18 @@ avoid colliding with `nyuchi/mzizi` — that objection dissolves once `nyuchi/mz
 to `mzizi-registry` (§7.1), which is happening. With the collision gone, `mzizi-dev/mzizi`
 is the better name: the language is the project.
 
-`mzizi-dev/roadmap` already exists. Either fold it into `mzizi/design/` or keep it as a
-public GitHub Projects surface — but do not leave a roadmap living apart from the code it
-plans. Three of the stale-doc defects fixed on 2026-08-23 existed for exactly that reason.
+`mzizi-dev/roadmap` already exists — since renamed `mzizi-dev/mzizi-roadmap` by the naming
+rule above — and held a one-line README and nothing else. The choice was to fold it into
+`mzizi/design/` or keep it as a public GitHub Projects surface, under the constraint that a
+roadmap must not live apart from the code it plans. Three of the stale-doc defects fixed on
+2026-08-23 existed for exactly that reason.
+
+**Resolved 2026-09-11: folded into [`design/ROADMAP.md`](./design/ROADMAP.md), and
+`mzizi-dev/mzizi-roadmap` is archived** behind a README pointing there. The deciding argument
+is "Not repositories" at the end of this section: a roadmap repository is the `rfcs`
+repository in different clothes. It would hold no code, so nothing in it could be checked
+against anything, and its only possible content is restatements of plans that live beside the
+code they plan.
 
 ### 1.1 Creation spec — copy-paste ready
 
@@ -460,7 +469,8 @@ meant to do and `primitives/button.mz` for the canonical case.
    charter says `@bundu`, everything shipped today says `@nyuchi/`, and the
    registryDependencies migration task says `@mzizi/`. One-way door once published.
 2. **The held-out set's home** — §5.
-3. **`mzizi-dev/roadmap`** — fold into `mzizi`, or keep as a Projects surface.
+3. ~~**`mzizi-dev/roadmap`**~~ — resolved 2026-09-11: folded into
+   [`design/ROADMAP.md`](./design/ROADMAP.md), repository archived. See §1.
 4. **Whether `nyuchi/mzizi` is eventually renamed** to say what it is (the React design
    system), now that the Mzizi name means the framework. Not urgent; the collision is
    cosmetic until someone has both cloned.
