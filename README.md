@@ -16,7 +16,7 @@ criteria**. Contract bodies parse but are not evaluated.
 ```text
 mzizi-lang/
 ├── CHARTER.md          # the charter, plus resolved/open decisions
-├── design/             # the RFCs — read these first
+├── design/             # the RFCs, and ROADMAP.md — read these first
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
 ├── examples/           # one real corpus component, ported by hand
@@ -36,6 +36,11 @@ mzizi-lang/
 | [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md) | The design-target correction: small models, not frontier ones. Why the runtime is the product. Thirteen languages mined for ideas, with the licence discipline that keeps the tree clean.                     |
 | [0003 — IR](./design/RFC-0003-ir.md)                                       | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them. One decision buying incremental compiles, semantic patching, caching and free renames.                 |
 | [0004 — test topology](./design/RFC-0004-test-topology.md)                 | What testing is public (nearly all of it) and what is private (a held-out benchmark set), why, and the dependency rule — private consumes public, never the reverse — that keeps forks working.               |
+
+[`design/ROADMAP.md`](./design/ROADMAP.md) is the index of where every plan in the Mzizi
+ecosystem lives — the language's work queue, the benchmark, the registry epic that supplies
+the benchmark's ground truth — and of what has and has not been measured. It holds no work
+items of its own, deliberately: plans live next to the code they plan.
 
 ## Using it
 
