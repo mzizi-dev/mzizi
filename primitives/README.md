@@ -1,8 +1,13 @@
 # Mzizi primitives
 
 The foundational component set, written in Mzizi. Every file here parses clean under
-`mz check` and is gated in CI, so these are verified source rather than aspirational
-examples.
+`mz check`, and every assertion in its `contract` block is evaluated by `mz contract`. Both
+are gated in CI, so these are verified source rather than aspirational examples.
+
+One undocumented thing to know while reading them: each root element carries a
+`portal = "https://mzizi.dev/components/<name>"` attribute that no RFC mentions. It is
+tracked in [`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5) and is either
+owed an RFC-0001 §1.5 amendment or a deletion.
 
 | Primitive     | Shape                    | Why it is here                                                                     |
 | ------------- | ------------------------ | ---------------------------------------------------------------------------------- |
@@ -76,7 +81,7 @@ capabilities (`use motion`), which _is_ a decision, and one worth reading.
 ```mz
 contract
   every button_size height at_least 48
-  button_size.default height 56
+  button_size.default height is 56
 end
 ```
 
@@ -85,13 +90,26 @@ TypeScript violated in five separate components — because there, the heights l
 inside Tailwind class strings where nothing could check them. Here the height is data on
 the variant, so one line holds the whole table to the floor.
 
+And since [RFC-0006](../design/RFC-0006-contracts.md) it is *run*: `mz contract
+../primitives/button.mz` evaluates that line against the table and exits 1 if any variant
+falls below 48. Drop `sm` to 40 and `mz check` still reports zero errors while
+`mz contract` reports the defect — which is precisely the shape CHARTER.md §6 calls a Phase
+0 defect.
+
 Note also `alert`'s `announce` column. The ARIA role and the colour are one decision per
 severity, so they live in the same row and cannot drift apart — the same structural fix
 that killed the parallel-`Record` drift, applied to accessibility.
 
 ## Status
 
-Contract _bodies_ parse but are not yet evaluated — the checker for them lands with the IR
-(RFC-0002 §2.1), which is also what will let `mz check` run them as tests. Until then these
-files are verified syntax and a verified grammar exercise, which is exactly what Phase 0
-needs and no more than it claims.
+Every file here parses under `mz check` and every assertion in it is evaluated by
+`mz contract` — 33 assertions across these nine files and the corpus example, all of them
+holding, all of them gated in CI. A clause the evaluator cannot apply is an error, so a
+green run means the assertions ran, not that they were counted.
+
+What that is **not** is a measurement against the charter. `mz contract` checks whether a
+component keeps its own promises; CHARTER.md §6's defect metric compares an agent-authored
+component against an independent reference implementation read from disk, and that
+comparison has no toolchain yet ([RFC-0006](../design/RFC-0006-contracts.md) §10.1). These
+files remain verified syntax plus verified self-consistency — which is what Phase 0 needs
+so far, and no more than it claims.
