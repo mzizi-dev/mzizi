@@ -5,9 +5,22 @@ compiler feedback loop are designed for **machine authorship**, and specifically
 machines that need the help most: small open-weight models with limited parameters, context
 and long-range attention. It lowers to Rust and Dioxus; the runtime is the product.
 
+[![CI](https://github.com/mzizi-dev/mzizi/actions/workflows/ci.yml/badge.svg)](https://github.com/mzizi-dev/mzizi/actions/workflows/ci.yml)
+[![Lint](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml/badge.svg)](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+![Rust](https://img.shields.io/badge/Rust-edition_2024-000000?style=flat-square&logo=rust&logoColor=white)
+![Dependencies](https://img.shields.io/badge/dependencies-none-informational?style=flat-square)
+
+**Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` | **Tests:** 107 | **Phase:** 0, unmeasured
+
 This is Phase 0 of the Bundu Foundation's Mzizi research charter. See
 [`CHARTER.md`](./CHARTER.md) for the full thesis, the phasing, the explicit non-goals, and
 the kill criterion.
+
+**This repository is the language.** It is not the component registry — that is
+[`mzizi-dev/mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry), a different body
+of work with a different owner that happens to share the name and the org. Sources that
+conflate them are common enough that it is worth saying in the second paragraph.
 
 ---
 
@@ -17,8 +30,8 @@ Read this before anything else in the repository.
 
 **What exists and is tested:** the lexer, the recovering parser, the agent diagnostic
 protocol (`mz check --agent`), the content-addressed IR, `mz outline`, contract evaluation
-(`mz contract`), and nine primitives written in Mzizi itself. 107 tests, all of it gated
-in CI.
+(`mz contract`), and nine primitives written in Mzizi itself. 107 tests — counted from
+`cargo test` on 2026-09-12, not from memory — all of it gated in CI.
 
 **What contract evaluation does and does not do.** `mz contract <file>` evaluates a
 component's `contract` block against that component's own declarations — its variant
@@ -125,14 +138,14 @@ Mzizi-the-language is one repository in [`mzizi-dev`](https://github.com/mzizi-d
 Foundation-governed Mzizi org. The naming rule is that **the language repo is plain
 `mzizi`; everything else in the org is `mzizi-`-prefixed** — the language is the project.
 
-| Repository                                                            | What it is                                                                                                                                                     | Relationship to this repo                                                                                                                                 |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — 571+ components, brand system, developer portal. Formerly `nyuchi/mzizi`.                                                   | **The benchmark corpus.** Charter §6 makes Mzizi's own components the Phase 0 task set, and the hand-written `.rs` ports there are the ground truth.      |
-| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | Documentation content for mzizi.dev — language reference, RFC index, runtime guides, agent-facing surfaces.                                                    | Documents this repo. The RFCs stay **here**, next to the code they govern, so tests like `compiler/tests/ir_measured.rs` can verify their numeric claims. |
-| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | mzizi.dev — the live site tying the language, the registry and the docs together.                                                                              | Publishes; is not depended on.                                                                                                                            |
-| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | api.mzizi.dev — the registry API, as a pure-Rust Cloudflare Worker.                                                                                            | Serves the registry, not the language.                                                                                                                    |
-| ~~`mzizi-roadmap`~~                                                   | **Archived 2026-09-11.** Folded into [`design/ROADMAP.md`](./design/ROADMAP.md).                                                                               | A roadmap living apart from the code it plans is how plans go stale; it now lives here.                                                                   |
-| `mzizi-benchmark`                                                     | **Planned, not yet created.** The public Phase 0 harness: runner, metric definitions, scoring code, fixture format. Today `benchmarks/` holds only the design. | Will consume `mz` from this repo.                                                                                                                         |
+| Repository                                                            | What it is                                                                                                                                                                | Relationship to this repo                                                                                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — **575 components**, the brand system (21 colour families) and the DNA-helix architecture. Formerly `nyuchi/mzizi`.                     | **The benchmark corpus.** Charter §6 makes Mzizi's own components the Phase 0 task set, and the hand-written `.rs` ports there are the ground truth.      |
+| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | The Mintlify documentation site — language reference, RFC index, registry guides. **Not deployed; `docs.mzizi.dev` does not resolve.**                                    | Documents this repo. The RFCs stay **here**, next to the code they govern, so tests like `compiler/tests/ir_measured.rs` can verify their numeric claims. |
+| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | A three-page Astro site. **It serves the `mzizi.dev` apex as of 2026-09-12**, which was not the plan on the day it happened — see its README.                             | Publishes; is not depended on.                                                                                                                            |
+| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | A pure-Rust Cloudflare Worker built for `api.mzizi.dev`. That hostname is live, but measured 2026-09-12 it is answered by the registry's own app, not by this Worker.     | Serves the registry, not the language.                                                                                                                    |
+| [`mzizi-roadmap`](https://github.com/mzizi-dev/mzizi-roadmap)         | Folded into [`design/ROADMAP.md`](./design/ROADMAP.md). Its README calls itself archived; **the GitHub repository is not archived** — `archived: false` as of 2026-09-12. | A roadmap living apart from the code it plans is how plans go stale; it now lives here.                                                                   |
+| `mzizi-benchmark`                                                     | **Planned, not yet created.** The public Phase 0 harness: runner, metric definitions, scoring code, fixture format. Today `benchmarks/` holds only the design.            | Will consume `mz` from this repo.                                                                                                                         |
 
 **The rule that makes the ecosystem honest, and it is RFC-0004 §3 applied to code instead
 of tests:**
@@ -154,8 +167,20 @@ and a missing private result is `neutral`, never `failure`.
   untrusted source, and how to report one privately.
 - [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md) — Contributor Covenant 2.1.
 
-Pull requests are **merged, never squashed or rebased**. MIGRATION.md §1.1: "Squash
-discards the per-commit reasoning this project depends on."
+Pull requests are **rebased**. Read off the GitHub API on 2026-09-12,
+`allow_rebase_merge` is `true` and both `allow_merge_commit` and `allow_squash_merge` are
+`false` — on all nine repositories in `mzizi-dev` and all 75 in the enterprise — with
+auto-merge enabled:
+
+```sh
+gh pr merge <n> --rebase --auto
+```
+
+Never `--admin`. This reverses what `MIGRATION.md` §1.1 and `CONTRIBUTING.md` describe, and
+they have not caught up. The argument they make survives the change: §1.1 objects that
+"squash discards the per-commit reasoning this project depends on", squash is still
+disabled, and rebase lands every commit on `main` individually, in order, with its message
+intact. What is lost is the merge commit itself. Write your commits accordingly.
 
 ## History and ownership
 
@@ -167,5 +192,10 @@ do-not-rename list. It is a document written at a point in time and it names som
 repositories by slugs that have since changed; the settings tables and the work queue are
 still current.
 
-Mzizi is **100% Bundu Foundation IP** (CHARTER.md), licensed **Apache-2.0** — see
-[`LICENSE`](./LICENSE).
+## Licence and governance
+
+Mzizi is **100% Bundu Foundation IP** (CHARTER.md), licensed under the
+[Apache License 2.0](./LICENSE).
+
+Mzizi is an open-architecture project of the **Bundu Foundation**, operated and developed by
+**Nyuchi**.
