@@ -12,6 +12,15 @@ the type system's internals, and the compiler architecture are later RFCs.
 > rules (locally predictable, small common-word keyword vocabulary), and
 > supplies the real rationale for §1.1's closer. Read the two together.
 
+> **Amended by RFC-0006**, in two places where this document disagreed with the
+> code for as long as the code existed. **§1.5:** view attributes are written
+> `name = value`; the `=` is required, because `name value` and a child element
+> are indistinguishable with one token of lookahead. **§1.6:** the contract
+> sub-grammar is `subject predicate`, with no colon. The worked example in §1
+> has been corrected to match the corpus files, which were always right. See
+> RFC-0006 §8.1, and RFC-0003 §7.1 for the precedent: where an RFC and the code
+> disagree, the code is the fact.
+
 ---
 
 ## 0. Method: design against named failure modes
@@ -64,14 +73,16 @@ component connectivity_bar
     when not visible
       nothing
     end
-    strip slot "nyuchi-connectivity-bar"
-      class "fixed inset-x-0 top-0 z-50 {state.color}"
-      role "status"
-      text state.label
+    strip
+      slot = "nyuchi-connectivity-bar"
+      class = "fixed inset-x-0 top-0 z-50 {state.color}"
+      role = "status"
+      text = state.label
       when state is offline
-        button "Retry"
-          class "min-h-[48px]"
-          tap retry
+        button
+          text = "Retry"
+          class = "min-h-[48px]"
+          tap = retry
         end
       end
     end
@@ -84,8 +95,8 @@ component connectivity_bar
   contract
     online.label is "Back online"
     offline.color is "bg-terracotta"
-    when offline: shows button "Retry"
-    button "Retry": min_height 48
+    when offline shows button "Retry"
+    button "Retry" min_height 48
   end
 
 end component connectivity_bar
@@ -149,9 +160,16 @@ destructure — pure FM-6 burn, and a real drift site).
 ### 1.5 The view grammar is native — _FM-7_
 
 `view … end` is part of the language grammar, not a macro. Elements are
-words (`strip`, `row`, `button`, `text`); attributes are `name value` lines;
-children are nested blocks. Every diagnostic inside a view points at source
-the author actually wrote. Interpolation is `{expr}` inside strings, and
+words (`strip`, `row`, `button`, `text`); attributes are **`name = value`**
+lines; children are nested blocks. Every diagnostic inside a view points at
+source the author actually wrote.
+
+The `=` is not decoration, and this paragraph read `name value` until RFC-0006
+§8.1 corrected it. Without the `=`, `text state.label` is indistinguishable
+from an element opening a block with one token of lookahead — the ambiguity
+§1.2 and RFC-0002 §1 exist to forbid. With it, every line inside a view is
+classifiable from its first two tokens: `name =` is an attribute, a bare word
+opens a child, and `nothing` is the one leaf. Interpolation is `{expr}` inside strings, and
 that is the only string-building mechanism.
 
 Attributes that the corpus proved load-bearing are first-class words with
@@ -165,12 +183,19 @@ made structural).
 
 The charter defines a defect as _compiles clean but behaviorally wrong_.
 So behavior assertions are **in the language**, beside the code they
-constrain, in a declarative sub-grammar (`subject: assertion`). `contract`
-blocks lower to the same contract-test pattern the corpus Rust ports use
-(`tests/contract.rs`), and `mz check` runs them as part of the loop —
-the defect metric is measured by the toolchain itself, not by an external
-harness bolted on later. A component without a `contract` block compiles
-with a warning; corpus ports require one.
+constrain, in a declarative sub-grammar (`subject predicate` — no colon; see
+RFC-0006 §2 for the full grammar). `contract` blocks lower to the same
+contract-test pattern the corpus Rust ports use (`tests/contract.rs`), and the
+toolchain runs them — the defect metric is measured by the toolchain itself,
+not by an external harness bolted on later. A component without a `contract`
+block compiles with a warning; corpus ports require one.
+
+Two corrections RFC-0006 makes to this paragraph. The sub-grammar is
+`subject predicate`, written without punctuation between them; the colons in
+the example above were never what the corpus wrote. And the runner is
+**`mz contract`**, a separate subcommand, not `mz check` — because CHARTER.md
+§6 counts compile errors and behavioural defects as two different metrics and
+one exit status cannot report both (RFC-0006 §7).
 
 The touch-floor rule (`min_height 48`) is expressible as a contract line
 because the corpus found that exact violation five separate times. Rules
@@ -292,7 +317,8 @@ least two of three metrics, the thesis is wrong and Phase 1 does not start.
 2. **Grammar formalism + parser strategy** — hand-written recursive descent
    with per-line recovery is the working assumption, to keep error quality
    under our control.
-3. **The IR** and `mz outline`'s stability guarantees.
+3. **The IR** and `mz outline`'s stability guarantees. — _Answered by RFC-0003;
+   contract evaluation semantics by RFC-0006._
 4. **Naming the file of record**: whether component name must match file
    name (leaning yes — one component, one file, name-identical; it makes
    every cross-file reference an exact anchor).
