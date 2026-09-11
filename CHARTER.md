@@ -110,9 +110,13 @@ The charter originally flagged this as the one decision that had to be made befo
 - **~~The actual Mzizi-lang syntax and type system.~~** Designed, and a front end exists:
   [RFC-0001](./design/RFC-0001-syntax.md) (syntax),
   [RFC-0002](./design/RFC-0002-runtime-and-prior-art.md) (design target and prior art),
-  [RFC-0003](./design/RFC-0003-ir.md) (the content-addressed IR). What remains open inside it:
-  **contract evaluation** — contract blocks parse but are not yet checked, which is what makes
-  §6's defect metric toolchain-measured rather than standing in as a hand-written Rust test.
+  [RFC-0003](./design/RFC-0003-ir.md) (the content-addressed IR),
+  [RFC-0006](./design/RFC-0006-contracts.md) (contract evaluation). What remains open inside
+  it: **the reference-implementation half of §6's defect metric.** `mz contract` evaluates a
+  component's assertions against that component, so the metric can be expressed and run in
+  the language rather than as a hand-written Rust test. §6 defines a defect as failing a
+  contract test *against the reference implementation*, and nothing yet reads the `.rs`
+  reference off disk and compares. RFC-0006 §10.1.
 - **Benchmark harness mechanics.** How agent runs are invoked, sandboxed, and scored
   end-to-end (which components from the 571+ corpus, how many per run, how "tokens consumed"
   and "iterations to clean compile" are actually measured and reported) is unspecified past the
