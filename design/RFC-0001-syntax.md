@@ -55,7 +55,7 @@ language.
 
 ## 1. The shape of a component
 
-The worked example is a real corpus component — `nyuchi-connectivity-bar`
+The worked example is a real corpus component — `mzizi-connectivity-bar`
 (N7), whose TypeScript reference and Rust port both exist, so every line
 below is checkable against known ground truth. This is deliberate: RFC
 examples must come from the benchmark corpus, never invented.
@@ -64,7 +64,7 @@ examples must come from the benchmark corpus, never invented.
 component connectivity_bar
 
   ## A status strip announcing the app's network state.
-  ## Corpus reference: n7-shell/nyuchi-connectivity-bar.
+  ## Corpus reference: n7-shell/mzizi-connectivity-bar.
 
   use motion
 
@@ -84,7 +84,7 @@ component connectivity_bar
       nothing
     end
     strip
-      slot = "nyuchi-connectivity-bar"
+      slot = "mzizi-connectivity-bar"
       class = "fixed inset-x-0 top-0 z-50 {state.color}"
       role = "status"
       text = state.label
@@ -233,7 +233,7 @@ genuinely can't be hidden, the diagnostic must name a _surface-level_ fix.
 ## 2. Naming and lexical rules — _FM-1, FM-6_
 
 - `snake_case` for everything the author names; `kebab-case` never appears
-  in source (corpus component identity `nyuchi-connectivity-bar` maps to
+  in source (corpus component identity `mzizi-connectivity-bar` maps to
   `connectivity_bar` by a fixed, invertible rule). Enforced by the grammar,
   not a linter — a `camelCase` identifier is a parse error with an exact fix.
 - Keywords are common English words (`component`, `prop`, `view`, `when`,

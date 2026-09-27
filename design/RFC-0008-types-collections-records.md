@@ -447,7 +447,7 @@ moves, and it went quiet the moment `confirm_bar` changed. It now asserts the te
 
 ### 9.3 The changelog port — _TY-3, TY-4_
 
-`examples/changelog_renderer.mz` is `nyuchi-changelog-renderer` with `prop entries:
+`examples/changelog_renderer.mz` is `mzizi-changelog-renderer` with `prop entries:
 list(changelog_entry)`, an eight-field record, `for each entry in entries` with a nested
 `for each` over three of the entry's lists and a fourth over its nodes, and each optional
 array's wrapper guarded by `when entry.<list> is none … else … end`.

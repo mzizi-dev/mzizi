@@ -96,19 +96,23 @@ tasks.
 The candidate pool is every `.rs` under `components/registry/` that has a `.tsx` sibling:
 21 of the 37 `.rs` files at the pinned commit.
 
+Components are named here by their current registry names. mzizi-registry #355 later renamed
+every `nyuchi-*` component to `mzizi-*`. At the pinned commit, and in the copied files and the
+`[source]` paths in `task.toml`, they still carry the `nyuchi-` prefix.
+
 ## Chosen tasks
 
-| Task                        | Enum (variants, `#[default]`)  | Heights scored                                         | Scoreable facts |
-| --------------------------- | ------------------------------ | ------------------------------------------------------ | --------------- |
-| `button`                    | `ButtonVariant` (6, `Default`) | none: no `h-N`/`size-N` in any arm                     | 2               |
-|                             | `ButtonSize` (5, `Default`)    | `Default` 56, `Sm` 48, `Lg` 56, `Icon` 56, `IconSm` 48 | 7               |
-| `badge`                     | `BadgeVariant` (6, `Default`)  | none: the badge's `h-5` is in `BASE`, not in an arm    | 2               |
-| `nyuchi-changelog-renderer` | `NodeAccent` (4, `Cobalt`)     | none                                                   | 2               |
+| Task                       | Enum (variants, `#[default]`)  | Heights scored                                         | Scoreable facts |
+| -------------------------- | ------------------------------ | ------------------------------------------------------ | --------------- |
+| `button`                   | `ButtonVariant` (6, `Default`) | none: no `h-N`/`size-N` in any arm                     | 2               |
+|                            | `ButtonSize` (5, `Default`)    | `Default` 56, `Sm` 48, `Lg` 56, `Icon` 56, `IconSm` 48 | 7               |
+| `badge`                    | `BadgeVariant` (6, `Default`)  | none: the badge's `h-5` is in `BASE`, not in an arm    | 2               |
+| `mzizi-changelog-renderer` | `NodeAccent` (4, `Cobalt`)     | none                                                   | 2               |
 
 Facts are counted as one for each enum's variant set, one for each `#[default]`, and one
 for each derived height, for a total of 13. Only `ButtonSize` exercises the height check.
 
-### Caveat: `nyuchi-changelog-renderer` is scoreable, but its variant names diverge on purpose
+### Caveat: `mzizi-changelog-renderer` is scoreable, but its variant names diverge on purpose
 
 It passes the selection rule, so it is in. One known issue could turn it into a source of
 spurious defects, and it affects both arms equally:
@@ -158,29 +162,29 @@ behaviour that a test could check but the extractor does not read: ARIA roles, `
 attributes, prop defaults and rendered text. "No `rsx!`" means the `.rs` is a port of the
 component's logic only and renders no markup.
 
-| Component (node)                  | Scoreable                                                        | Unscored but checkable                                                                                                    | `.tsx` imports                                   | Pilot           |
-| --------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------- |
-| `button` (N2)                     | `ButtonVariant` 6/`Default`; `ButtonSize` 5/`Default`, 5 heights | `data-slot="button"`, `data-variant`/`data-size` slugs (`icon-sm`), `data-portal`; `variant`/`size`/`class` default       | react, cva, radix-ui `Slot`, `cn`                | in              |
-| `badge` (N2)                      | `BadgeVariant` 6/`Default`                                       | `data-slot="badge"`, `data-variant`, `data-portal`; `h-5` base height                                                     | react, cva, radix-ui `Slot`, `cn`                | in              |
-| `nyuchi-changelog-renderer` (N10) | `NodeAccent` 4/`Cobalt`                                          | `role="feed"`, `aria-label`s, `aria-posinset`/`setsize`/`labelledby` (Rust additions), `data-slot`; `+c`/`~c`/`N{n}` text | react, `cn`                                      | in (see caveat) |
-| `card` (N2)                       | none: `CardSize` 2/`Default` has only `slug()`                   | 7 `data-slot`s, `data-size`, `data-loading`, `loading = false`, 3-bar skeleton                                            | react, `cn`                                      | out: 0 facts    |
-| `nyuchi-docs-engine` (N10)        | none: no enum                                                    | `data-slot`, `aria-current`, 3 `aria-label`s, 7 prop defaults, search and filter functions                                | react, `cn`                                      | out: 0 facts    |
-| `nyuchi-bottom-nav` (N7)          | none: no enum                                                    | `aria-label`, `data-slot`, `is_active` path matching                                                                      | react, `next/navigation`, `cn`, `@/lib/icons`    | out: 0 facts    |
-| `nyuchi-command-palette` (N7)     | none: no enum                                                    | `role` dialog/listbox/option, `aria-modal`, `aria-hidden`, `node_mineral_class`, Ctrl/Meta+K                              | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-connectivity-bar` (N7)    | none: `ConnectionState` 4/`Online` has no `classes()`            | `role="status"`, `aria-live`, `data-state`, labels, `colour()`, `auto_hide_delay_ms = 2000`                               | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-deep-link-handler` (N7)   | none: 2 enums, no `#[default]`, no `classes()`                   | `data-slot`, route template/regex resolution                                                                              | react, `@/lib/harness`                           | out: 0 facts    |
-| `nyuchi-footer` (N7)              | none: no enum                                                    | `role="contentinfo"`, `aria-label`, default link sections                                                                 | react, `cn`, `@/lib/harness`, 2 brand components | out: 0 facts    |
-| `nyuchi-mini-app-runtime` (N7)    | none: 2 enums, no `#[default]`, no `classes()`                   | `role` application/status/alert, `data-app`/`data-state`/`data-tier`, state default `Loading`                             | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-notification-center` (N7) | none: `NotificationKind` 4, no `impl`                            | `role="dialog"`, `aria-modal`, `aria-label`s, unread count                                                                | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-persistent-player` (N7)   | none: `MediaKind` 3, no `impl`                                   | `role="region"`, `aria-label`s, progress clamping, `0.0`/`false` defaults                                                 | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-route-guard` (N7)         | none: `AuthRequirement` 4, no `impl`                             | allow/deny logic; no `rsx!`                                                                                               | react, `@/lib/harness`                           | out: 0 facts    |
-| `nyuchi-theme-provider` (N7)      | none: `ThemeMode` 3, no `impl`                                   | initial-theme resolution order                                                                                            | react, `@/lib/tokens`                            | out: 0 facts    |
-| `nyuchi-toast-provider` (N7)      | none: class tables are free functions, not `impl … classes()`    | `position_class`/`type_style_class` tables, `role="alert"`, `aria-live`, `aria-atomic`, position default `BottomRight`    | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `nyuchi-update-prompt` (N7)       | none: no enum                                                    | `role="alertdialog"`, `aria-label`, body text, reduced-motion style, defaults `220`/`false`                               | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `mzizi-chaos` (N8)                | none: 2 enums, no `#[default]`, no `classes()`                   | injection and diagnosis logic; no `rsx!`                                                                                  | react                                            | out: 0 facts    |
-| `mzizi-platform-health` (N8)      | none: 2 enums, no `#[default]`, no `classes()`                   | status labels, `color_var`, overall roll-up; no `rsx!`                                                                    | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
-| `rtl-conformity-check` (N8)       | none: `Direction` 3/`Ltr` and 2 more, no `classes()`             | RTL audit rules and levels; no `rsx!`                                                                                     | react                                            | out: 0 facts    |
-| `nyuchi-fundi` (N9)               | none: 8 enums, no `#[default]`, no `classes()`                   | healing-plan and approval logic; no `rsx!`                                                                                | react                                            | out: 0 facts    |
+| Component (node)                 | Scoreable                                                        | Unscored but checkable                                                                                                    | `.tsx` imports                                   | Pilot           |
+| -------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------- |
+| `button` (N2)                    | `ButtonVariant` 6/`Default`; `ButtonSize` 5/`Default`, 5 heights | `data-slot="button"`, `data-variant`/`data-size` slugs (`icon-sm`), `data-portal`; `variant`/`size`/`class` default       | react, cva, radix-ui `Slot`, `cn`                | in              |
+| `badge` (N2)                     | `BadgeVariant` 6/`Default`                                       | `data-slot="badge"`, `data-variant`, `data-portal`; `h-5` base height                                                     | react, cva, radix-ui `Slot`, `cn`                | in              |
+| `mzizi-changelog-renderer` (N10) | `NodeAccent` 4/`Cobalt`                                          | `role="feed"`, `aria-label`s, `aria-posinset`/`setsize`/`labelledby` (Rust additions), `data-slot`; `+c`/`~c`/`N{n}` text | react, `cn`                                      | in (see caveat) |
+| `card` (N2)                      | none: `CardSize` 2/`Default` has only `slug()`                   | 7 `data-slot`s, `data-size`, `data-loading`, `loading = false`, 3-bar skeleton                                            | react, `cn`                                      | out: 0 facts    |
+| `mzizi-docs-engine` (N10)        | none: no enum                                                    | `data-slot`, `aria-current`, 3 `aria-label`s, 7 prop defaults, search and filter functions                                | react, `cn`                                      | out: 0 facts    |
+| `mzizi-bottom-nav` (N7)          | none: no enum                                                    | `aria-label`, `data-slot`, `is_active` path matching                                                                      | react, `next/navigation`, `cn`, `@/lib/icons`    | out: 0 facts    |
+| `mzizi-command-palette` (N7)     | none: no enum                                                    | `role` dialog/listbox/option, `aria-modal`, `aria-hidden`, `node_mineral_class`, Ctrl/Meta+K                              | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-connectivity-bar` (N7)    | none: `ConnectionState` 4/`Online` has no `classes()`            | `role="status"`, `aria-live`, `data-state`, labels, `colour()`, `auto_hide_delay_ms = 2000`                               | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-deep-link-handler` (N7)   | none: 2 enums, no `#[default]`, no `classes()`                   | `data-slot`, route template/regex resolution                                                                              | react, `@/lib/harness`                           | out: 0 facts    |
+| `mzizi-footer` (N7)              | none: no enum                                                    | `role="contentinfo"`, `aria-label`, default link sections                                                                 | react, `cn`, `@/lib/harness`, 2 brand components | out: 0 facts    |
+| `mzizi-mini-app-runtime` (N7)    | none: 2 enums, no `#[default]`, no `classes()`                   | `role` application/status/alert, `data-app`/`data-state`/`data-tier`, state default `Loading`                             | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-notification-center` (N7) | none: `NotificationKind` 4, no `impl`                            | `role="dialog"`, `aria-modal`, `aria-label`s, unread count                                                                | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-persistent-player` (N7)   | none: `MediaKind` 3, no `impl`                                   | `role="region"`, `aria-label`s, progress clamping, `0.0`/`false` defaults                                                 | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-route-guard` (N7)         | none: `AuthRequirement` 4, no `impl`                             | allow/deny logic; no `rsx!`                                                                                               | react, `@/lib/harness`                           | out: 0 facts    |
+| `mzizi-theme-provider` (N7)      | none: `ThemeMode` 3, no `impl`                                   | initial-theme resolution order                                                                                            | react, `@/lib/tokens`                            | out: 0 facts    |
+| `mzizi-toast-provider` (N7)      | none: class tables are free functions, not `impl … classes()`    | `position_class`/`type_style_class` tables, `role="alert"`, `aria-live`, `aria-atomic`, position default `BottomRight`    | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-update-prompt` (N7)       | none: no enum                                                    | `role="alertdialog"`, `aria-label`, body text, reduced-motion style, defaults `220`/`false`                               | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `mzizi-chaos` (N8)               | none: 2 enums, no `#[default]`, no `classes()`                   | injection and diagnosis logic; no `rsx!`                                                                                  | react                                            | out: 0 facts    |
+| `mzizi-platform-health` (N8)     | none: 2 enums, no `#[default]`, no `classes()`                   | status labels, `color_var`, overall roll-up; no `rsx!`                                                                    | react, `cn`, `@/lib/harness`                     | out: 0 facts    |
+| `rtl-conformity-check` (N8)      | none: `Direction` 3/`Ltr` and 2 more, no `classes()`             | RTL audit rules and levels; no `rsx!`                                                                                     | react                                            | out: 0 facts    |
+| `mzizi-fundi` (N9)               | none: 8 enums, no `#[default]`, no `classes()`                   | healing-plan and approval logic; no `rsx!`                                                                                | react                                            | out: 0 facts    |
 
 `cn` is `@/lib/utils`. "cva" is `class-variance-authority`.
 

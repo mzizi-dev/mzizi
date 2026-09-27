@@ -281,7 +281,7 @@ mod tests {
         for (name, allowed) in [
             ("button", false),
             ("badge", false),
-            ("nyuchi-changelog-renderer", true),
+            ("mzizi-changelog-renderer", true),
         ] {
             let t = load_task(&tasks.join(name)).unwrap();
             assert_eq!(t.allow_variant_renames, allowed, "{name}");

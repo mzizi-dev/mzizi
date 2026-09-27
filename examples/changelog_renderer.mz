@@ -1,6 +1,6 @@
 ## The database changelog as a visual timeline.
-## Corpus reference: n10-documentation/nyuchi-changelog-renderer (spec.tsx and reference.rs
-## in benchmarks/tasks/nyuchi-changelog-renderer). Divergences from the spec, each forced
+## Corpus reference: n10-documentation/mzizi-changelog-renderer (spec.tsx and reference.rs
+## in benchmarks/tasks/mzizi-changelog-renderer). Divergences from the spec, each forced
 ## by the language as it stands, are listed in RFC-0008 §9.3.
 component changelog_renderer
 
@@ -48,8 +48,8 @@ component changelog_renderer
 
   view
     feed
-      slot = "nyuchi-changelog-renderer"
-      portal = "https://mzizi.dev/components/nyuchi-changelog-renderer"
+      slot = "mzizi-changelog-renderer"
+      portal = "https://mzizi.dev/components/mzizi-changelog-renderer"
       class = "flex flex-col gap-8"
       role = "feed"
       label = "Changelog"
@@ -148,7 +148,7 @@ component changelog_renderer
   end
 
   contract
-    slot is "nyuchi-changelog-renderer"
+    slot is "mzizi-changelog-renderer"
     role is "feed"
     label is "Changelog"
     every node_accent class not_empty

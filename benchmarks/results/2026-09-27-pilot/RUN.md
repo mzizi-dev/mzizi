@@ -19,6 +19,8 @@ before the numbers.
 | `max_iters` | 5 (the default)                                                                               |
 | Tokenizer   | none running; every token field is `null` (see caveats)                                       |
 
+_Later note: this record is unchanged since the run. The `nyuchi-changelog-renderer` task was later renamed `mzizi-changelog-renderer` (`benchmarks/tasks/mzizi-changelog-renderer`), following mzizi-registry #355._
+
 `meta.json` records `"iteration_count_enforced_by_runner": false`, as it does for every
 Mode 2 episode: the runner cannot see what an agent does outside `submit`
 ([runner README](../../runner/README.md), known asymmetry 3).
