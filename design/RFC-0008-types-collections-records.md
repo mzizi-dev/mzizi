@@ -489,7 +489,7 @@ Every divergence from the spec, each forced by the language as it stands:
 | Measure                                                                | Value                                                                                                           |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `cargo test -p mzizi-lang-compiler`                                    | **183 passed**, was 107; 72 in `tests/types.rs`                                                                 |
-| `cargo test --workspace` (harness and runner too)                      | 255 passed                                                                                                      |
+| `cargo test --workspace` (harness and runner too)                      | 269 passed                                                                                                      |
 | `exact` fixes applied blind by the tests and re-checked to zero errors | 47 fixtures across 13 codes, all repaired to zero errors (34 before the #20 review fixes, counted the same way) |
 | corpus contract coverage (`tests/contracts.rs`)                        | 45 assertions across 11 files, all evaluated, 0 failing                                                         |
 | parse + resolve + evaluate, all 11 files, debug build                  | ~4–5 ms (budget 250 ms)                                                                                         |
