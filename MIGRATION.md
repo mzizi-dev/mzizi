@@ -7,6 +7,14 @@ automatically — you should be reading it there.
 **State at time of writing:** `nyuchi/mzizi-tools@97cc341`. Everything described in
 "what exists" is merged, CI-green, and measured.
 
+**Ownership correction (2026-09-27):** earlier text in this file and across the repo named
+the Bundu Foundation as the owner of Mzizi. That was wrong. Mzizi owns the framework, the
+language, the component registry and everything else non-revenue; Nyuchi runs everything
+revenue-generating (the Mzizi console, Fundi, paid plans, billing). Present-tense ownership
+claims here have been corrected. Dated history below — including the §1 repository
+descriptions and topics as originally planned — is kept as written. npm package names and
+scopes are unchanged, and the npm-scope decision (§9, item 1) is still open.
+
 ---
 
 ## 1. Repositories to create
@@ -287,19 +295,21 @@ Everything here is installed somewhere already; renaming orphans it.
 
 ## 7. What stays in the Nyuchi orgs
 
-Per the charter's ownership line: the framework is 100% Bundu Foundation IP; the Fundi
-console and the React design system are Nyuchi's.
+Per the charter's ownership line: the framework is 100% Mzizi IP; the Fundi console and the
+other revenue-generating products are Nyuchi's. (As written on 2026-08-23 this line also gave
+the React design system to Nyuchi; see the 2026-09-27 note at the top of this file.)
 
-- **`nyuchi/mzizi`** — the React/TSX component registry and mzizi.dev. The charter names it
-  explicitly as the "Nyuchi-owned Mzizi design system/registry", distinct from the framework.
+- **`nyuchi/mzizi`** — the React/TSX component registry and mzizi.dev. The charter, as of
+  2026-08-23, named it the "Nyuchi-owned Mzizi design system/registry", distinct from the
+  framework (corrected 2026-09-27: the registry is Mzizi's).
   Stays. **It is also the benchmark corpus** — the ground-truth implementations tasks are
   scored against — so the new session needs it in scope (§8).
 - **`nyuchi/mzizi-tools`** — fundi, the console app, the MCP server, the CLI, the skills
   bundle. Nyuchi console tooling. Stays. Only `mzizi-lang/` leaves.
 
 One tension to be deliberate about rather than let drift: mzizi.dev's content is now
-entirely about the Foundation framework while the site lives in a Nyuchi-owned repo. Fine
-today; a question the moment the Foundation wants editorial control of its own front page.
+entirely about the Mzizi framework while the site lives in a Nyuchi-owned repo. Fine
+today; a question the moment Mzizi wants editorial control of its own front page.
 Creating `mzizi-dev/mzizi-docs` (§1) is how that gets resolved.
 
 ## 7.1 The wider org topology (owner's plan, 2026-08-23)

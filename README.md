@@ -137,7 +137,7 @@ ecosystem lives. It holds no work items of its own — plans live next to the co
 ## Where this sits in the ecosystem
 
 Mzizi-the-language is one repository in [`mzizi-dev`](https://github.com/mzizi-dev), the
-Foundation-governed Mzizi org. **The language repo is plain `mzizi`; everything else is
+Mzizi org. **The language repo is plain `mzizi`; everything else is
 `mzizi-`-prefixed** — the language is the project.
 
 | Repository                                                            | What it is                                                                                                                                                                                                                                                                                                                     | Relationship to this repo                                                               |
@@ -171,6 +171,7 @@ This repository was created by a `git subtree split` out of `mzizi-dev/agent-too
 carrying the full design history of the `mzizi-lang/` directory it grew up in.
 [`MIGRATION.md`](./MIGRATION.md) is the record of that move.
 
-Mzizi is **100% Bundu Foundation IP** (CHARTER.md), licensed under the
-[Apache License 2.0](./LICENSE) — an open-architecture project of the **Bundu Foundation**,
-operated and developed by **Nyuchi**.
+Mzizi is **100% Mzizi IP** (CHARTER.md), licensed under the
+[Apache License 2.0](./LICENSE). Mzizi — the framework, the language and the component
+registry — is non-revenue; the revenue-generating products built on it (the Mzizi console,
+Fundi, paid plans and billing) are **Nyuchi**'s.
