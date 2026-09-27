@@ -12,7 +12,7 @@ limited parameters, context and long-range attention.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 107 | **Phase:** 0, unmeasured
+**Tests:** 174 | **Phase:** 0, unmeasured
 
 ## The bet
 
@@ -58,13 +58,13 @@ of work with a different owner that happens to share the name and the org.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (107 tests, gated in CI):** the lexer, the recovering parser, the agent
+**Built and tested (174 tests, gated in CI):** the lexer, the recovering parser, the name and type resolver, the agent
 diagnostic protocol (`mz check --agent`), the content-addressed IR, `mz outline`, contract
 evaluation (`mz contract`), and nine primitives written in Mzizi itself.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
-doesn't hold — all 33 assertions in the corpus evaluated, none merely counted. It checks
+doesn't hold — all 45 assertions in the corpus evaluated, none merely counted. It checks
 nothing rendered and nothing against a reference implementation. That comparison is the other
 half of the Phase 0 defect metric, and it lives outside the compiler. `benchmarks/harness` diffs
 a `.mz` component's variants, defaults and touch heights against the hand-written Rust reference
@@ -94,7 +94,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 107 tests; the compiler crate has zero dependencies
+cargo test                                                           # 174 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 ```

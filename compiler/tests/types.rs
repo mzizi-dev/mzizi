@@ -907,3 +907,37 @@ fn every_new_diagnostic_stays_inside_the_say_budget() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------------------
+// The changelog port (RFC-0008 §9.3)
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn the_changelog_port_checks_clean_and_keeps_its_contract() {
+    let src = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../examples/changelog_renderer.mz"
+    ))
+    .unwrap();
+    let (report, tally) = check_contract(&src, "changelog_renderer.mz");
+    assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
+    assert!(tally.clauses >= 12 && tally.failed == 0, "{tally:?}");
+
+    // It exercises what it was written to: a list of records, nested iteration over a
+    // field of the outer binding, and the `is none … else` form.
+    let (c, _) = check_with_ast(&src, "changelog_renderer.mz");
+    let c = c.unwrap();
+    assert_eq!(c.props[0].ty, "list(changelog_entry)");
+    fn depth(els: &[mzizi_lang_compiler::ast::Element]) -> usize {
+        els.iter()
+            .map(|e| {
+                let own = usize::from(e.tag == "for");
+                let below =
+                    depth(&e.children).max(e.else_children.as_deref().map(depth).unwrap_or(0));
+                own + below
+            })
+            .max()
+            .unwrap_or(0)
+    }
+    assert_eq!(depth(c.view.as_deref().unwrap()), 2, "nested for each");
+}
