@@ -7,3 +7,7 @@
 [workspace]
 resolver = "2"
 members = ["compiler", "benchmarks/harness"]
+# The Dioxus arm's sandbox is its own workspace root (it declares an empty
+# `[workspace]`), so CI's `--workspace` never builds Dioxus. Excluded here as well so a
+# future glob in `members` cannot pull it in. See benchmarks/arms/dioxus/README.md.
+exclude = ["benchmarks/arms/dioxus"]
