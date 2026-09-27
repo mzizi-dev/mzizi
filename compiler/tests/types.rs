@@ -285,6 +285,21 @@ fn an_option_event_takes_none_or_a_value_of_its_inner_type() {
     ));
 }
 
+/// Code review of #20: an `option(T)` reached through a dotted path was rejected as a
+/// payload for `event(option(T))`; only a bare prop passed.
+#[test]
+fn an_option_event_takes_an_option_reached_through_a_path() {
+    clean(&component(
+        "  record r\n    field note: option(text)\n  end\n  prop current: r\n  prop changed: event(option(text))\n  fn go\n    emit changed(current.note)\n  end\n",
+    ));
+    one(
+        &component(
+            "  record r\n    field note: option(int)\n  end\n  prop current: r\n  prop changed: event(option(text))\n  fn go\n    emit changed(current.note)\n  end\n",
+        ),
+        "MZ0715",
+    );
+}
+
 #[test]
 fn a_bad_interpolation_is_one_diagnostic() {
     let with = |s: &str| {
@@ -570,6 +585,28 @@ fn no_two_exact_fixes_ever_overlap() {
             }
         }
     }
+}
+
+/// Code review of #20: folding a camelCase constructor's MZ0101 into MZ0105 matched on
+/// column only, so an earlier line's MZ0101 at the same column was deleted.
+#[test]
+fn a_symbolic_type_folds_only_its_own_naming_error() {
+    // `foo_bar` exists, so the camelCase spelling is the only thing wrong on line one.
+    let src = component(
+        "  enum foo_bar\n    a  k \"1\"\n  end\n  prop x: fooBar = a\n  prop y: list<text>\n",
+    );
+    let codes: Vec<_> = errors(&src).into_iter().map(|d| d.code).collect();
+    assert!(codes.contains(&"MZ0101"), "{codes:?}");
+    assert!(codes.contains(&"MZ0105"), "{codes:?}");
+}
+
+/// Code review of #20: `list(text, int)`'s MZ0309 carried an exact fix inserting `)`
+/// after `text`, which leaves the line broken. Only a line that ends there gets one.
+#[test]
+fn a_missing_paren_is_exact_only_where_the_line_ends() {
+    let d = one(&component("  prop x: list(text, int)\n"), "MZ0309");
+    assert!(d.fix.is_none(), "{:?}", d.fix);
+    exact_fix_repairs(&component("  prop x: list(text\n"), "MZ0309");
 }
 
 #[test]
@@ -904,6 +941,19 @@ fn is_some_is_rewritten_to_the_one_form() {
         "  prop image: option(text)\n  view\n    when image is some\n      picture\n        source = image\n      end\n    end\n  end\n",
     );
     exact_fix_repairs(&src, "MZ0712");
+}
+
+/// Code review of #20: with an `else` already present, `is some`'s exact fix produced a
+/// second `else` (MZ0404). The repair would swap branches, which is not one span: the
+/// error stays, the fix goes.
+#[test]
+fn is_some_with_an_else_is_reported_without_a_fix() {
+    let src = component(
+        "  prop image: option(text)\n  view\n    when image is some\n      picture\n        source = image\n      end\n    else\n      row\n      end\n    end\n  end\n",
+    );
+    let d = one(&src, "MZ0712");
+    assert!(d.fix.is_none(), "{:?}", d.fix);
+    assert!(d.say.contains("swap"), "{}", d.say);
 }
 
 #[test]

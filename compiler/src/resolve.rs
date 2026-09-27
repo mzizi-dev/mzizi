@@ -1333,6 +1333,19 @@ impl<'a> Resolver<'a> {
                 if v.value == "none" {
                     return matches!(ty, Ty::Option(_));
                 }
+                if v.value == "some" && matches!(ty, Ty::Option(_)) && el.else_children.is_some() {
+                    // With an `else` already there, the repair swaps the two branches: not
+                    // one span, so no fix — only what to write.
+                    self.err(
+                        "MZ0712",
+                        whole,
+                        format!(
+                            "`when {} is some` — Mzizi has no `some`: write `when {} is none`, and swap this branch with the `else`",
+                            p.value, p.value
+                        ),
+                    );
+                    return false;
+                }
                 if v.value == "some" && matches!(ty, Ty::Option(_)) {
                     // What `avatar.mz` wrote. The repair is mechanical: the presence branch
                     // becomes the `else` of an absence test with an empty first branch.
@@ -1662,8 +1675,18 @@ impl<'a> Resolver<'a> {
     /// any value of type `T`, wrapped implicitly (RFC-0008 §4.2).
     fn payload(&mut self, written: &str, carries: &Ty, want: &Ty, arg: &str, span: Span) {
         if let Ty::Option(inner) = want {
-            if arg == "none" || self.props.get(arg) == Some(want) {
+            if arg == "none" {
                 return;
+            }
+            // An `option(T)` value as is — a prop or a dotted path. Resolved quietly: if it
+            // is not an option, the check against `T` below reports what is wrong.
+            if !is_literal(arg) {
+                let before = self.diags.len();
+                let got = self.path(arg, &[span], span, &Scope::default());
+                self.diags.truncate(before);
+                if got == *want {
+                    return;
+                }
             }
             return self.payload(written, carries, inner, arg, span);
         }

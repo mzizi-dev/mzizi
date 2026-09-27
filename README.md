@@ -12,7 +12,7 @@ limited parameters, context and long-range attention.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 179 | **Phase:** 0, unmeasured
+**Tests:** 183 | **Phase:** 0, unmeasured
 
 ## The bet
 
@@ -58,7 +58,7 @@ of work with a different owner that happens to share the name and the org.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (179 tests, gated in CI):** the lexer, the recovering parser, the name and type resolver, the agent
+**Built and tested (183 tests, gated in CI):** the lexer, the recovering parser, the name and type resolver, the agent
 diagnostic protocol (`mz check --agent`), the content-addressed IR, `mz outline`, contract
 evaluation (`mz contract`), and nine primitives written in Mzizi itself.
 
@@ -91,7 +91,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 179 tests; the compiler crate has zero dependencies
+cargo test                                                           # 183 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 ```
