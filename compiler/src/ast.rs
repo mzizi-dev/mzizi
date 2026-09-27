@@ -78,6 +78,10 @@ pub struct RecordDecl {
     /// Fields in declaration order — order is meaning, because it is the layout a
     /// serialiser and an FFI binding emit.
     pub fields: Vec<FieldDecl>,
+    /// Field names declared by `field` lines whose type failed to parse. As with
+    /// [`Component::broken`], the resolver treats them as known with an unknown type, so
+    /// one broken line is one diagnostic, not one more per use of the field.
+    pub broken: Vec<String>,
 }
 
 /// One `field <name>: <type>` line.
