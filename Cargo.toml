@@ -9,7 +9,8 @@
 [workspace]
 resolver = "2"
 members = ["compiler", "benchmarks/harness", "benchmarks/runner"]
-# The Dioxus arm's sandbox is its own workspace root (it declares an empty
-# `[workspace]`), so CI's `--workspace` never builds Dioxus. Excluded here as well so a
-# future glob in `members` cannot pull it in. See benchmarks/arms/dioxus/README.md.
-exclude = ["benchmarks/arms/dioxus"]
+# The Dioxus and Leptos arms' sandboxes are each their own workspace root (both declare
+# an empty `[workspace]`), so CI's `--workspace` never builds either. Excluded here as
+# well so a future glob in `members` cannot pull them in. See
+# benchmarks/arms/dioxus/README.md and benchmarks/arms/leptos/README.md.
+exclude = ["benchmarks/arms/dioxus", "benchmarks/arms/leptos"]

@@ -470,7 +470,7 @@ struct ScoreResult {
 fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
     let cand = iter_dir(&st.dir, clean_iter).join(format!("candidate.{}", st.meta.arm.extension()));
     let out = st.meta.score.run(&[
-        ("arm", st.meta.arm.as_str()),
+        ("arm", st.meta.arm.harness_arm_str()),
         ("candidate", &cand.to_string_lossy()),
         ("reference", &st.meta.reference_path.to_string_lossy()),
     ])?;
