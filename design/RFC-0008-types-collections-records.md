@@ -264,11 +264,14 @@ one local enum. A dotted path whose head is a local enum name is `<enum>.<varian
   element word, and the checker cannot see `button.mz`. So `variant = button_variant.ghost`
   — a dotted path whose head names nothing in this file — is accepted as an **external
   reference** with warning `MZ0502`, which says plainly that it cannot be checked until
-  modules land (RFC-0007 G2.3) and that there is nothing to fix. Three kinds of head are
-  local mistakes instead, never external: one within two edits of a local name (`MZ0707`,
-  `guess`), a `for each` binding used outside its block, and a record's type name used as
-  a value (`entry.title` where `e.title` was meant) — the last two were found by the tests,
-  which first read them as external references. A _bare_ word must always resolve locally;
+  modules land (RFC-0007 G2.3). A head within two edits of a local name is still
+  `MZ0502`, never an error: `variant = tone.loud` beside a local `prop tones` is valid if
+  `tone` is another component's enum, and rejecting it rejected valid code (review of
+  #20). The close local name is offered as a `guess` fix on the warning. Two kinds of head
+  are local mistakes instead, never external, because the name _is_ declared in this file:
+  a `for each` binding used outside its block, and a record's type name used as a value
+  (`entry.title` where `e.title` was meant) — both found by the tests, which first read
+  them as external references. A _bare_ word must always resolve locally;
   that is the rule that catches `text = lable`.
 - **Attribute names.** Element words and attribute names are open (RFC-0001 §1.5); `on_click
 = on_tap` still compiles. `tap` and `change` are checked because their _values_ are.
@@ -293,32 +296,32 @@ The hundreds digit keeps its existing meaning (01 lexical, 02 structure, 03 decl
 04 view grammar, 05 warnings, 06 contracts). **`MZ07xx` is new: name and type resolution**,
 the pass this RFC adds.
 
-| Code     | Sev.    | Means                                                                                                                  |
-| -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `MZ0105` | error   | a type constructor written with symbols (`list<T>`, `T[]`, `[T]`) — `exact` fix                                        |
-| `MZ0307` | error   | `record` without a name                                                                                                |
-| `MZ0308` | error   | a record body line that is not `field <name>: <type>` — `exact` fix when it is `<name>: <type>` (inserts `field`)      |
-| `MZ0309` | error   | a malformed type: `list(` with no `)`, `list()` with nothing inside                                                    |
-| `MZ0310` | error   | tokens left over after a `prop` or `field` declaration (was silently ignored), incl. a field default                   |
-| `MZ0404` | error   | `else` outside a `when`, or a second `else`                                                                            |
-| `MZ0405` | error   | an `emit` with no event name                                                                                           |
-| `MZ0502` | warning | an external reference (`<other>_enum.variant`) that cannot be checked until modules — nothing to fix                   |
-| `MZ0701` | error   | an unknown type name — alias or nearest-name fix                                                                       |
-| `MZ0702` | error   | a type built wrongly: bare `list` / `option` / `event`, `text(…)`, `none` outside `event(none)`, an event that is data |
-| `MZ0703` | error   | a second way to say nothing: `option(list(T))`, `option(option(T))`, `option(event(T))` — `exact` fix                  |
-| `MZ0704` | error   | a duplicate prop, field, enum or record, or one named like a built-in type                                             |
-| `MZ0705` | error   | a record that contains itself                                                                                          |
-| `MZ0706` | error   | a default that does not fit its type, or a default where the type has an implicit one (§1.2)                           |
-| `MZ0707` | error   | a bare name that resolves to nothing in scope — nearest-name fix                                                       |
-| `MZ0708` | error   | no such variant, column or field — nearest-name fix among that enum's or record's members                              |
-| `MZ0709` | error   | a dotted access on something without members (`text`, `list`, `bool`, an event, a fn)                                  |
-| `MZ0710` | error   | an option used without being narrowed by `when … is none … else`                                                       |
-| `MZ0711` | error   | a value of the wrong kind for its position: a list as text, `for each` over a non-list, `tap` on a non-event           |
-| `MZ0712` | error   | a `when` condition that does not fit its operand's type, incl. `is some` / `is true` (both `exact`-fixed)              |
-| `MZ0713` | error   | a malformed `for each`: its shape, a shadowing binding, a missing / second / constant / string key                     |
-| `MZ0714` | error   | a malformed `{...}`: empty, not a name or dotted path, or unclosed                                                     |
-| `MZ0715` | error   | an `emit` whose target is not an event prop, or whose payload does not fit the event                                   |
-| `MZ0716` | error   | an enum column whose values disagree in type, or a bare-word column value naming no variant                            |
+| Code     | Sev.    | Means                                                                                                                        |
+| -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `MZ0105` | error   | a type constructor written with symbols (`list<T>`, `T[]`, `[T]`) — `exact` fix                                              |
+| `MZ0307` | error   | `record` without a name                                                                                                      |
+| `MZ0308` | error   | a record body line that is not `field <name>: <type>` — `exact` fix when it is `<name>: <type>` (inserts `field`)            |
+| `MZ0309` | error   | a malformed type: `list(` with no `)`, `list()` with nothing inside                                                          |
+| `MZ0310` | error   | tokens left over after a `prop` or `field` declaration (was silently ignored), incl. a field default                         |
+| `MZ0404` | error   | `else` outside a `when`, or a second `else`                                                                                  |
+| `MZ0405` | error   | an `emit` with no event name                                                                                                 |
+| `MZ0502` | warning | an external reference (`<other>_enum.variant`) that cannot be checked until modules — a `guess` fix if a local name is close |
+| `MZ0701` | error   | an unknown type name — alias or nearest-name fix                                                                             |
+| `MZ0702` | error   | a type built wrongly: bare `list` / `option` / `event`, `text(…)`, `none` outside `event(none)`, an event that is data       |
+| `MZ0703` | error   | a second way to say nothing: `option(list(T))`, `option(option(T))`, `option(event(T))` — `exact` fix                        |
+| `MZ0704` | error   | a duplicate prop, field, enum or record, or one named like a built-in type                                                   |
+| `MZ0705` | error   | a record that contains itself                                                                                                |
+| `MZ0706` | error   | a default that does not fit its type, or a default where the type has an implicit one (§1.2)                                 |
+| `MZ0707` | error   | a bare name that resolves to nothing in scope — nearest-name fix                                                             |
+| `MZ0708` | error   | no such variant, column or field — nearest-name fix among that enum's or record's members                                    |
+| `MZ0709` | error   | a dotted access on something without members (`text`, `list`, `bool`, an event, a fn)                                        |
+| `MZ0710` | error   | an option used without being narrowed by `when … is none … else`                                                             |
+| `MZ0711` | error   | a value of the wrong kind for its position: a list as text, `for each` over a non-list, `tap` on a non-event                 |
+| `MZ0712` | error   | a `when` condition that does not fit its operand's type, incl. `is some` / `is true` (both `exact`-fixed)                    |
+| `MZ0713` | error   | a malformed `for each`: its shape, a shadowing binding, a missing / second / constant / string key                           |
+| `MZ0714` | error   | a malformed `{...}`: empty, not a name or dotted path, or unclosed                                                           |
+| `MZ0715` | error   | an `emit` whose target is not an event prop, or whose payload does not fit the event                                         |
+| `MZ0716` | error   | an enum column whose values disagree in type, or a bare-word column value naming no variant                                  |
 
 All follow RFC-0001 §4: `say` at most 200 characters and quoting the source, deterministic
 order, and one diagnostic per real error — an unknown type is reported once, at its
