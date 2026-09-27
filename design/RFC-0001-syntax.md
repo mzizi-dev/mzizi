@@ -23,6 +23,14 @@ the type system's internals, and the compiler architecture are later RFCs.
 > RFC-0006 §8.1, and RFC-0003 §7.1 for the precedent: where an RFC and the code
 > disagree, the code is the fact.
 
+<!-- A third amendment note; the separator keeps it distinct. -->
+
+> **Amended by RFC-0008.** §1.2's `when … else … end` and `for each x in xs … end` are
+> now implemented and checked: until then the parser rejected `else` and accepted `for` as
+> an unchecked element word. §1.4's types gain `list(T)`, `option(T)` and records. The
+> §4.2 example's code `MZ0412` was illustrative; the diagnostic it shows now exists as
+> `MZ0708`, with the `exact` fix to `syncing` exactly as drawn (RFC-0008 §5, §6).
+
 ---
 
 ## 0. Method: design against named failure modes
