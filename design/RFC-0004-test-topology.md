@@ -167,9 +167,9 @@ branch name or a line number cannot.
 ## 6. Open questions
 
 1. **~~Where the private repository lives.~~** Settled: **`mzizi-dev`**, the dedicated
-   Foundation-governed Mzizi org, which already exists — earlier drafts of this RFC said no
+   Mzizi org, which already exists — earlier drafts of this RFC said no
    such org existed, then named `bundu-labs`; both were wrong. `bundu-labs` is the
-   Foundation's general org and carries unrelated work, so it is the wrong boundary here.
+   Bundu Foundation's general org and carries unrelated work, so it is the wrong boundary here.
 
    A dedicated org is the better home for exactly the reason this RFC exists. The public
    repository and the private held-out repository both live in `mzizi-dev`, so read access

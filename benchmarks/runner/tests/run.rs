@@ -55,7 +55,11 @@ impl Drop for Scratch {
 
 /// `episode start` on the button task, returning the episode dir it prints.
 fn start(out: &Path) -> PathBuf {
-    let task = repo_root().join("benchmarks/tasks/button");
+    start_task(out, "button")
+}
+
+fn start_task(out: &Path, task: &str) -> PathBuf {
+    let task = repo_root().join("benchmarks/tasks").join(task);
     let o = mzbench(&[
         "episode".as_ref(),
         "start".as_ref(),
@@ -171,4 +175,46 @@ fn syntax_error_then_the_real_button_scores_zero_defects() {
     assert_eq!(fin["iterations_to_clean"], 2, "{fin}");
     assert_eq!(fin["scored"], true, "{fin}");
     assert_eq!(fin["defects"], 0, "{fin}");
+}
+
+fn score_argv(ep: &Path) -> Vec<String> {
+    let meta: Value =
+        serde_json::from_str(&std::fs::read_to_string(ep.join("meta.json")).unwrap()).unwrap();
+    meta["score"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|a| a.as_str().unwrap().to_string())
+        .collect()
+}
+
+/// The changelog task opts in to rename pairing in its `task.toml`, so the scorer runs with
+/// `--allow-variant-renames` and the pilot's spec-following candidate pairs `horizontal`…
+/// with the reference's `cobalt`…; the button task does not, and its scorer argv lacks it.
+#[test]
+fn the_changelog_task_opt_in_reaches_the_real_scorer() {
+    let out = Scratch::new("renames");
+    let ep = start_task(&out.0, "nyuchi-changelog-renderer");
+    assert_eq!(
+        score_argv(&ep).last().map(String::as_str),
+        Some("--allow-variant-renames")
+    );
+    let candidate = repo_root().join(
+        "benchmarks/results/2026-09-27-pilot/claude-subagent/mzizi/nyuchi-changelog-renderer/seed-0/iter-01/candidate.mz",
+    );
+    let o = submit(&ep, &candidate);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let fin = finish(&ep);
+    assert_eq!(fin["scored"], true, "{fin}");
+    assert_eq!(fin["defects"], 0, "{fin}");
+    assert_eq!(fin["facts_checked"], 2, "{fin}");
+    assert_eq!(fin["renames"], 4, "{fin}");
+
+    let button = start(&out.0);
+    assert!(
+        !score_argv(&button)
+            .iter()
+            .any(|a| a == "--allow-variant-renames"),
+        "button does not opt in"
+    );
 }

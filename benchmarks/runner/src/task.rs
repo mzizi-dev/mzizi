@@ -4,9 +4,16 @@
 //! `task.toml` is read with a deliberately tiny reader: top-level `key = "string"` pairs
 //! before the first `[table]` header. The `[source]` table (provenance) is not needed to
 //! run an episode, so it is not interpreted — only the top-level `name`, `spec`,
-//! `reference` and optional `enums` keys are. `spec` and `reference` are paths relative to
-//! the task directory, defaulting to `spec.tsx` and `reference.rs`. `enums` is a
-//! single-line array of Rust PascalCase enum names (see `prompt::enum_sentence`).
+//! `reference`, and optional `enums`, `allow_variant_renames` and `rename_reason` keys are.
+//! `spec` and `reference` are paths relative to the task directory, defaulting to
+//! `spec.tsx` and `reference.rs`. `enums` is a single-line array of Rust PascalCase enum
+//! names (see `prompt::enum_sentence`).
+//!
+//! `allow_variant_renames = true` opts the task in to the scorer pairing renamed variants
+//! by class string (`mzizi-benchmark-harness score --allow-variant-renames`). It is off by
+//! default — a candidate that renames against its spec must score the rename — and a task
+//! that sets it must also give a non-empty `rename_reason` saying why its spec and
+//! reference disagree on names, or the task does not load.
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +25,10 @@ pub struct Task {
     pub reference_path: PathBuf,
     /// Optional `enums = [...]` (Rust PascalCase): the enum names the prompt asks for.
     pub enums: Vec<String>,
+    /// `allow_variant_renames = true`: score with rename pairing. `false` when absent.
+    pub allow_variant_renames: bool,
+    /// Why the task allows renames. `Some` exactly when `allow_variant_renames` is set.
+    pub rename_reason: Option<String>,
 }
 
 pub fn load_task(dir: &Path) -> Result<Task, String> {
@@ -44,13 +55,58 @@ pub fn load_task(dir: &Path) -> Result<Task, String> {
     let enums = top_level_string_array(&toml, "enums")
         .map_err(|e| format!("{}: {e}", toml_path.display()))?
         .unwrap_or_default();
+    let allow_variant_renames = top_level_bool(&toml, "allow_variant_renames")
+        .map_err(|e| format!("{}: {e}", toml_path.display()))?
+        .unwrap_or(false);
+    let rename_reason = top_level_string(&toml, "rename_reason").filter(|r| !r.trim().is_empty());
+    match (allow_variant_renames, &rename_reason) {
+        (true, None) => {
+            return Err(format!(
+                "{}: `allow_variant_renames = true` needs a non-empty `rename_reason`",
+                toml_path.display()
+            ));
+        }
+        (false, Some(_)) => {
+            return Err(format!(
+                "{}: `rename_reason` without `allow_variant_renames = true`",
+                toml_path.display()
+            ));
+        }
+        _ => {}
+    }
     Ok(Task {
         name: safe_component(&name)?,
         dir,
         spec_path,
         reference_path,
         enums,
+        allow_variant_renames,
+        rename_reason,
     })
+}
+
+/// A top-level `key = true|false`. `Ok(None)` if absent; any other value is an error.
+pub fn top_level_bool(toml: &str, key: &str) -> Result<Option<bool>, String> {
+    for line in toml.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            return Ok(None);
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            continue;
+        };
+        if k.trim() != key {
+            continue;
+        }
+        // A trailing `# comment` is allowed; nothing else is.
+        let v = v.split('#').next().unwrap_or("").trim();
+        return match v {
+            "true" => Ok(Some(true)),
+            "false" => Ok(Some(false)),
+            _ => Err(format!("`{key}` must be `true` or `false`, not `{v}`")),
+        };
+    }
+    Ok(None)
 }
 
 /// A top-level single-line `key = ["A", "B"]` array of strings. `Ok(None)` if absent.
@@ -162,6 +218,74 @@ mod tests {
             top_level_string_array("[source]\nenums = [\"X\"]\n", "enums").unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn reads_optional_bool() {
+        assert_eq!(top_level_bool("a = true\n", "a").unwrap(), Some(true));
+        assert_eq!(
+            top_level_bool("a = false # no\n", "a").unwrap(),
+            Some(false)
+        );
+        assert_eq!(top_level_bool("b = true\n", "a").unwrap(), None);
+        assert_eq!(top_level_bool("[t]\na = true\n", "a").unwrap(), None);
+        assert!(top_level_bool("a = \"true\"\n", "a").is_err());
+    }
+
+    fn task_dir(toml: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("mzbench-task-{}-{}", std::process::id(), fnv(toml)));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("task.toml"), toml).unwrap();
+        std::fs::write(d.join("spec.tsx"), "").unwrap();
+        std::fs::write(d.join("reference.rs"), "").unwrap();
+        d
+    }
+
+    fn fnv(s: &str) -> u64 {
+        s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+        })
+    }
+
+    #[test]
+    fn variant_renames_are_off_by_default_and_need_a_reason() {
+        let t = load_task(&task_dir("name = \"a\"\n")).unwrap();
+        assert!(!t.allow_variant_renames);
+        assert_eq!(t.rename_reason, None);
+
+        let t = load_task(&task_dir(
+            "name = \"b\"\nallow_variant_renames = true\nrename_reason = \"spec and reference disagree\"\n",
+        ))
+        .unwrap();
+        assert!(t.allow_variant_renames);
+        assert_eq!(
+            t.rename_reason.as_deref(),
+            Some("spec and reference disagree")
+        );
+
+        let e = load_task(&task_dir("name = \"c\"\nallow_variant_renames = true\n")).unwrap_err();
+        assert!(e.contains("needs a non-empty `rename_reason`"), "{e}");
+        let e = load_task(&task_dir(
+            "name = \"d\"\nallow_variant_renames = true\nrename_reason = \" \"\n",
+        ))
+        .unwrap_err();
+        assert!(e.contains("needs a non-empty `rename_reason`"), "{e}");
+        let e = load_task(&task_dir("name = \"e\"\nrename_reason = \"x\"\n")).unwrap_err();
+        assert!(e.contains("without `allow_variant_renames = true`"), "{e}");
+    }
+
+    #[test]
+    fn only_the_changelog_task_opts_in_to_renames() {
+        let tasks = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tasks");
+        for (name, allowed) in [
+            ("button", false),
+            ("badge", false),
+            ("nyuchi-changelog-renderer", true),
+        ] {
+            let t = load_task(&tasks.join(name)).unwrap();
+            assert_eq!(t.allow_variant_renames, allowed, "{name}");
+        }
     }
 
     #[test]

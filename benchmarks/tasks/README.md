@@ -128,6 +128,29 @@ match variants by their class string rather than by name for this task, or repor
 name-level result separately from the other two. Either way, do not quietly count it as a
 defect.
 
+**What happened (2026-09-27).** The first scored pilot
+([`../results/2026-09-27-pilot/RUN.md`](../results/2026-09-27-pilot/RUN.md)) hit exactly
+this: both arms named the variants after the axes, as the spec does, and both scored the
+same 2 defects (`variant_set`, `default`) and a null jaccard. The harness now takes the first
+option, **for this task only**: its `task.toml` sets `allow_variant_renames = true` with a
+`rename_reason`, so `mzbench` scores it with `--allow-variant-renames`, and when the name sets
+differ the scorer pairs variants by class-token similarity (mutual best, no ties, Jaccard at
+least 0.5, a complete bijection), lists each renamed pair in a `variant_names` detail, and
+scores the rest through the pairing (`../README.md`, and RFC-0006 §10.1). `variant_names` is
+never a defect and is not counted in `facts_checked`, so this task scores the same 2 facts
+(`variant_set`, `default`) whether or not the candidate renamed.
+
+**The opt-in, for any task.** `allow_variant_renames` is off unless a task sets it, and a task
+that sets it must give a non-empty `rename_reason` (the runner refuses to load it otherwise).
+Set it only where the spec and the reference disagree on variant names, so that a candidate
+following the spec would otherwise be penalised; never to forgive a candidate that renamed
+against its spec. Without it, `button`'s `destructive` renamed to `danger` is a defect.
+
+**Upstream.** The divergence itself — the Rust reference renaming its own spec's
+`AXIS_COLOURS` keys to mineral names — lives in `mzizi-dev/mzizi-registry`, and is worth an
+issue there: either the `.tsx` should adopt the mineral names too, or the `.rs` should keep
+the axis keys. It is noted here, not filed.
+
 ## Survey: all 21 `.rs` files with a `.tsx` sibling
 
 _Scoreable_ means scoreable under the extractor rules above. _Unscored but checkable_ lists
