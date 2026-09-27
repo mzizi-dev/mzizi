@@ -1,0 +1,53 @@
+component badge
+
+  enum badge_variant
+    default  class "bg-primary text-primary-foreground [a]:hover:bg-primary/80"
+    secondary  class "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80"
+    destructive  class "bg-destructive/10 [a]:hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 text-destructive dark:bg-destructive/20"
+    outline  class "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground bg-input/30"
+    ghost  class "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50"
+    link  class "text-primary underline-offset-4 hover:underline"
+  end
+
+  prop variant: badge_variant = default
+  prop as_child: bool = false
+  prop class: text
+  prop ...props: event(none)
+
+  view
+    slot = "badge"
+    class = "h-5 gap-1 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium transition-all has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&>svg]:size-3! inline-flex items-center justify-center w-fit whitespace-nowrap shrink-0 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive overflow-hidden group/badge"
+    when as_child
+      control
+        slot = "badge-content"
+        class = "inline-flex items-center justify-center"
+        data_slot = "badge"
+        data_portal = "https://mzizi.dev/components/badge"
+        data_variant = variant
+        class = "bg-{variant.class} {class}"
+        ...props
+      end
+    else
+      span
+        slot = "badge-content"
+        class = "inline-flex items-center justify-center"
+        data_slot = "badge"
+        data_portal = "https://mzizi.dev/components/badge"
+        data_variant = variant
+        class = "bg-{variant.class} {class}"
+        ...props
+      end
+    end
+  end
+
+  contract
+    slot is "badge"
+    badge_variant.default class contains "bg-primary"
+    badge_variant.secondary class contains "bg-secondary"
+    badge_variant.destructive class contains "bg-destructive"
+    badge_variant.outline class contains "border-border"
+    badge_variant.ghost class contains "hover:bg-muted"
+    badge_variant.link class contains "text-primary"
+  end
+
+end component badge

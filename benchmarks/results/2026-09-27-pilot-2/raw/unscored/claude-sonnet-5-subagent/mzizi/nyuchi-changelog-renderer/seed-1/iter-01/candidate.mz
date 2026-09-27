@@ -1,0 +1,119 @@
+## Renders one changelog entry in the Nyuchi ecosystem changelog timeline.
+## The outer feed groups repeated entries; node badges use `node_accent` axis colours.
+component nyuchi_changelog_renderer
+
+  enum node_accent
+    horizontal class "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]"
+    vertical   class "bg-[var(--color-tanzanite)]/10 text-[var(--color-tanzanite)]"
+    depth      class "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]"
+    outlier    class "bg-[var(--color-gold)]/10 text-[var(--color-gold)]"
+  end
+
+  prop version: text
+  prop title: text
+  prop description: text
+  prop date: text
+  prop node_axis: node_accent = horizontal
+  prop node_label: text = "N1"
+  prop show_nodes: bool = false
+  prop show_added: bool = false
+  prop added_label: text = ""
+  prop show_modified: bool = false
+  prop modified_label: text = ""
+  prop show_deprecated: bool = false
+  prop deprecated_label: text = ""
+
+  view
+    row
+      slot = "nyuchi-changelog-renderer"
+      class = "flex flex-col gap-8"
+      role = "feed"
+      row
+        slot = "changelog-entry"
+        class = "relative border-l-2 border-border pl-6"
+        row
+          slot = "timeline-dot"
+          class = "absolute top-1 -left-[5px] size-2 rounded-full bg-primary"
+        end
+        row
+          class = "flex flex-wrap items-baseline gap-3"
+          row
+            slot = "version"
+            class = "font-mono text-sm font-bold text-primary"
+            text = version
+          end
+          row
+            slot = "date"
+            class = "text-xs text-muted-foreground"
+            text = date
+          end
+        end
+        row
+          slot = "title"
+          class = "mt-1 text-lg font-semibold"
+          text = title
+        end
+        row
+          slot = "description"
+          class = "mt-1 text-sm text-muted-foreground"
+          text = description
+        end
+        when show_nodes
+          row
+            class = "mt-2 flex flex-wrap gap-1"
+            row
+              slot = "node-badge"
+              class = "rounded-full px-2 py-0.5 text-xs font-medium {node_axis.class}"
+              text = node_label
+            end
+          end
+        end
+        when show_added
+          row
+            class = "mt-2 flex flex-wrap gap-1"
+            row
+              slot = "component-added"
+              class = "rounded bg-[var(--status-success,#64FFDA)]/10 px-1.5 py-0.5 text-xs text-[var(--status-success,#22C55E)]"
+              text = added_label
+            end
+          end
+        end
+        when show_modified
+          row
+            class = "mt-1 flex flex-wrap gap-1"
+            row
+              slot = "component-modified"
+              class = "rounded bg-[var(--color-cobalt)]/10 px-1.5 py-0.5 text-xs text-[var(--color-cobalt)]"
+              text = modified_label
+            end
+          end
+        end
+        when show_deprecated
+          row
+            class = "mt-1 flex flex-wrap gap-1"
+            row
+              slot = "component-deprecated"
+              class = "rounded bg-[var(--status-warning,#F59E0B)]/10 px-1.5 py-0.5 text-xs text-[var(--status-warning,#F59E0B)] line-through"
+              text = deprecated_label
+            end
+          end
+        end
+      end
+    end
+  end
+
+  contract
+    slot is "nyuchi-changelog-renderer"
+    every node_accent class not_empty
+    node_accent.horizontal class contains "cobalt"
+    node_accent.vertical class contains "tanzanite"
+    node_accent.depth class contains "malachite"
+    node_accent.outlier class contains "gold"
+    node_axis is horizontal
+    show_nodes is false
+    show_added is false
+    show_modified is false
+    show_deprecated is false
+  end
+
+end component nyuchi_changelog_renderer

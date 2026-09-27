@@ -1,0 +1,4 @@
+The compile check reported errors. Fix them and reply with exactly one fenced code block containing the complete corrected file and nothing else.
+
+{"code":"MZ0602","severity":"error","file":"/tmp/claude-0/-workspace-mzizi/d6ecf655-0263-5808-81b7-f535507e0029/scratchpad/results/scored/claude-sonnet-5-subagent/mzizi/button/seed-3/iter-01/candidate.mz","span":[53,21,53,21],"say":"a contract clause needs a predicate (is / in / contains / not_empty / at_least / uses / min_height / shows), found end of line"}
+{"summary":true,"errors":1,"warnings":0,"exact_fixable":0,"ms":0}

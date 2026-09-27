@@ -1,0 +1,1 @@
+POST http://127.0.0.1:8080/v1/chat/completions: HTTP 400: {"error":{"code":400,"message":"request (20488 tokens) exceeds the available context size (16384 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":20488,"n_ctx":16384}}

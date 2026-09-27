@@ -1,0 +1,26 @@
+error: Attributes must come before children in an element
+   --> candidate.rs:143:13
+    |
+143 |             onclick: move |event| {
+    |             ^^^^^^^
+
+
+error[E0609]: no field `onclick` on type `ButtonProps`
+   --> candidate.rs:144:46
+    |
+144 |                 if let Some(handler) = props.onclick {
+    |                                              ^^^^^^^ unknown field
+    |
+    = note: available fields are: `variant`, `size`, `class`, `attributes`, `children`
+
+
+error[E0282]: type annotations needed
+   --> candidate.rs:145:21
+    |
+145 |                     handler.call(event);
+    |                     ^^^^^^^ cannot infer type
+
+
+Some errors have detailed explanations: E0282, E0609.
+
+For more information about an error, try `rustc --explain E0282`.

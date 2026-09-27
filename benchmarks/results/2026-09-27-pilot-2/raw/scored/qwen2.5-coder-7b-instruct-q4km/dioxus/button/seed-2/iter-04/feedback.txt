@@ -1,0 +1,7 @@
+The compile check reported errors. Fix them and reply with exactly one fenced code block containing the complete corrected file and nothing else.
+
+error: Attributes must come before children in an element
+   --> candidate.rs:141:13
+    |
+141 |             onclick: move |event| {
+    |             ^^^^^^^

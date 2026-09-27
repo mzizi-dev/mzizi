@@ -1,0 +1,55 @@
+{
+  "arm": "mzizi",
+  "check": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "--manifest-path",
+      "/workspace/mzizi/compiler/Cargo.toml",
+      "--bin",
+      "mz",
+      "--",
+      "check",
+      "--agent",
+      "{file}"
+    ],
+    "cwd": "/workspace/mzizi"
+  },
+  "endpoint": "http://127.0.0.1:8080",
+  "enums": [
+    "ButtonVariant",
+    "ButtonSize"
+  ],
+  "guide_bytes": 10223,
+  "guide_fnv1a64": "675edc2370682334",
+  "guide_path": "/workspace/mzizi/benchmarks/prompts/mzizi-guide.md",
+  "iteration_count_enforced_by_runner": true,
+  "max_iters": 5,
+  "max_tokens": 4096,
+  "mode": "model",
+  "model": "qwen2.5-coder-7b-instruct-q4km",
+  "reference_path": "/workspace/mzizi/benchmarks/tasks/button/reference.rs",
+  "score": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "-p",
+      "mzizi-benchmark-harness",
+      "--",
+      "score",
+      "--arm",
+      "{arm}",
+      "--candidate",
+      "{candidate}",
+      "--reference",
+      "{reference}"
+    ],
+    "cwd": "/workspace/mzizi"
+  },
+  "seed": 1,
+  "task": "button",
+  "task_dir": "/workspace/mzizi/benchmarks/tasks/button",
+  "temperature": 0.2
+}

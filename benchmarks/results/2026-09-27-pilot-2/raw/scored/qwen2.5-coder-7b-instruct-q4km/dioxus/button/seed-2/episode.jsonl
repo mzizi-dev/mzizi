@@ -1,0 +1,6 @@
+{"check_exit":1,"check_ms":291,"compile_ok":false,"completion_tokens":1337,"diagnostics_chars":392,"extract_error":null,"gen_ms":402831,"iter":1,"kind":"iteration","prompt_tokens":3635}
+{"check_exit":1,"check_ms":283,"compile_ok":false,"completion_tokens":1337,"diagnostics_chars":392,"extract_error":null,"gen_ms":473361,"iter":2,"kind":"iteration","prompt_tokens":5104}
+{"check_exit":1,"check_ms":287,"compile_ok":false,"completion_tokens":1337,"diagnostics_chars":392,"extract_error":null,"gen_ms":535822,"iter":3,"kind":"iteration","prompt_tokens":6573}
+{"check_exit":1,"check_ms":279,"compile_ok":false,"completion_tokens":1326,"diagnostics_chars":159,"extract_error":null,"gen_ms":572808,"iter":4,"kind":"iteration","prompt_tokens":8042}
+{"check_exit":0,"check_ms":317,"compile_ok":true,"completion_tokens":1299,"diagnostics_chars":0,"extract_error":null,"gen_ms":599574,"iter":5,"kind":"iteration","prompt_tokens":9446}
+{"arm":"dioxus","class_token_jaccard":1.0,"clean":true,"defects":0,"facts_checked":9,"iterations":5,"iterations_to_clean":5,"kind":"final","max_iters":5,"mode":"model","model":"qwen2.5-coder-7b-instruct-q4km","score_error":null,"scored":true,"seed":2,"task":"button","temperature":0.2,"token_source":"endpoint_usage","total_completion_tokens":6636,"total_prompt_tokens":32800,"transcript_tokens":10671,"transcript_tokens_null_reason":null}

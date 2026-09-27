@@ -114,6 +114,13 @@ checker it ran against cannot fail on type or interpolation names. It is recorde
 found a harness false positive (the changelog task's renamed variants, fixed above), and so
 that the next run has something exact to be compared against.
 
+The second, the same day, adds the arm the first is missing:
+[`results/2026-09-27-pilot-2/`](results/2026-09-27-pilot-2/RUN.md) — the same two scored tasks
+at the same `ded425a`, three seeds, measured tokens, and Qwen2.5-Coder-7B on CPU alongside a
+frontier model (`benchmarks/openweight/`). It is not the Phase 0 number either. It is the only
+small-model data there is, and on it Mzizi did worse than Dioxus on all three metrics; the
+write-up traces why.
+
 ## Where the task set lives (RFC-0004)
 
 Everything in this directory is and stays **public**: the runner, the metric definitions, the

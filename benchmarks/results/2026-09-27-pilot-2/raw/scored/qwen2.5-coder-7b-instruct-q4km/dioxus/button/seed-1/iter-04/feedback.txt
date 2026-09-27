@@ -1,0 +1,78 @@
+The compile check reported errors. Fix them and reply with exactly one fenced code block containing the complete corrected file and nothing else.
+
+error: Custom attributes are not supported for components that are spread
+   --> candidate.rs:141:13
+    |
+141 |             "data-slot": "button",
+    |             ^^^^^^^^^^^
+
+
+error: Custom attributes are not supported for components that are spread
+   --> candidate.rs:142:13
+    |
+142 |             "data-portal": "https://mzizi.dev/components/button",
+    |             ^^^^^^^^^^^^^
+
+
+error: Custom attributes are not supported for components that are spread
+   --> candidate.rs:143:13
+    |
+143 |             "data-variant": props.variant.slug(),
+    |             ^^^^^^^^^^^^^^
+
+
+error: Custom attributes are not supported for components that are spread
+   --> candidate.rs:144:13
+    |
+144 |             "data-size": props.size.slug(),
+    |             ^^^^^^^^^^^
+
+
+error[E0433]: failed to resolve: use of undeclared type `Slot`
+   --> candidate.rs:137:43
+    |
+137 |     let Comp = if props.as_child { rsx! { Slot::Root {} } } else { rsx! { button {} } };
+    |                                           ^^^^ use of undeclared type `Slot`
+
+
+error[E0282]: type annotations needed
+   --> candidate.rs:137:36
+    |
+137 |     let Comp = if props.as_child { rsx! { Slot::Root {} } } else { rsx! { button {} } };
+    |                                    ^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+    |
+    = note: this error originates in the macro `rsx` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+
+error[E0609]: no field `class` on type `Vec<dioxus::prelude::Attribute>`
+   --> candidate.rs:145:13
+    |
+145 |             class: button_classes(props.variant, props.size, &props.class),
+    |             ^^^^^ unknown field
+
+
+error[E0609]: no field `children` on type `Vec<dioxus::prelude::Attribute>`
+   --> candidate.rs:147:13
+    |
+147 |             {props.children}
+    |             ^^^^^^^^^^^^^^^^ unknown field
+
+
+error[E0599]: no method named `into_vcomponent` found for struct `Vec<dioxus::prelude::Attribute>` in the current scope
+   --> candidate.rs:139:5
+    |
+139 |       rsx! {
+    |  _____^
+140 | |         Comp {
+141 | |             "data-slot": "button",
+142 | |             "data-portal": "https://mzizi.dev/components/button",
+...   |
+149 | |     }
+    | |_____^ method not found in `Vec<dioxus::prelude::Attribute>`
+    |
+    = note: this error originates in the macro `rsx` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+
+Some errors have detailed explanations: E0282, E0433, E0599, E0609.
+
+For more information about an error, try `rustc --explain E0282`.

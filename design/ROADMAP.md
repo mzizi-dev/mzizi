@@ -65,6 +65,18 @@ against a checker that cannot fail on names or types. Tokens were not measured a
 the pilot did produce is a harness fix (renamed variants were being scored as defects) and a
 reproducible baseline; what it did not produce is a measurement against the kill criterion.
 
+**2026-09-27, later: a second pilot added the open-weight arm, and it went against Mzizi.**
+[`benchmarks/results/2026-09-27-pilot-2/`](../benchmarks/results/2026-09-27-pilot-2/RUN.md)
+reran the same two scored tasks at the same `ded425a` with three seeds, measured tokens, and
+added Qwen2.5-Coder-7B on CPU — the arm the first pilot names as missing. On the frontier
+model the arms were again indistinguishable (Mzizi ~8% cheaper in tokens). On the 7B model
+Mzizi did worse on all three metrics: 2/6 clean compiles against Dioxus's 4/6, 2/2 clean
+episodes defective against 0/4, and 15 of 16 repair attempts resubmitting an unchanged file.
+This section still stands, for the same reasons the first pilot gives — two tasks, a handful
+of seeds, and a known harness bug that inflates Mzizi's token counts — but the one small-model
+data point there is does not favour the thesis. Its write-up traces each loss to a mechanism;
+one of them, `else` rejected in a view, is already fixed on `main` by RFC-0008.
+
 ## Phases
 
 Defined in [`CHARTER.md`](../CHARTER.md) §4. Reproduced here only as far as their _gates_,

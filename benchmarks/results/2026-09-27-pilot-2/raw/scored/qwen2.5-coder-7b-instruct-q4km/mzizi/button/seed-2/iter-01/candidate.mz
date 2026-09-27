@@ -1,0 +1,61 @@
+component button
+
+  enum button_variant
+    default  class "bg-primary text-primary-foreground hover:bg-primary/80"
+    outline  class "border-border bg-input/30 hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
+    secondary  class "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground"
+    ghost  class "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground"
+    destructive  class "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30"
+    link  class "text-primary underline-offset-4 hover:underline"
+  end
+
+  enum button_size
+    default  class "h-14 gap-2 px-5 has-data-[icon=inline-end]:pr-4 has-data-[icon=inline-start]:pl-4"  height 56
+    sm  class "h-12 gap-1.5 px-4 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3"  height 48
+    lg  class "h-14 gap-2 px-6 has-data-[icon=inline-end]:pr-5 has-data-[icon=inline-start]:pl-5"  height 56
+    icon  class "size-14"  height 48
+    icon_sm  class "size-12"  height 48
+  end
+
+  prop variant: button_variant = default
+  prop size: button_size = default
+  prop as_child: bool = false
+  prop class: text
+  prop ...props: event(none)
+
+  view
+    if as_child
+      slot = "button"
+      class = "inline-flex items-center justify-center whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none shrink-0 [&_svg]:shrink-0 outline-none group/button select-none {class}"
+      data_slot = "button"
+      data_portal = "https://mzizi.dev/components/button"
+      data_variant = variant
+      data_size = size
+      tap = ...props
+    else
+      slot = "button"
+      class = "inline-flex items-center justify-center whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none shrink-0 [&_svg]:shrink-0 outline-none group/button select-none {class}"
+      data_slot = "button"
+      data_portal = "https://mzizi.dev/components/button"
+      data_variant = variant
+      data_size = size
+      tap = ...props
+    end
+  end
+
+  contract
+    every button_size height at_least 48
+    button_size.default height is 56
+    button_size.sm height is 48
+    button_size.lg height is 56
+    every button_variant class not_empty
+    button_variant.default class contains "bg-primary"
+    slot is "button"
+    data_slot is "button"
+    data_portal is "https://mzizi.dev/components/button"
+    data_variant is "default"
+    data_size is "default"
+    tap is ...props
+  end
+
+end component button

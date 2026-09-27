@@ -1,0 +1,35 @@
+component badge
+
+  enum badge_variant
+    default  class "bg-primary text-primary-foreground [a]:hover:bg-primary/80"
+    secondary  class "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80"
+    destructive  class "bg-destructive/10 [a]:hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 text-destructive dark:bg-destructive/20"
+    outline  class "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground bg-input/30"
+    ghost  class "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50"
+    link  class "text-primary underline-offset-4 hover:underline"
+  end
+
+  prop variant: badge_variant = default
+  prop as_child: bool = false
+  prop class: text
+  prop ...props: event(none)
+
+  view
+    when as_child
+      slot = "badge"
+      class = "data-slot='badge' data-portal='https://mzizi.dev/components/badge' data-variant={variant.class} {class}"
+      ...props
+    else
+      slot = "badge"
+      class = "data-slot='badge' data-portal='https://mzizi.dev/components/badge' data-variant={variant.class} {class}"
+      ...props
+    end
+  end
+
+  contract
+    slot is "badge"
+    variant.class not_empty
+    class not_empty
+  end
+
+end component badge
