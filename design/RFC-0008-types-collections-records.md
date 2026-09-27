@@ -191,7 +191,8 @@ end
   narrows `entry.added` and nothing else. It is a property of one `when` line and the
   lines inside its `else` — locally checkable by construction.
 - **Using an option anywhere it has not been narrowed is `MZ0710`:** in an attribute, in
-  `{...}`, as a `for each` source, through a dotted access, as an `emit` payload. That is
+  `{...}`, as a `for each` source, through a dotted access. (As an `emit` payload it is
+  `MZ0715` unless the event itself carries the option, §5.) That is
   the TY-6 fix: absence can no longer render as a blank.
 - `else` belongs to `when` only, once per `when` (`MZ0404`), and serves every `when` — it is
   not option-specific. `confirm_bar`'s `when destructive` / `when not destructive` pair
@@ -245,7 +246,12 @@ name below either resolves or is a diagnostic:
   the parser now reads: `emit <event>` for `event(none)`, `emit <event>(<value>)` otherwise.
   The target must be an event prop and the payload must fit its type — `emit
 on_state_change(sync)` is RFC-0001 §4.2's example diagnostic, now real: `MZ0708`, `sync`
-  is not a variant of `connection_state`, `exact` fix `syncing`.
+  is not a variant of `connection_state`, `exact` fix `syncing`. An `event(option(T))`
+  takes `emit e(none)`, an `option(T)` value as is, or any value of type `T`, wrapped
+  implicitly: there is no `some(…)` to write, the same way there is no `some` to test
+  (§4). The first build accepted `event(option(T))` and then rejected every `emit` of it,
+  `none` included (review of #20). An un-narrowed option emitted into an `event(T)` is
+  `MZ0715` (its type is wrong for the payload), not `MZ0710`.
 - **Event wiring:** `tap = …` and `change = …` must name an event prop or a `fn`.
 
 Type rules at value positions: an attribute value is a scalar (`bool`, `int`, `text`, an
