@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::ast::{Attr, Component, Element, EnumDecl, PropDecl, TypeExpr, TypeKind};
-use crate::diagnostic::{Confidence, Diagnostic, Span};
+use crate::diagnostic::{Confidence, Diagnostic, Severity, Span};
 
 /// A resolved type (RFC-0008 §1).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1119,20 +1119,41 @@ impl<'a> Resolver<'a> {
                 offset += len + 1;
             }
             let whole = Span::single(line, col_of(open + 1), body.chars().count() as u32);
-            let path = if body.chars().any(|c| c.is_ascii_uppercase()) {
-                let snake = crate::lex::to_snake_case(&body);
-                self.err_fix(
-                    "MZ0101",
-                    whole,
-                    format!("`{body}` is not snake_case — Mzizi names are snake_case, so write `{snake}`"),
-                    (whole, snake.clone(), Confidence::Exact),
-                );
-                snake
+            if !body.chars().any(|c| c.is_ascii_uppercase()) {
+                let ty = self.path(&body, &segments, whole, scope);
+                self.fits(&ty, Use::Interp, &body, whole);
+                continue;
+            }
+            // Snake-case each segment on its own: `item.Version` is `item.version`, not the
+            // whole string's `item._version`.
+            let snake = body
+                .split('.')
+                .map(crate::lex::to_snake_case)
+                .collect::<Vec<_>>()
+                .join(".");
+            // One mistake, one diagnostic: resolve the corrected path quietly. If it
+            // resolves, the case is the only mistake and its fix is exact. If it does not,
+            // the fix is only a guess, and the path's own error is not reported on top.
+            let before = self.diags.len();
+            let ty = self.path(&snake, &segments, whole, scope);
+            let resolves = self.diags[before..]
+                .iter()
+                .all(|d| d.severity != Severity::Error);
+            let (confidence, tail) = if resolves {
+                (Confidence::Exact, String::new())
             } else {
-                body
+                self.diags.truncate(before);
+                (Confidence::Guess, format!(", though `{}` does not resolve either", clip(&snake)))
             };
-            let ty = self.path(&path, &segments, whole, scope);
-            self.fits(&ty, Use::Interp, &path, whole);
+            self.err_fix(
+                "MZ0101",
+                whole,
+                format!("`{body}` is not snake_case — Mzizi names are snake_case, so write `{snake}`{tail}"),
+                (whole, snake.clone(), confidence),
+            );
+            if resolves {
+                self.fits(&ty, Use::Interp, &snake, whole);
+            }
         }
     }
 

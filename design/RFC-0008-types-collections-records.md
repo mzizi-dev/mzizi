@@ -332,7 +332,11 @@ the pass this RFC adds.
 All follow RFC-0001 §4: `say` at most 200 characters and quoting the source, deterministic
 order, and one diagnostic per real error — an unknown type is reported once, at its
 declaration, and every later use of that prop is silently the error type rather than a
-cascade of `MZ0709`s.
+cascade of `MZ0709`s. A name inside `{...}` that is not snake_case is `MZ0101`, fixed
+segment by segment (`{item.Version}` → `item.version`, not `item._version`), and it is the
+only diagnostic for that path: its fix is `exact` when the corrected path resolves, and a
+`guess` — with the path's own error folded into it, not reported beside it — when it does
+not (review of #20).
 
 ## 7. The IR and the outline
 
