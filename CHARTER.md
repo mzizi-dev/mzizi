@@ -17,16 +17,14 @@
 
 <!-- -->
 
-> **Interim location note:** this directory lives inside `nyuchi/mzizi-tools` only as a
-> temporary host. Per the charter's ownership line, this project is 100% Bundu Foundation
-> IP, distinct from the Nyuchi-owned Mzizi design system/registry (`nyuchi/mzizi`) and the
-> Mzizi console tooling elsewhere in this repo. It moves to its own repo in the dedicated
-> Mzizi org, **`mzizi-dev`**, which exists and is Foundation-governed (`mzizi-dev/roadmap` —
+> **Location note:** this project lives in its own repo, **`mzizi-dev/mzizi`**, in the
+> dedicated Mzizi org, **`mzizi-dev`**, which is Foundation-governed (`mzizi-dev/roadmap` —
 > "The Mzizi Roadmap by the Bundu Foundation" — plus org defaults in `mzizi-dev/.github`).
-> Not `bundu-labs`: that is the Foundation's general org and holds unrelated work. So the
-> move is scheduling, not a prerequisite. Keep this directory self-contained (no
-> dependencies on the rest of this repo beyond what Phase 0 genuinely needs) so that move is
-> a straight copy, not a untangling exercise.
+> Not `bundu-labs`: that is the Foundation's general org and holds unrelated work. It
+> started inside `nyuchi/mzizi-tools` (since renamed and moved to `mzizi-dev/agent-tools`)
+> as a temporary host and has moved out. Per the charter's ownership line, this project is
+> 100% Bundu Foundation IP, distinct from the Nyuchi-owned Mzizi design system/registry
+> (`mzizi-dev/mzizi-registry`) and the Mzizi console tooling in `mzizi-dev/agent-tools`.
 
 ---
 
@@ -44,8 +42,8 @@ That claim doesn't stop at UI, and it doesn't stop at Dioxus. An agent authoring
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Syntax + type system + compiler**                            | Novel. This is the actual research contribution and the thing worth defending as IP.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **UI layer**                                                   | **`mzizi-ui` — Mzizi's own component registry (`mzizi-dev/mzizi-registry`'s Rust primitives, tokens, and DNA-helix architecture) — is first-class.** Dioxus is a compatible third-party rendering target for it, the same as any other Rust UI registry that adopted the same contract would be — not the thing Mzizi's UI story is built on top of.                                                                                                                                                   |
-| **Full-stack (UI + server)**                                   | Component authoring against `mzizi-ui`'s own contract for the UI half; `workers-rs` for the server/API half. Full-stack means a component and the handler that serves it ship from the same Mzizi source, not two different tools glued together after the fact.                                                                                                                                                                                                                                       |
-| **Edge (Cloudflare Workers and Containers)**                   | **First-class from day one, not a later phase.** Both primitives, named together — Workers for lightweight edge compute, Containers for heavier workloads — because this is where agentic software is actually being deployed, fast. The one integration surface with real, working prior experience (`workers-rs`).                                                                                                                                                                                   |
+| **Full-stack (UI + server)**                                   | Component authoring against `mzizi-ui`'s own contract for the UI half; the server/API half lowered per target — `workers-rs` for Workers, a native Rust HTTP server (axum-class) for Containers. Full-stack means a component and the handler that serves it ship from the same Mzizi source, not two different tools glued together after the fact; handlers reach target-specific facilities only through declared capabilities.                                                                     |
+| **Edge (Cloudflare Workers and Containers)**                   | **First-class from day one, not a later phase.** Both primitives, named together — Workers for lightweight edge compute, Containers for heavier workloads — because this is where agentic software is actually being deployed, fast. One source, per-target lowering: Workers via `workers-rs` (wasm32, the one integration surface with real, working prior experience); Containers via a native Rust HTTP server packaged as a container image, reached from a Worker through the Container binding. |
 | **ML workloads**                                               | **Native integration with Candle.** Mzizi components declare and consume ML inference as a first-class capability; Mzizi does not build a competing tensor runtime — this holds regardless of how many other targets Mzizi reaches.                                                                                                                                                                                                                                                                    |
 | **Native mobile** (iOS/Swift, HarmonyOS/ArkTS, Android/Kotlin) | Two tracks. Near-term: `mzizi-ui` rendered through a compatible mobile engine (Dioxus today) — the same interop bet as web/desktop, no new work. Longer-term, separately scoped: native codegen/bindings generated from the same Rust core (the proven pattern — UniFFI, cxx — used for e.g. Mozilla's and 1Password's Rust-core mobile apps), for teams that need a genuinely native surface rather than a Dioxus-rendered one. Not designed yet — named here so it isn't lost, not claimed as built. |
 | **Hardware / embedded**                                        | Named as a future direction. Genuinely unscoped today — no target board, RTOS, or use case decided. Not to be designed until the full-stack web+server target (Phase 1) has a real deployment.                                                                                                                                                                                                                                                                                                         |
@@ -69,7 +67,7 @@ Research portfolios ship one thread at a time or nothing ships. This is the orde
 A standalone compiler/syntax prototype with zero UI story. Success criterion: a defined benchmark where an LLM agent authors N equivalent components in Mzizi's syntax vs. raw Dioxus/Leptos, measured on tokens consumed, iterations to a clean compile, and defect rate. If this doesn't show a measurable advantage, nothing downstream matters — don't build Phase 1 until Phase 0 has a real number attached to it.
 
 **Phase 1 — Full-stack: `mzizi-ui` + Cloudflare Workers and Containers, together.**
-Merges what an earlier version of this charter called Phase 1 and Phase 2 — §2's own table already called edge deployment "first-class... from day one," and phasing it separately, behind a generic rendering artifact, didn't honor that. The real Phase 1 deliverable: a Mzizi-authored full-stack application — UI via `mzizi-ui`, Mzizi's own component registry, rendered through a compatible third-party engine (Dioxus today); server/API via `workers-rs` — actually deployed to Cloudflare, as a Worker or a Container depending on the workload. Not a WASM bundle sitting unshipped; a real edge deployment, both because that's the fastest path to a genuine full-stack proof point given existing team experience with `workers-rs`, and because Workers/Containers together are where agentic software is actually heading. Treat any temptation to build a native renderer or a bespoke edge runtime here as scope creep — `mzizi-ui`'s own contract plus Dioxus and `workers-rs`/Containers are the integrations, not projects to out-build.
+Merges what an earlier version of this charter called Phase 1 and Phase 2 — §2's own table already called edge deployment "first-class... from day one," and phasing it separately, behind a generic rendering artifact, didn't honor that. The real Phase 1 deliverable: a Mzizi-authored full-stack application — UI via `mzizi-ui`, Mzizi's own component registry, rendered through a compatible third-party engine (Dioxus today); server/API from the same Mzizi source, lowered per target — actually deployed to Cloudflare, as a Worker or a Container depending on the workload. The **Workers** target lowers to `workers-rs` (wasm32); the **Containers** target lowers to a native Rust HTTP server (axum-class, e.g. axum) packaged as a container image and reached from a Worker through the Container binding. `workers-rs` targets only the Workers runtime — Containers run ordinary container images — so handler code reaches target-specific facilities only through declared capabilities, which is what keeps "the same Mzizi source" true across both. Phase 1's UI output must also ship as a **self-contained artifact** usable without the Phase 1 Worker: an ES module / custom element (and its WASM bundle) loadable from a plain `<script type="module">`, a WebView, or a WASM host. That is what "standing alone" means wherever this charter uses it. Not a WASM bundle sitting unshipped; a real edge deployment, both because that's the fastest path to a genuine full-stack proof point given existing team experience with `workers-rs`, and because Workers/Containers together are where agentic software is actually heading. Treat any temptation to build a native renderer or a bespoke edge runtime here as scope creep — `mzizi-ui`'s own contract plus Dioxus, `workers-rs`, and a native Rust HTTP server for Containers are the integrations, not projects to out-build.
 
 **Phase 2 — Candle integration.**
 First-class support for declaring ML inference inside Mzizi components, backed by Candle. Not a competing ML runtime.
@@ -78,7 +76,7 @@ First-class support for declaring ML inference inside Mzizi components, backed b
 `mzizi-ui` rendered through a compatible mobile engine (Dioxus today) first — the same interop bet as Phase 1, just the mobile target, no new design needed. The separate, larger bet — generating idiomatic native Swift/ArkTS/Kotlin from the same Rust core — is real and named but not designed: it needs its own RFC, with its own resolved design questions, before it's a phase with an actual deliverable. The same discipline Phase 0's benchmark got before anyone wrote code against it.
 
 **Phase 4 — Distribution adapters.**
-Once Phase 1's artifacts exist and stand alone, framework-specific adapters are thin packaging layers on top of them, not new compiler work. Astro is one such adapter — using the Custom Element pattern already scoped in the separate build-out doc — not the flagship web story it was in an earlier version of this charter, since full-stack web now ships directly via Phase 1's Dioxus+Workers path. Additional adapters (other web frameworks, a desktop installer story) belong at this same tier, added as demand appears — none of them require touching Phase 0–3.
+Once Phase 1's artifacts exist and stand alone — the self-contained UI artifact Phase 1 defines, usable without the Phase 1 Worker — framework-specific adapters are thin packaging layers on top of them, not new compiler work. Astro is one such adapter — using the Custom Element pattern already scoped in the separate build-out doc — not the flagship web story it was in an earlier version of this charter, since full-stack web now ships directly via Phase 1's Dioxus+Workers path. Additional adapters (other web frameworks, a desktop installer story) belong at this same tier, added as demand appears — none of them require touching Phase 0–3.
 
 **Phase 5 — Hardware / embedded.**
 Named, not designed. No target board, RTOS, or use case decided. Revisit once Phase 1 has shipped a real full-stack deployment — this phase does not get scoped in the abstract.
@@ -96,7 +94,7 @@ Named, not designed. No target board, RTOS, or use case decided. Revisit once Ph
 The charter originally flagged this as the one decision that had to be made before work starts. Resolved 2026-08-23:
 
 - **Task set:** the fixed, known-ground-truth component set is **Mzizi's own components** — the
-  design system already built out in `nyuchi/mzizi` (571+ components, partially ported to Rust
+  design system already built out in `mzizi-dev/mzizi-registry` (571+ components, partially ported to Rust
   across N7–N11 as of this decision). The agent authors these in Mzizi-lang syntax against the
   existing `.tsx`/`.rs` implementations as ground truth. This is explicitly **not** a port of an
   external library (shadcn, a generic primitive set, etc.) — Mzizi's own components are the
@@ -104,7 +102,7 @@ The charter originally flagged this as the one decision that had to be made befo
 - **Defect definition:** a defect is code that **compiles cleanly but is behaviorally wrong** —
   it passes the compiler but fails a contract/behavior test against the reference
   implementation. This mirrors the contract-test pattern already used for the `.tsx` → `.rs`
-  ports in `nyuchi/mzizi` (`mzizi-rs/crates/*/tests/contract.rs`): the reference is read from
+  ports in `mzizi-dev/mzizi-registry` (`mzizi-rs/crates/*/tests/contract.rs`): the reference is read from
   disk, and disagreement is the new code's fault unless it's a documented, deliberate
   divergence. A syntax/compile error is not itself a "defect" for this metric — it's the normal,
   expected friction the compile-error-density design goal (§3) is trying to minimize; the defect
@@ -117,10 +115,10 @@ The charter originally flagged this as the one decision that had to be made befo
   the kill criterion below could never fire. See
   [`design/RFC-0004-test-topology.md`](./design/RFC-0004-test-topology.md), which also fixes the
   rule that keeps the project forkable: private consumes public, public never consumes private.
-- **Repo/ownership:** work starts in the existing Nyuchi-accessible repos (this directory, inside
-  `mzizi-tools`) as an interim home. Mzizi-the-framework will move to its own repo in the
-  dedicated Mzizi org, `mzizi-dev`, which already exists — see the interim-location note at
-  the top of this file.
+- **Repo/ownership:** work started in the existing Nyuchi-accessible repos (a directory inside
+  `nyuchi/mzizi-tools`, since renamed to `mzizi-dev/agent-tools`) as an interim home.
+  Mzizi-the-framework has since moved to its own repo, `mzizi-dev/mzizi`, in the dedicated
+  Mzizi org, `mzizi-dev` — see the location note at the top of this file.
 
 ## 7. Open questions (not yet resolved)
 
