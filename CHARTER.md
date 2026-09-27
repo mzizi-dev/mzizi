@@ -1,11 +1,19 @@
-# Mzizi — A Rust Framework for the Agentic Web
+# Mzizi — A General-Purpose Framework for the Agentic World, in Rust
 
-## Bundu Foundation Research Charter, v0.1
+## Bundu Foundation Research Charter, v0.2
 
 **Owner:** Bundu Foundation (100% — Mzizi framework, components, and logic are Foundation IP)
 **Adjacent, Nyuchi-owned:** the Mzizi console ("Fundi"), active cyber testing
 **Publishing:** `@bundu` npm scope
 **Status:** charter draft — defines direction and phasing, not a sprint plan
+
+> **v0.2 changelog:** supersedes v0.1's web-only framing. The actual goal was always general-purpose
+> software for the agentic world, not just UI components — v0.1 undersold this and, worse,
+> contradicted its own §2: that table already called edge deployment "first-class... from day
+> one," but §4's phasing sequenced it at Phase 2, behind a generic rendering-interop phase it
+> didn't need to wait for. This version fixes both: broadens the target list (§1, §2) and merges
+> the old Phase 1+2 into one full-stack deliverable (§4). Phase 0's benchmark design and gate
+> discipline (§6, §7) are unchanged.
 
 > **Interim location note:** this directory lives inside `nyuchi/mzizi-tools` only as a
 > temporary host. Per the charter's ownership line, this project is 100% Bundu Foundation
@@ -26,18 +34,20 @@ Every major web framework won by being unmistakably better at one thing first, n
 
 Mzizi's single sharp edge: **a Rust framework whose syntax, type system, and compiler feedback loop are designed for machine authorship, not just human ergonomics.** Every existing framework — Rust or otherwise — was designed assuming a human is typing, reading docs, and holding context in their head. None of them are designed for the actual bottleneck of 2026-and-beyond development: an agent iterating against a compiler in a tight loop, thousands of times, where compile speed, error density, and token-efficient representation are first-order metrics, not nice-to-haves.
 
-That's the claim worth making. Everything else — cross-platform reach, ML integration, edge deployment — is Mzizi _integrating_ with what already exists well, not Mzizi out-building specialist projects at their own game.
+That claim doesn't stop at UI. An agent authoring a web component, a server handler, a Cloudflare Worker, an ML pipeline, or eventually a native mobile app or embedded target is doing the same thing at the syntax/compiler layer: generating structured, testable code against a tight compile-check loop. Mzizi is general-purpose for whatever the agentic world needs built — the UI-component benchmark in Phase 0 is the first, smallest, most measurable slice of that claim, not the whole of it. Everything else — cross-platform reach, ML integration, edge deployment, native mobile targets — is Mzizi _integrating_ with what already exists well (Dioxus, Candle, `workers-rs`, and proven native-interop patterns), not Mzizi out-building specialist projects at their own game.
 
 ## 2. What Mzizi is (and isn't)
 
-| Layer                                                       | Approach                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Syntax + type system + compiler**                         | Novel. This is the actual research contribution and the thing worth defending as IP.                                                                                                                                                                                                                                                                                                                                                                |
-| **Cross-platform rendering** (server, web, mobile, desktop) | **Interop with Dioxus's existing renderer**, not a rebuilt rendering engine. Dioxus has already spent years solving "one codebase, four platforms." Reinventing it doesn't buy you anything the syntax/compiler layer needs — it only slows Phase 0 down.                                                                                                                                                                                           |
-| **ML workloads**                                            | **Native integration with Candle.** Mzizi components declare and consume ML inference as a first-class capability; Mzizi does not build a competing tensor runtime.                                                                                                                                                                                                                                                                                 |
-| **Edge**                                                    | First-class deployment target from day one — this is the one place you already have real, working experience (Cloudflare Workers, `workers-rs`), so it's cheap to claim early and hard to fake if you skipped it.                                                                                                                                                                                                                                   |
-| **Compiled artifact**                                       | **WASM (and native, for desktop) is the actual target — not Astro, not any web framework.** Most Mzizi builds never touch Astro at all: mobile apps run the compiled artifact through Dioxus's mobile renderer, desktop through its native renderer, most web builds embed the raw WASM output directly. Astro is one thin, optional distribution surface among several that happens to consume this artifact — it is not a platform Mzizi targets. |
-| **Post-quantum cryptography**                               | **Explicitly deferred.** Named as a future research thread, not part of this charter's scope. Competing with `liboqs`/`pqcrypto` on PQC primitives is a separate, fully-loaded research bet — don't let it dilute Phase 0.                                                                                                                                                                                                                          |
+| Layer | Approach |
+| --- | --- |
+| **Syntax + type system + compiler** | Novel. This is the actual research contribution and the thing worth defending as IP. |
+| **Full-stack (web UI + server)** | **Interop, both halves.** Dioxus's existing renderer for UI; `workers-rs` for the server/API half. Full-stack means a component and the handler that serves it ship from the same Mzizi source, not two different tools glued together after the fact. |
+| **Edge (Cloudflare Workers)** | **First-class from day one, not a later phase.** The one integration surface with real, working prior experience (`workers-rs`) — an initial-goal target, not something bolted on after a generic WASM bundle exists. |
+| **ML workloads** | **Native integration with Candle.** Mzizi components declare and consume ML inference as a first-class capability; Mzizi does not build a competing tensor runtime — this holds regardless of how many other targets Mzizi reaches. |
+| **Native mobile** (iOS/Swift, HarmonyOS/ArkTS, Android/Kotlin) | Two tracks. Near-term: Dioxus's own mobile renderer — the same interop bet as web/desktop, no new work. Longer-term, separately scoped: native codegen/bindings generated from the same Rust core (the proven pattern — UniFFI, cxx — used for e.g. Mozilla's and 1Password's Rust-core mobile apps), for teams that need a genuinely native surface rather than a Dioxus-rendered one. Not designed yet — named here so it isn't lost, not claimed as built. |
+| **Hardware / embedded** | Named as a future direction. Genuinely unscoped today — no target board, RTOS, or use case decided. Not to be designed until the full-stack web+server target (Phase 1) has a real deployment. |
+| **Compiled artifact** | WASM (and native, for desktop and Dioxus-interop mobile) is the near-term target. A real native-per-platform artifact (an actual `.ipa`, an actual Kotlin/Gradle module) is the deliverable of the longer-term native-mobile track above, not this one. |
+| **Post-quantum cryptography** | **Explicitly deferred.** Named as a future research thread, not part of this charter's scope. Competing with `liboqs`/`pqcrypto` on PQC primitives is a separate, fully-loaded research bet — don't let it dilute Phase 0. |
 
 ## 3. What "built for machine authorship" concretely means
 
@@ -55,23 +65,27 @@ Research portfolios ship one thread at a time or nothing ships. This is the orde
 **Phase 0 — Prove the core claim, no rendering attached.**
 A standalone compiler/syntax prototype with zero UI story. Success criterion: a defined benchmark where an LLM agent authors N equivalent components in Mzizi's syntax vs. raw Dioxus/Leptos, measured on tokens consumed, iterations to a clean compile, and defect rate. If this doesn't show a measurable advantage, nothing downstream matters — don't build Phase 1 until Phase 0 has a real number attached to it.
 
-**Phase 1 — Rendering interop, WASM/native as the real deliverable.**
-Wire Mzizi's compiler output into Dioxus's existing renderer for server/web/mobile/desktop. The artifact that comes out of this phase — a working WASM bundle (and native binary, for desktop) — _is_ the cross-platform product. It must stand on its own, embeddable via a bare `<script type="module">`, a mobile WebView or native WASM host, or an edge runtime, with no framework-specific packaging assumed. This is integration work against Dioxus's renderer, not framework-building — treat any temptation to build a native renderer here as scope creep until interop has been tried and found genuinely insufficient.
+**Phase 1 — Full-stack interop: Dioxus rendering + Cloudflare Workers, together.**
+Merges what an earlier version of this charter called Phase 1 and Phase 2 — §2's own table already called edge deployment "first-class... from day one," and phasing it separately, behind a generic rendering artifact, didn't honor that. The real Phase 1 deliverable: a Mzizi-authored full-stack application — UI via Dioxus's renderer, server/API via `workers-rs` — actually deployed as a Cloudflare Worker. Not a WASM bundle sitting unshipped; a real edge deployment, because that's the fastest path to a genuine full-stack proof point given existing team experience with `workers-rs`. Treat any temptation to build a native renderer or a bespoke edge runtime here as scope creep — Dioxus and `workers-rs` are the integrations, not projects to out-build.
 
-**Phase 2 — Edge-first deployment.**
-Native target using existing Cloudflare/`workers-rs` experience. Cheapest phase to execute given current team capability.
-
-**Phase 3 — Candle integration.**
+**Phase 2 — Candle integration.**
 First-class support for declaring ML inference inside Mzizi components, backed by Candle. Not a competing ML runtime.
 
-**Phase 4 — Distribution adapters, Astro first among several.**
-Once Phase 1's WASM artifact exists and stands alone, framework-specific adapters are thin packaging layers on top of it, not new compiler work. The Astro package — using the Custom Element pattern already scoped in the separate build-out doc — is the first of these because it's furthest along, not because Astro is a target platform. Treat it as proof the standalone artifact from Phase 1 is genuinely embeddable, not as the web deliverable itself. Additional adapters (other web frameworks, a mobile packaging convention, a desktop installer story) belong at this same tier, added as demand appears — none of them require touching Phase 0–3.
+**Phase 3 — Native mobile: interop first, native codegen as its own scoped follow-up.**
+Dioxus's own mobile renderer first — the same interop bet as Phase 1, just the mobile target, no new design needed. The separate, larger bet — generating idiomatic native Swift/ArkTS/Kotlin from the same Rust core — is real and named but not designed: it needs its own RFC, with its own resolved design questions, before it's a phase with an actual deliverable. The same discipline Phase 0's benchmark got before anyone wrote code against it.
+
+**Phase 4 — Distribution adapters.**
+Once Phase 1's artifacts exist and stand alone, framework-specific adapters are thin packaging layers on top of them, not new compiler work. Astro is one such adapter — using the Custom Element pattern already scoped in the separate build-out doc — not the flagship web story it was in an earlier version of this charter, since full-stack web now ships directly via Phase 1's Dioxus+Workers path. Additional adapters (other web frameworks, a desktop installer story) belong at this same tier, added as demand appears — none of them require touching Phase 0–3.
+
+**Phase 5 — Hardware / embedded.**
+Named, not designed. No target board, RTOS, or use case decided. Revisit once Phase 1 has shipped a real full-stack deployment — this phase does not get scoped in the abstract.
 
 ## 5. Explicit non-goals for this charter
 
-- Not building a competing tensor/ML runtime. Candle is the dependency.
-- Not building a native cross-platform renderer in Phase 0 or 1. Dioxus interop first; native renderer only if interop is proven insufficient.
+- Not building a competing tensor/ML runtime. Candle is the dependency, regardless of how many other targets Mzizi reaches.
+- Not building bespoke rendering or native-codegen engines before proven interop is tried and found insufficient — Dioxus for web/desktop/mobile-interop, `workers-rs` for edge, and (later, separately scoped) proven native-binding patterns for mobile, not from-scratch equivalents of any of them.
 - Not addressing post-quantum cryptography in this charter. Future thread, not this one.
+- Not committing to hardware/embedded specifics in this version. Named as a direction (§2, Phase 5), not a designed phase.
 - Not blocked by, or blocking, Nyuchi/Mukoko revenue-phase work — different org, different clock, per Bundu Foundation's research mandate.
 
 ## 6. Phase 0 benchmark design — resolved
