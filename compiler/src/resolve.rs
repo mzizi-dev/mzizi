@@ -1618,12 +1618,21 @@ impl<'a> Resolver<'a> {
                         e.target, e.target
                     ),
                 ),
-                (Some(t), Some((arg, span))) => self.payload(&written, &t, arg, *span),
+                (Some(t), Some((arg, span))) => self.payload(&written, &t, &t, arg, *span),
             }
         }
     }
 
-    fn payload(&mut self, written: &str, want: &Ty, arg: &str, span: Span) {
+    /// Check an `emit` argument against the event's payload type `want`; `carries` is the
+    /// payload type as declared, for the message. An `option(T)` payload takes `none` or
+    /// any value of type `T`, wrapped implicitly (RFC-0008 §4.2).
+    fn payload(&mut self, written: &str, carries: &Ty, want: &Ty, arg: &str, span: Span) {
+        if let Ty::Option(inner) = want {
+            if arg == "none" || self.props.get(arg) == Some(want) {
+                return;
+            }
+            return self.payload(written, carries, inner, arg, span);
+        }
         let got = if arg.starts_with('"') {
             Ty::Text
         } else if arg.parse::<i64>().is_ok() {
@@ -1664,7 +1673,7 @@ impl<'a> Resolver<'a> {
                 "MZ0715",
                 span,
                 format!(
-                    "`{written}` — the event carries {want}, but `{}` is {got}",
+                    "`{written}` — the event carries {carries}, but `{}` is {got}",
                     clip(arg)
                 ),
             );
