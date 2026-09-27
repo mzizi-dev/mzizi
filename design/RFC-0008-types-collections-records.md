@@ -158,8 +158,10 @@ end
   reference's `key: "{entry.version}"` is a Dioxus artefact of keys being strings, and
   `key = "{entry.version}"` is `MZ0713` with an `exact` fix to `key = entry.version`. A
   missing key, a second key, or a key that does not mention the binding (and is therefore
-  the same for every item) are `MZ0713` too. Lowering moves the key onto the body's root
-  element; that is Phase 1's business.
+  the same for every item) are `MZ0713` too; a key that resolves to a list or a record is
+  `MZ0711`. A missing key on a list of scalars carries a `guess` fix inserting
+  `key = <binding>` — a guess, because only the author knows the items are unique. Lowering
+  moves the key onto the body's root element; that is Phase 1's business.
 - A `for each` block holds its key and elements; any other attribute is `MZ0713`.
 - Nested iteration over a field of the outer binding needs nothing special: `entry` is in
   scope, so `entry.components_added` resolves to `list(text)`.
@@ -262,9 +264,12 @@ one local enum. A dotted path whose head is a local enum name is `<enum>.<varian
   element word, and the checker cannot see `button.mz`. So `variant = button_variant.ghost`
   — a dotted path whose head names nothing in this file — is accepted as an **external
   reference** with warning `MZ0502`, which says plainly that it cannot be checked until
-  modules land (RFC-0007 G2.3) and that there is nothing to fix. A head within two edits of
-  a local name is treated as a typo instead (`MZ0707`, `guess`). A _bare_ word must always
-  resolve locally; that is the rule that catches `text = lable`.
+  modules land (RFC-0007 G2.3) and that there is nothing to fix. Three kinds of head are
+  local mistakes instead, never external: one within two edits of a local name (`MZ0707`,
+  `guess`), a `for each` binding used outside its block, and a record's type name used as
+  a value (`entry.title` where `e.title` was meant) — the last two were found by the tests,
+  which first read them as external references. A _bare_ word must always resolve locally;
+  that is the rule that catches `text = lable`.
 - **Attribute names.** Element words and attribute names are open (RFC-0001 §1.5); `on_click
 = on_tap` still compiles. `tap` and `change` are checked because their _values_ are.
 - **Statements.** `fn` bodies beyond `emit` are still skipped (RFC-0001 §7.1).
@@ -274,9 +279,12 @@ one local enum. A dotted path whose head is a local enum name is `<enum>.<varian
 ### 5.2 Nearest-name fixes
 
 A misspelling is matched against the candidates of the right kind only — variants of the
-enum in question, fields of the record in question, names in scope — by edit distance. A
-fix is `exact` when exactly one candidate is nearest and it is within two edits and half the
-word's length; `guess` when several tie; absent when nothing is close. `exact` keeps its
+enum in question, fields of the record in question, names in scope — by optimal-string-
+alignment edit distance, so a transposition (`lable`) is one edit, and a truncation
+(`sync` for `syncing`, RFC-0001 §4.2's example) counts as one. A fix is `exact` when
+exactly one candidate is nearest and it is within two edits and half the word's length;
+`guess` when several tie (`ofline` is one edit from both `offline` and `online`); absent
+when nothing is close. `exact` keeps its
 RFC-0001 §4.3 meaning: applying it blind produces the only name that could have compiled.
 
 ## 6. Diagnostic codes
@@ -339,7 +347,132 @@ contract is skipped rather than failed.
 
 ## 9. Measured
 
-_Filled in by the implementing commits on this branch; nothing below is claimed until then._
+Every figure is reproducible from this branch with the command given. None of it is a
+Phase 0 benchmark number: no agent has run against this compiler or this guide.
+
+### 9.1 `prop x: flarp`, before and after — _TY-1_
+
+```mz
+component flarp_demo
+  prop x: flarp
+  prop label: text
+  view
+    row
+      text = lable
+      class = "{x.nope}"
+    end
+  end
+  contract
+    slot is "x"
+  end
+end component flarp_demo
+```
+
+`mz check --agent flarp.mz` on `main` (`cd36430`):
+
+```text
+{"summary":true,"errors":0,"warnings":0,"exact_fixable":0,"ms":0}
+```
+
+and on this branch:
+
+```text
+{"code":"MZ0701","severity":"error","file":"flarp.mz","span":[2,11,2,16],"say":"`flarp` is not a type — types are bool, int, text, list(T), option(T), and this file's enums and records"}
+{"code":"MZ0707","severity":"error","file":"flarp.mz","span":[6,14,6,19],"say":"`lable` is not a prop, loop binding, fn or variant here; nearest is `label`","fix":{"span":[6,14,6,19],"replace":"label","confidence":"exact"}}
+{"summary":true,"errors":2,"warnings":0,"exact_fixable":1,"ms":0}
+```
+
+Three mistakes, two diagnostics, and that is the design working: `{x.nope}` is not
+reported because `x` already failed, and a second diagnostic for it would be a cascade.
+`flarp` carries no fix because nothing is within reach of it.
+
+### 9.2 What the checker found in the corpus
+
+Run over `primitives/*.mz` and `examples/connectivity_bar.mz`, it reported errors in **two
+of ten files**. Both were real, and both are fixed in the files, not by weakening a rule:
+
+- **`primitives/avatar.mz`** declared `prop image: text` and then tested `when image is
+none` and `when image is some`. A `text` is never none and `some` named nothing — the
+  image-less fallback, the component's reason to exist, was unreachable by construction,
+  and nothing could say so. It is now `prop image: option(text)` with `when image is none
+… else … end`, which narrows `image` to `text` for `source = image`. This is the form
+  §4 designed, arrived at independently by the primitive's author except for the one word
+  Mzizi does not have.
+- **`primitives/confirm_bar.mz`** wrote `variant = default` twice and `variant = ghost` —
+  `button`'s and `alert`'s variants, none of which exists in the file (`MZ0707` ×3). The
+  worse line passed: `variant = destructive` resolves, lexically, to confirm_bar's own
+  `bool` prop `destructive`, so it meant "pass `true`" where the author meant "the
+  destructive variant". All four are now `<enum>.<variant>` (`alert_variant.destructive`,
+  `button_variant.ghost`, …), unambiguous and reported as `MZ0502` until modules can check
+  them.
+
+`connectivity_bar.mz` and the seven other primitives were clean. The checker also found two
+wrong test fixtures (`ir.rs` declared `prop x: bool` twice; `outline.rs` used `text = label`
+with no `label` prop), and building it exposed a third test defect unrelated to types:
+`tests/contracts.rs` deleted a branch with a `replace` that silently no-ops when its text
+moves, and it went quiet the moment `confirm_bar` changed. It now asserts the text exists.
+
+### 9.3 The changelog port — _TY-3, TY-4_
+
+`examples/changelog_renderer.mz` is `nyuchi-changelog-renderer` with `prop entries:
+list(changelog_entry)`, an eight-field record, `for each entry in entries` with a nested
+`for each` over three of the entry's lists and a fourth over its nodes, and each optional
+array's wrapper guarded by `when entry.<list> is none … else … end`.
+
+| Command                                                     | Result                                            |
+| ----------------------------------------------------------- | ------------------------------------------------- |
+| `mz check --agent examples/changelog_renderer.mz`           | 0 errors, 0 warnings, exit 0                      |
+| `mz contract --agent examples/changelog_renderer.mz`        | 12 clauses, 0 failures, exit 0                    |
+| five planted mistakes (field, column, key, list-as-text, …) | exactly five diagnostics                          |
+| `mzizi-benchmark-harness score --arm mzizi` vs the task ref | 2 facts, **1 defect**, class-token Jaccard 1.0000 |
+
+The harness defect is `node_accent`'s default. The reference declares `#[default] Cobalt`;
+the harness reads a Mzizi enum's default off a `prop <x>: node_accent = …` line, and this
+port has no such prop. That is a real divergence, not a harness bug, and it is left
+standing rather than papered over with a dummy prop: the reference's default is the colour
+for a node its table does not know, and in this port an unknown node cannot be written.
+
+Every divergence from the spec, each forced by the language as it stands:
+
+- **`nodesAffected: number[]` became `list(ecosystem_node)`**, an enum whose rows carry
+  `number`, `label` and an enum-typed `accent`. There are no maps (§10.4), so the spec's
+  `NODE_LABELS[n]` / `NODE_AXIS[n]` lookups become one table — which also removes their
+  parallel-map drift, the defect the reference documents. The cost is the reference's
+  runtime-supplied `node_styles` and its "unrecognised node" fallback.
+- **No `option` appears in the port**, because the spec has no optional scalar: every `?`
+  field is an array, and §1.1 makes those lists. The pilot's `has_added` + `added_label`
+  pairs dissolve into lists, not options. `option` is exercised by `avatar.mz` (§9.2) and
+  the tests.
+- **`className` pass-through is dropped**; the guide already says there is no equivalent.
+- **`aria-posinset` / `aria-setsize`** from the reference have no expression: there is no
+  loop index and no list length (§10.6).
+- **Element words** (`feed`, `article`, `badge`, `chip`, …) are free words; which HTML
+  element each lowers to is Phase 1's.
+- **Four `nothing` + `else` pairs** — eight lines — are the price of §4's absence-first
+  form. It is recorded here because it is exactly the kind of cost Phase 0 measures.
+
+### 9.4 Tests, speed and the IR
+
+| Measure                                                                | Value                                                     |
+| ---------------------------------------------------------------------- | --------------------------------------------------------- |
+| `cargo test -p mzizi-lang-compiler`                                    | **174 passed**, was 107; 63 in `tests/types.rs`           |
+| `cargo test --workspace` (harness and runner too)                      | 244 passed                                                |
+| `exact` fixes applied blind by the tests and re-checked to zero errors | 35 fixtures across 13 codes, all repaired to zero errors  |
+| corpus contract coverage (`tests/contracts.rs`)                        | 45 assertions across 11 files, all evaluated, 0 failing   |
+| parse + resolve + evaluate, all 11 files, debug build                  | ~4–5 ms (budget 250 ms)                                   |
+| structural sharing (`tests/ir_measured.rs`)                            | 242 shared vs 248 isolated nodes, 6 saved across 11 files |
+| `benchmarks/prompts/mzizi-guide.md`                                    | 10,223 → 12,306 bytes (+20.4%); `verify-guide.sh` all ok  |
+
+The IR moved once before the new example was added: hashing `emit` statements took the ten
+original files from RFC-0006 §9's 169 vs 174 to 170 vs 175. The one new node is
+`connectivity_bar/fn:retry/emit:on_state_change`; no other file has a `fn`.
+
+**What is not measured.** Whether a checker that says no lowers or raises the Mzizi arm's
+iterations-to-clean-compile is the question this RFC exists to make answerable, and it is
+unanswered. The expected direction is _up_ — misspellings that used to be free now cost a
+cycle — and that is the honest direction: the old number was flattered by TY-2. Runs made
+with the new guide are not poolable with the 2026-09-27 pilot; `meta.json`'s
+`guide_fnv1a64` (`675edc2370682334` → `59fc7f6fdabb923f`) records the difference.
 
 ## 10. Open questions
 
