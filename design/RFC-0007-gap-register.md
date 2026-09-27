@@ -4,17 +4,17 @@
 **Author:** the machine author (Claude)
 **Scope:** every piece of language and toolchain infrastructure that CHARTER.md v0.2's stated scope (UI through `mzizi-ui`, server and edge through Cloudflare Workers and Containers, ML through Candle, native mobile and embedded later) requires and that neither the RFCs nor the compiler provide today — named _before_ a benchmark run or a deployment discovers each one the expensive way. Also: the one-way doors among them that must be decided before any is built.
 
-> Written against CHARTER.md v0.2 (branch `claude/charter-v0.2`, unmerged when this was written). Tier 0 and Tier 1 below follow from v0.1 as well; Tier 2 onward is contingent on v0.2's scope.
+> Written against CHARTER.md v0.2, which is on `main` (`bc07cb2`..`d29b523`). Tier 0 and Tier 1 below follow from v0.1 as well; Tier 2 onward follows from v0.2's scope, which is now the charter of record.
 
 <!-- Two separate notes; this separator keeps them distinct. -->
 
-> **Every claim about the code below was checked against `main` at `cd36430`** (the commit this branch starts from), by the command or file named beside it. Where the draft of this RFC and the code disagreed, the code won and the text was corrected (RFC-0003 §7.1's rule). Claims about the 2026-09-27 pilot are quoted from its record and were _not_ re-derived here: that record is not on `main` at `cd36430`.
+> **Every claim about the code below was checked against `main` at `1e4f414`**, by the command or file named beside it. The claims were first checked at `cd36430`, the commit this branch started from, and re-checked at `1e4f414`: `git diff cd36430 1e4f414 -- compiler primitives benchmarks/harness benchmarks/tasks benchmarks/prompts` is empty, so none of them changed. Where the draft of this RFC and the code disagreed, the code won and the text was corrected (RFC-0003 §7.1's rule). Claims about the 2026-09-27 pilot are quoted from its record and were _not_ re-derived here: that record is on PR #17, not on `main` at `1e4f414`.
 
 ---
 
 ## 0. Why this RFC exists now
 
-The first scored Phase 0 pilot (2026-09-27) ran three tasks — `badge`, `button` and `nyuchi-changelog-renderer` (`benchmarks/tasks/`) — through both arms. Its record is `benchmarks/results/2026-09-27-pilot/`, on branch `claude/phase0-pilot-results` until that branch merges and on `main` after. It surfaced one missing language feature by accident. The Mzizi-arm author, asked to port `nyuchi-changelog-renderer`, wrote:
+The first scored Phase 0 pilot (2026-09-27) ran three tasks — `badge`, `button` and `nyuchi-changelog-renderer` (`benchmarks/tasks/`) — through both arms. Its record is `benchmarks/results/2026-09-27-pilot/RUN.md`, added by PR #17 (branch `claude/phase0-pilot-results`). `main`'s README says, correctly for `main` alone, that no scored run exists there yet. It surfaced one missing language feature by accident. The Mzizi-arm author, asked to port `nyuchi-changelog-renderer`, wrote:
 
 > Mzizi has no list/array prop type, so the original `entries[]` … reduce here to the fields of one entry; render this component once per entry to reproduce the original feed.
 
@@ -48,7 +48,7 @@ A **gap** is something the charter's scope requires that the grammar (RFC-0001, 
 
 ### Tier 0 — blocks Phase 0 on its own corpus
 
-**G0.1 — The checker cannot fail on types or names.** _Evidence:_ this component, run against `cd36430` (`cargo run --bin mz -- check --agent flarp_probe.mz`):
+**G0.1 — The checker cannot fail on types or names.** _Evidence:_ this component, run against `cd36430` and unchanged at `1e4f414` (`cargo run --bin mz -- check --agent flarp_probe.mz`):
 
 ```text
 ## Probe: an undeclared type name and an unresolved interpolation.
@@ -97,7 +97,7 @@ _Blocks:_ the Phase 0 metric this language is supposed to win. "Iterations to a 
 
 **G0.9 — Contracts cannot speak about collections, records, or the view.** _Evidence:_ RFC-0006 §10.3 leaves the evaluation of conditions, `match`/`case` and `for each` open; §3's subject order reaches only enums, columns, view attributes and prop defaults. Once G0.2–G0.5 land, `every entry …` and "renders one article per entry" are the assertions the corpus will need.
 
-**G0.10 — The harness matches variants by name alone, and scores no view structure.** _Evidence:_ the harness maps a Rust enum to a Mzizi one by snake-casing its name, and scores each enum's variant set, `#[default]`, class-token Jaccard (reported, not counted), and — where the class carries an `h-N`/`size-N` token — pixel height (`benchmarks/harness/src/lib.rs`, RFC-0006 §10.1). Variants are paired by name. The changelog spec names its colours by axis (`horizontal`, `vertical`, `depth`, `outlier`), while the Rust reference renamed them by mineral (`NodeAccent::Cobalt` — "Was the `horizontal` axis" — `Tanzanite`, …) with identical class strings. Per the pilot's record, `class_token_jaccard` is `null` for `nyuchi-changelog-renderer` and both arms were charged the same two defects: both candidates followed their spec, so the harness was measuring the reference's drift from its own spec. _Needs:_ rename-aware matching, reported rather than hidden, plus view-structure scoring. (Being fixed in the benchmark pipeline; listed so the register is complete.)
+**G0.10 — The harness matches variants by name alone, and scores no view structure.** _Evidence:_ the harness maps a Rust enum to a Mzizi one by snake-casing its name, and scores each enum's variant set, `#[default]`, class-token Jaccard (reported, not counted), and — where the class carries an `h-N`/`size-N` token — pixel height (`benchmarks/harness/src/lib.rs`, RFC-0006 §10.1). Variants are paired by name. The changelog spec names its colours by axis (`horizontal`, `vertical`, `depth`, `outlier`), while the Rust reference renamed them by mineral (`NodeAccent::Cobalt` — "Was the `horizontal` axis" — `Tanzanite`, …) with identical class strings. Per the pilot's record, **before the rescore**, `class_token_jaccard` was `null` for `nyuchi-changelog-renderer` and both arms were charged the same two defects: both candidates followed their spec, so the harness was measuring the reference's drift from its own spec. _Fix (PR #17, commit `648b0d2`):_ rename-aware pairing. The rescore took the changelog task from 2 defects to 0, and its Jaccard from `null` to 1.0, in both arms. The decided policy for rename pairing: it is opt-in per task (`allow_variant_renames`, with a stated reason, set only on the changelog task); near-matches pair by mutual-best class-token Jaccard ≥ 0.5; and the rename fact is reported but excluded from `facts_checked`. Where `648b0d2` as pushed differs from that policy (it pairs on exact class-token sets for any task, and counts the rename fact in `facts_checked`), the policy is the target and the commit is what the rescore ran. _Remaining gap:_ view-structure scoring.
 
 ### Tier 1 — interactive UI
 
@@ -110,6 +110,7 @@ _Blocks:_ the Phase 0 metric this language is supposed to win. "Iterations to a 
 ### Tier 2 — full stack on Cloudflare (Phase 1: design now, build after the gate)
 
 - **G2.1 Lowering.** Nothing lowers, and it is the largest single gap. The first milestone should be lowering Tier 0 components to Rust against `mzizi-ui`'s contract and compiling that with `rustc`. The same milestone gives Phase 0 its strongest defect oracle: the corpus's own `tests/contract.rs` pattern (RFC-0001 §5) can then run against Mzizi output directly, replacing the regex-level harness diff (RFC-0006 §10.1) with the tests the corpus already trusts.
+- **G2.13 A self-contained UI artifact.** CHARTER.md v0.2 §4 requires Phase 1's UI output to also ship without the Phase 1 Worker: an ES module / custom element, with its WASM bundle, loadable from a plain `<script type="module">`, a WebView, or a WASM host. Phase 4's adapters are gated on it ("once Phase 1's artifacts exist and stand alone"). It follows G2.1 (there is nothing to package until something lowers) and needs a target in G2.8's sense, not a second compiler: `mz build` for a `web` target emits the module, and the Worker deployment consumes the same artifact rather than a parallel one.
 - **G2.2 Declarations beyond `component`.** An HTTP route or handler, Worker entry points (`fetch`, `scheduled`, queue consumer), and a container service. This generalises RFC-0001 §7.4 from "one component, one file" to "one top-level declaration, one file, name-identical".
 - **G2.3 Modules and packages.** Cross-file references (an app is more than one file by definition), dependencies on `mzizi-ui` components, and a manifest. **`use` is already taken** by capabilities (RFC-0001 §1.7), so imports need a different common word, chosen once (see D7).
 - **G2.4 Boundary data.** Records serialise to JSON by construction and are validated at the boundary. **The same record type serves both the component and the route that feeds it.** That shared, once-checked type is what makes CHARTER.md v0.2 §2's "a component and the handler that serves it ship from the same Mzizi source" a property rather than a slogan, and it is the differentiator to protect.
@@ -165,7 +166,7 @@ Canonical rewriting (RFC-0001 §3: `mz` rewrites every file it touches; no comma
 2. G0.10 (harness), in parallel, in `benchmarks/`.
 3. G0.6/G0.7 decisions, then G0.8, then G0.9.
 4. Re-run the pilot with the Leptos arm and a small-model arm. **This is the Phase 0 number.**
-5. Gate. Then G2.1 lowering, which serves Phase 1 and hardens the Phase 0 oracle at once. Then G2.2–G2.7 as one full-stack slice, deployed to a real Worker, then G2.8.
+5. Gate. Then G2.1 lowering, which serves Phase 1 and hardens the Phase 0 oracle at once, then G2.13 (the self-contained UI artifact, which Phase 4 is gated on). Then G2.2–G2.7 as one full-stack slice, deployed to a real Worker, then G2.8.
 6. Tier 1 interleaves wherever the corpus needs it. Tier 3 follows Phase 1. Tier 4 is constraints only.
 
 ## 7. What this RFC does not claim
@@ -173,4 +174,4 @@ Canonical rewriting (RFC-0001 §3: `mz` rewrites every file it touches; no comma
 - That the list is complete. It is complete against the charter's scope as written, read once. A gap found later is a finding, and belongs here as an amendment.
 - That any Tier 2 item is approved for building. CHARTER.md §4's gate is unchanged.
 - That the pilot measured anything beyond itself: three tasks, one frontier model, one seed.
-- That the pilot's figures quoted here (3/3 first-iteration-clean, the `null` Jaccard, the two shared defects, the `has_added`/`added_label` candidate) were re-verified. They are quoted from the pilot's record, which is not on `main` at `cd36430`. Everything else was checked against the code.
+- That the pilot's figures quoted here (3/3 first-iteration-clean, the `null` Jaccard, the two shared defects, the `has_added`/`added_label` candidate) were re-verified. They are quoted from the pilot's record on PR #17, which is not on `main` at `1e4f414`; the changelog Jaccard and defect figures are the pre-rescore ones, and the rescored ones are quoted as such in G0.10. Everything else was checked against the code.
