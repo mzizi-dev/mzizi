@@ -187,11 +187,12 @@ scored on the same facts. Otherwise the variants are matched by name. See `renam
 [`../../tasks/README.md`](../../tasks/README.md).
 
 [`rescored.jsonl`](rescored.jsonl) is the final harness's score JSON for each of the six
-committed candidates, one line per episode. Each line records the harness commit it came from
-(`ddaeb82`, "fix(benchmarks): make rename pairing opt-in per task…", on this branch). Because
-this repository rebase-merges, that SHA will differ on `main`, so each line also records
+committed candidates, one line per episode. Each line records the harness commit it came from:
+`9009080` on this branch ("fix(benchmarks): a paired default that is not a candidate variant
+is a defect"). Because this repository rebase-merges, that SHA will differ on `main`, so each
+line also records
 `harness_tree`, the git tree hash of `benchmarks/harness/`
-(`8ab09aeed849b060351ac7752ffe2500bd134ce9`), which a rebase does not change. Each line also
+(`475f7751c304fec9e9e01c5660b342f5cfdc869c`), which a rebase does not change. Each line also
 records whether the task opted in (`allow_variant_renames`), and so whether the scorer ran
 with `--allow-variant-renames`. Each episode's `episode.jsonl` and `score.json` are
 untouched: they stay the record of what the harness at `ded425a` said.
