@@ -376,9 +376,17 @@ reference implementations. See §10.1.
    as a failure rather than a pass.
 
    Implemented in `benchmarks/harness/` (a `mzizi-benchmark-harness` crate, workspace member
-   alongside `compiler/`) and proved end to end against `primitives/button.mz` and a fixture
-   copy of the real `button.rs` reference — see `benchmarks/README.md` for what is measured
-   and `benchmarks/harness/tests/button_diff.rs` for the passing and failing cases.
+   alongside `compiler/`) and proved end to end against `primitives/button.mz` and a
+   byte-identical copy of the real `button.rs` reference — see `benchmarks/README.md` for
+   what is measured and `benchmarks/harness/tests/button_diff.rs` for the passing and
+   failing cases.
+
+   _Corrected after landing:_ as first merged, "a fixture copy of the real `button.rs`" was
+   false. The fixture was a reconstruction that matched the parser, and against the real
+   file the extractor reported five false defects. `benchmarks/README.md` records what was
+   wrong and what fixed it. The mechanism above is unchanged; the extractor now scopes arms
+   to each `impl` block's `classes()` method, and also scores each enum's variant set and
+   `#[default]`, with class-token Jaccard similarity reported but not counted as a defect.
 
 2. **Cross-file contracts.** `uses button` currently checks a tag in the view. With the
    manifest's name→hash namespace it could check that the composed component exists, that
