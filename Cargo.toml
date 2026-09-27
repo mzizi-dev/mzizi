@@ -4,9 +4,11 @@
 # or how CI invokes it (every existing step runs with `working-directory:
 # compiler` and, per Cargo's own rule, a command run from inside a workspace
 # member defaults to that member unless `--workspace` is passed).
+# `benchmarks/runner` (the `mzbench` binary) is the only member with dependencies; its
+# Cargo.toml says why.
 [workspace]
 resolver = "2"
-members = ["compiler", "benchmarks/harness"]
+members = ["compiler", "benchmarks/harness", "benchmarks/runner"]
 # The Dioxus arm's sandbox is its own workspace root (it declares an empty
 # `[workspace]`), so CI's `--workspace` never builds Dioxus. Excluded here as well so a
 # future glob in `members` cannot pull it in. See benchmarks/arms/dioxus/README.md.
