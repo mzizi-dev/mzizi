@@ -328,13 +328,22 @@ fn another_components_variant_is_an_unchecked_warning_not_an_error() {
     );
 }
 
+/// Review finding 2: `variant = tone.loud` with a local `prop tones` was a hard MZ0707. A
+/// dotted head declared nowhere in this file is another component's enum until modules
+/// say otherwise, so it is always the MZ0502 warning; a close local name rides along as a
+/// `guess` fix and never makes it an error.
 #[test]
-fn an_external_looking_head_near_a_local_name_is_treated_as_a_typo() {
-    let d = one(
-        &component("  prop label: text\n  view\n    row\n      text = lable.x\n    end\n  end\n"),
-        "MZ0707",
-    );
-    assert_eq!(d.fix.unwrap().confidence, Confidence::Guess);
+fn an_external_head_near_a_local_name_is_a_warning_with_a_guess_not_an_error() {
+    for src in [
+        component("  prop tones: text\n  view\n    button\n      variant = tone.loud\n    end\n  end\n"),
+        component("  prop label: text\n  view\n    row\n      text = lable.x\n    end\n  end\n"),
+    ] {
+        clean(&src);
+        let warn: Vec<_> = diags(&src).into_iter().filter(|d| d.code == "MZ0502").collect();
+        assert_eq!(warn.len(), 1, "{warn:#?}");
+        assert_eq!(warn[0].severity, Severity::Warning);
+        assert_eq!(warn[0].fix.as_ref().unwrap().confidence, Confidence::Guess);
+    }
 }
 
 #[test]
