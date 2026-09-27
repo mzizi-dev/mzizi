@@ -10,7 +10,10 @@
 //!   on anything unexpected, report once and skip to the next newline. Because statements
 //!   are newline-terminated, the next line is always a valid resynchronization point.
 
-use crate::ast::{Component, Element, EnumDecl, PropDecl, Variant};
+use crate::ast::{
+    Attr, Component, Element, Emit, EnumDecl, FieldDecl, PropDecl, RecordDecl, TypeExpr, TypeKind,
+    Variant,
+};
 use crate::contract::{Clause, Contract, PREDICATE_WORDS, Predicate, Subject};
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::lex::{Tok, Token, lex};
@@ -35,6 +38,7 @@ pub fn parse(src: &str, file: &str) -> (Option<Component>, Vec<Diagnostic>) {
 enum BlockKind {
     Component,
     Enum,
+    Record,
     View,
     Fn,
     Contract,
@@ -46,6 +50,7 @@ impl BlockKind {
         match self {
             BlockKind::Component => "component",
             BlockKind::Enum => "enum",
+            BlockKind::Record => "record",
             BlockKind::View => "view",
             BlockKind::Fn => "fn",
             BlockKind::Contract => "contract",
@@ -129,6 +134,16 @@ impl Parser {
 
     /// A value as written: string, int, identifier, dotted path, or keyword literal.
     fn value(&mut self) -> Option<String> {
+        self.value_spanned().map(|(value, _, _)| value)
+    }
+
+    /// [`Parser::value`], with the value's span and each dotted segment's span.
+    fn value_spanned(&mut self) -> Option<(String, Span, Vec<Span>)> {
+        let start = self.peek_span();
+        let mut segments = Vec::new();
+        if matches!(self.peek(), Tok::Ident(_)) {
+            segments.push(start);
+        }
         let mut out = match self.peek().clone() {
             Tok::Str(s) => {
                 self.bump();
@@ -148,18 +163,130 @@ impl Parser {
             }
             _ => return None,
         };
+        let mut end = start;
         // Dotted continuation: `state.color`
         while matches!(self.peek(), Tok::Dot) {
             self.bump();
             match self.ident() {
-                Some((seg, _)) => {
+                Some((seg, span)) => {
                     out.push('.');
                     out.push_str(&seg);
+                    segments.push(span);
+                    end = span;
                 }
                 None => break,
             }
         }
-        Some(out)
+        let span = Span {
+            start_line: start.start_line,
+            start_col: start.start_col,
+            end_line: end.end_line,
+            end_col: end.end_col,
+        };
+        Some((out, span, segments))
+    }
+
+    /// A value as an [`Attr`] with the given name.
+    fn attr(&mut self, name: &str) -> Option<Attr> {
+        self.value_spanned().map(|(value, span, segments)| Attr {
+            name: name.to_string(),
+            value,
+            span,
+            segments,
+        })
+    }
+
+    /// A type expression: a name, `none`, or `<ctor>(<type>)` (RFC-0008 §1).
+    ///
+    /// The parser only builds the shape; which names exist, and which constructors take
+    /// which arguments, is the resolver's business, so a misspelt type is reported once
+    /// with a nearest-name fix instead of as a parse failure.
+    fn parse_type(&mut self, what: &str) -> Option<TypeExpr> {
+        let start = self.peek_span();
+        let name = match self.peek().clone() {
+            Tok::Ident(name) => name,
+            Tok::Keyword("event") => "event".to_string(),
+            Tok::Keyword("none") => {
+                self.bump();
+                return Some(TypeExpr {
+                    kind: TypeKind::Nothing,
+                    span: start,
+                });
+            }
+            other => {
+                self.diags.push(Diagnostic::error(
+                    "MZ0306",
+                    &self.file,
+                    start,
+                    format!("expected a type after {what}, found {}", describe(&other)),
+                ));
+                return None;
+            }
+        };
+        self.bump();
+        if !matches!(self.peek(), Tok::LParen) {
+            return Some(TypeExpr {
+                kind: TypeKind::Name(name),
+                span: start,
+            });
+        }
+        self.bump();
+        if matches!(self.peek(), Tok::RParen) {
+            let span = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0309",
+                &self.file,
+                span,
+                format!("`{name}()` needs a type inside the parentheses, e.g. `{name}(text)`"),
+            ));
+            return None;
+        }
+        let inner = self.parse_type(&format!("`{name}(`"))?;
+        if !matches!(self.peek(), Tok::RParen) {
+            let span = self.peek_span();
+            self.diags.push(
+                Diagnostic::error(
+                    "MZ0309",
+                    &self.file,
+                    span,
+                    format!("`{name}({inner}` is missing its `)`"),
+                )
+                .with_fix(
+                    Span::single(inner.span.end_line, inner.span.end_col, 0),
+                    ")",
+                    Confidence::Exact,
+                ),
+            );
+            return None;
+        }
+        let close = self.peek_span();
+        self.bump();
+        Some(TypeExpr {
+            kind: TypeKind::Apply(name, Box::new(inner)),
+            span: Span {
+                start_line: start.start_line,
+                start_col: start.start_col,
+                end_line: close.end_line,
+                end_col: close.end_col,
+            },
+        })
+    }
+
+    /// Report anything left on a declaration line. It used to be dropped without a word,
+    /// so `prop x: text garbage` compiled — the silent acceptance FM-12 names.
+    fn expect_line_end(&mut self, what: &str) {
+        if !matches!(self.peek(), Tok::Newline | Tok::Eof) {
+            let span = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0310",
+                &self.file,
+                span,
+                format!(
+                    "{} is left over after {what} — one declaration per line",
+                    describe(self.peek())
+                ),
+            ));
+        }
     }
 
     fn parse_file(&mut self) -> Option<Component> {
@@ -215,9 +342,12 @@ impl Parser {
             docs,
             uses: Vec::new(),
             enums: Vec::new(),
+            records: Vec::new(),
             props: Vec::new(),
             view: None,
             fns: Vec::new(),
+            emits: Vec::new(),
+            broken: Vec::new(),
             contract: None,
         };
 
@@ -256,11 +386,16 @@ impl Parser {
                         component.enums.push(e);
                     }
                 }
-                Tok::Keyword("prop") => {
-                    if let Some(pr) = self.parse_prop() {
-                        component.props.push(pr);
+                Tok::Ident(word) if word == "record" => {
+                    if let Some(r) = self.parse_record(&mut stack) {
+                        component.records.push(r);
                     }
                 }
+                Tok::Keyword("prop") => match self.parse_prop() {
+                    Ok(pr) => component.props.push(pr),
+                    Err(Some(name)) => component.broken.push(name),
+                    Err(None) => {}
+                },
                 Tok::Keyword("view") => {
                     self.bump();
                     stack.push(Open {
@@ -274,16 +409,19 @@ impl Parser {
                 }
                 Tok::Keyword("fn") => {
                     self.bump();
-                    if let Some((fname, _)) = self.ident() {
-                        component.fns.push(fname.clone());
+                    let mut fname = String::new();
+                    if let Some((name, _)) = self.ident() {
+                        component.fns.push(name.clone());
+                        fname = name.clone();
                         stack.push(Open {
                             kind: BlockKind::Fn,
-                            name: fname,
+                            name,
                             line: self.peek_span().start_line,
                         });
                     }
                     self.recover_line();
-                    self.skip_block_body(&mut stack);
+                    let mut emits = self.parse_fn_body(&mut stack, &fname);
+                    component.emits.append(&mut emits);
                 }
                 Tok::Keyword("contract") => {
                     self.bump();
@@ -322,7 +460,7 @@ impl Parser {
                         &self.file,
                         span,
                         format!(
-                            "{} cannot start a line inside `component {}` — expected one of use, enum, prop, view, fn, contract, end",
+                            "{} cannot start a line inside `component {}` — expected one of use, enum, record, prop, view, fn, contract, end",
                             describe(&other), component.name
                         ),
                     ));
@@ -384,6 +522,11 @@ impl Parser {
             Tok::Keyword(k) if BLOCK_WORDS.contains(&k) => {
                 self.bump();
                 Some(k)
+            }
+            // `record` is not a keyword (RFC-0008 §1), so its echo arrives as a word.
+            Tok::Ident(word) if word == "record" => {
+                self.bump();
+                Some("record")
             }
             _ => None,
         };
@@ -552,7 +695,11 @@ impl Parser {
         Some(EnumDecl { name, variants })
     }
 
-    fn parse_prop(&mut self) -> Option<PropDecl> {
+    /// `prop <name>: <type> [= <default>]`.
+    ///
+    /// `Err(Some(name))` means the line named a prop but did not parse; the name is kept
+    /// so the resolver does not report every later use of it as unknown (RFC-0001 §4.1).
+    fn parse_prop(&mut self) -> Result<PropDecl, Option<String>> {
         self.bump(); // `prop`
         let (name, name_span) = match self.ident() {
             Some(pair) => pair,
@@ -565,7 +712,7 @@ impl Parser {
                     format!("`prop` needs a name, found {}", describe(self.peek())),
                 ));
                 self.recover_line();
-                return None;
+                return Err(None);
             }
         };
 
@@ -585,59 +732,233 @@ impl Parser {
                 ),
             );
             self.recover_line();
-            return None;
+            return Err(Some(name));
         }
         self.bump();
 
-        let ty = match self.peek().clone() {
-            Tok::Keyword(k) => {
-                self.bump();
-                if k == "event" && matches!(self.peek(), Tok::LParen) {
-                    self.bump();
-                    let inner = self.value().unwrap_or_default();
-                    if matches!(self.peek(), Tok::RParen) {
-                        self.bump();
-                    }
-                    format!("event({inner})")
-                } else {
-                    k.to_string()
-                }
-            }
-            Tok::Ident(name) => {
-                self.bump();
-                name
-            }
-            _ => {
-                let span = self.peek_span();
-                self.diags.push(Diagnostic::error(
-                    "MZ0306",
-                    &self.file,
-                    span,
-                    format!(
-                        "expected a type after `prop {name}:`, found {}",
-                        describe(self.peek())
-                    ),
-                ));
-                self.recover_line();
-                return None;
-            }
+        let Some(ty) = self.parse_type(&format!("`prop {name}:`")) else {
+            self.recover_line();
+            return Err(Some(name));
         };
 
         let mut has_default = false;
         let mut default = None;
+        let mut default_span = None;
         if matches!(self.peek(), Tok::Equals) {
+            let eq = self.peek_span();
             self.bump();
-            default = self.value();
-            has_default = default.is_some();
+            if let Some((value, span, _)) = self.value_spanned() {
+                default = Some(value);
+                has_default = true;
+                default_span = Some(Span {
+                    start_line: eq.start_line,
+                    start_col: eq.start_col,
+                    end_line: span.end_line,
+                    end_col: span.end_col,
+                });
+            }
         }
+        self.expect_line_end(&format!("`prop {name}: {ty}`"));
 
         self.recover_line();
-        Some(PropDecl {
+        Ok(PropDecl {
             name,
+            span: name_span,
             ty,
             has_default,
             default,
+            default_span,
         })
+    }
+
+    /// `record <name>`, then `field <name>: <type>` lines, then a bare `end` (RFC-0008 §2).
+    fn parse_record(&mut self, stack: &mut Vec<Open>) -> Option<RecordDecl> {
+        self.bump(); // `record`
+        let Some((name, span)) = self.ident() else {
+            let at = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0307",
+                &self.file,
+                at,
+                format!(
+                    "`record` needs a snake_case name, found {}",
+                    describe(self.peek())
+                ),
+            ));
+            self.recover_line();
+            // Still consume the body, so its `field` lines are not read as top-level lines.
+            stack.push(Open {
+                kind: BlockKind::Record,
+                name: String::new(),
+                line: at.start_line,
+            });
+            self.skip_block_body(stack);
+            return None;
+        };
+        stack.push(Open {
+            kind: BlockKind::Record,
+            name: name.clone(),
+            line: span.start_line,
+        });
+        self.recover_line();
+
+        let mut fields = Vec::new();
+        loop {
+            self.skip_newlines();
+            if self.at_eof() {
+                break;
+            }
+            if matches!(self.peek(), Tok::Keyword("end")) {
+                self.parse_end(stack);
+                break;
+            }
+            if matches!(self.peek(), Tok::Doc(_)) {
+                self.recover_line();
+                continue;
+            }
+            let line_start = self.peek_span();
+            let is_field = matches!(self.peek(), Tok::Ident(w) if w == "field");
+            // `version: text` is what TypeScript and Rust priors write. It is the form
+            // with one word missing, so the repair is exact.
+            let bare = matches!(self.peek(), Tok::Ident(_))
+                && matches!(
+                    self.tokens.get(self.pos + 1).map(|t| &t.kind),
+                    Some(Tok::Colon)
+                );
+            if !is_field && !bare {
+                self.diags.push(Diagnostic::error(
+                    "MZ0308",
+                    &self.file,
+                    line_start,
+                    format!(
+                        "a record holds `field <name>: <type>` lines, found {}",
+                        describe(self.peek())
+                    ),
+                ));
+                self.recover_line();
+                continue;
+            }
+            if is_field {
+                self.bump();
+            }
+            let Some((fname, fspan)) = self.ident() else {
+                let at = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0308",
+                    &self.file,
+                    at,
+                    format!("`field` needs a name, found {}", describe(self.peek())),
+                ));
+                self.recover_line();
+                continue;
+            };
+            if !is_field {
+                self.diags.push(
+                    Diagnostic::error(
+                        "MZ0308",
+                        &self.file,
+                        fspan,
+                        format!(
+                            "a record field is written `field {fname}: <type>` — the word `field` is missing"
+                        ),
+                    )
+                    .with_fix(
+                        Span::single(fspan.start_line, fspan.start_col, 0),
+                        "field ",
+                        Confidence::Exact,
+                    ),
+                );
+            }
+            if !matches!(self.peek(), Tok::Colon) {
+                let at = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0308",
+                    &self.file,
+                    at,
+                    format!("`field {fname}` needs a type: write `field {fname}: <type>`"),
+                ));
+                self.recover_line();
+                continue;
+            }
+            self.bump();
+            if let Some(ty) = self.parse_type(&format!("`field {fname}:`")) {
+                if matches!(self.peek(), Tok::Equals) {
+                    let at = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0310",
+                        &self.file,
+                        at,
+                        format!(
+                            "record fields take no default — `field {fname}: {ty}` is supplied whole by the caller"
+                        ),
+                    ));
+                } else {
+                    self.expect_line_end(&format!("`field {fname}: {ty}`"));
+                }
+                fields.push(FieldDecl {
+                    name: fname,
+                    span: fspan,
+                    ty,
+                });
+            }
+            self.recover_line();
+        }
+        Some(RecordDecl { name, span, fields })
+    }
+
+    /// A `fn` body. Statements are not modelled (RFC-0001 §7.1) except `emit`, which the
+    /// resolver checks against the event props (RFC-0008 §5).
+    fn parse_fn_body(&mut self, stack: &mut Vec<Open>, fn_name: &str) -> Vec<Emit> {
+        let depth = stack.len();
+        let mut emits = Vec::new();
+        while !self.at_eof() && stack.len() >= depth {
+            self.skip_newlines();
+            if self.at_eof() {
+                break;
+            }
+            if matches!(self.peek(), Tok::Keyword("end")) {
+                self.parse_end(stack);
+                if stack.len() < depth {
+                    break;
+                }
+                continue;
+            }
+            if matches!(self.peek(), Tok::Keyword("emit")) {
+                let at = self.peek_span();
+                self.bump();
+                match self.ident() {
+                    Some((target, target_span)) => {
+                        let mut arg = None;
+                        if matches!(self.peek(), Tok::LParen) {
+                            self.bump();
+                            if let Some((value, span, _)) = self.value_spanned() {
+                                arg = Some((value, span));
+                            }
+                            if matches!(self.peek(), Tok::RParen) {
+                                self.bump();
+                            }
+                        }
+                        emits.push(Emit {
+                            in_fn: fn_name.to_string(),
+                            target,
+                            target_span,
+                            arg,
+                        });
+                    }
+                    None => self.diags.push(Diagnostic::error(
+                        "MZ0405",
+                        &self.file,
+                        at,
+                        format!(
+                            "`emit` needs an event prop's name, found {}",
+                            describe(self.peek())
+                        ),
+                    )),
+                }
+            }
+            self.recover_line();
+        }
+        emits
     }
 
     /// Elements inside a `view` or a nested element, until the matching `end`.
@@ -686,6 +1007,7 @@ impl Parser {
                 span,
                 attrs: Vec::new(),
                 children: Vec::new(),
+                else_children: None,
             });
         }
 
@@ -718,13 +1040,19 @@ impl Parser {
         // A condition tail on the element line: `when state is offline`, `when not visible`.
         while !matches!(self.peek(), Tok::Newline | Tok::Eof) {
             match self.peek().clone() {
-                Tok::Keyword(k) => {
+                Tok::Keyword(k) if !matches!(k, "true" | "false" | "nothing" | "none") => {
+                    let at = self.peek_span();
                     self.bump();
-                    let rhs = self.value().unwrap_or_default();
-                    attrs.push((k.to_string(), rhs));
+                    let rhs = self.attr(k).unwrap_or(Attr {
+                        name: k.to_string(),
+                        value: String::new(),
+                        span: at,
+                        segments: Vec::new(),
+                    });
+                    attrs.push(rhs);
                 }
-                _ => match self.value() {
-                    Some(v) => attrs.push((String::new(), v)),
+                _ => match self.attr("") {
+                    Some(v) => attrs.push(v),
                     None => {
                         self.bump();
                     }
@@ -740,6 +1068,7 @@ impl Parser {
         });
 
         let mut children = Vec::new();
+        let mut else_children: Option<Vec<Element>> = None;
         loop {
             self.skip_newlines();
             if self.at_eof() {
@@ -748,6 +1077,36 @@ impl Parser {
             if matches!(self.peek(), Tok::Keyword("end")) {
                 self.parse_end(stack);
                 break;
+            }
+            // `else` splits a `when` into its two branches (RFC-0001 §1.2, RFC-0008 §4).
+            // One `end` closes both, so the block stack is untouched.
+            if matches!(self.peek(), Tok::Keyword("else")) {
+                let at = self.peek_span();
+                if tag != "when" {
+                    self.diags.push(Diagnostic::error(
+                        "MZ0404",
+                        &self.file,
+                        at,
+                        format!(
+                            "`else` belongs to a `when`, but it is inside `{tag}` opened on line {}",
+                            span.start_line
+                        ),
+                    ));
+                } else if else_children.is_some() {
+                    self.diags.push(Diagnostic::error(
+                        "MZ0404",
+                        &self.file,
+                        at,
+                        format!(
+                            "the `when` opened on line {} already has an `else` — a `when` has two branches",
+                            span.start_line
+                        ),
+                    ));
+                } else {
+                    else_children = Some(std::mem::take(&mut children));
+                }
+                self.recover_line();
+                continue;
             }
             // `name = value` is an attribute; anything else opens a child element.
             let is_attr = matches!(self.peek(), Tok::Ident(_))
@@ -761,8 +1120,8 @@ impl Parser {
                 };
                 self.bump();
                 self.bump(); // `=`
-                match self.value() {
-                    Some(v) => attrs.push((key, v)),
+                match self.attr(&key) {
+                    Some(v) => attrs.push(v),
                     None => {
                         let vspan = self.peek_span();
                         self.diags.push(Diagnostic::error(
@@ -779,11 +1138,15 @@ impl Parser {
             }
         }
 
+        // `else_children` collected the *then* branch when `else` was seen; swap them back
+        // so `children` is always the branch the condition selects.
+        let else_children = else_children.map(|then| std::mem::replace(&mut children, then));
         Some(Element {
             tag,
             span,
             attrs,
             children,
+            else_children,
         })
     }
 

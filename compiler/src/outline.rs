@@ -30,20 +30,8 @@ pub fn outline(component: &Component) -> String {
         out.push('\n');
     }
 
-    for p in &component.props {
-        out.push_str("  prop ");
-        out.push_str(&p.name);
-        out.push_str(": ");
-        out.push_str(&p.ty);
-        if let Some(value) = &p.default {
-            // The default value is interface: a caller needs to know what happens when the
-            // prop is omitted. It is also short, so it costs nothing to keep.
-            out.push_str(" = ");
-            out.push_str(value);
-        }
-        out.push('\n');
-    }
-
+    // Enums and records first, in RFC-0001 §3's canonical order (enum/record before prop).
+    //
     // Variant *names* are interface — a caller must know what it may pass. The column data
     // behind them is implementation, and is where the bulk of a variant table's bytes are.
     for e in &component.enums {
@@ -56,6 +44,31 @@ pub fn outline(component: &Component) -> String {
             out.push('\n');
         }
         out.push_str("  end\n");
+    }
+
+    // A record is wholly interface: its fields are the shape a caller must build.
+    for r in &component.records {
+        out.push_str("  record ");
+        out.push_str(&r.name);
+        out.push('\n');
+        for f in &r.fields {
+            out.push_str(&format!("    field {}: {}\n", f.name, f.ty));
+        }
+        out.push_str("  end\n");
+    }
+
+    for p in &component.props {
+        out.push_str("  prop ");
+        out.push_str(&p.name);
+        out.push_str(": ");
+        out.push_str(&p.ty.to_string());
+        if let Some(value) = &p.default {
+            // The default value is interface: a caller needs to know what happens when the
+            // prop is omitted. It is also short, so it costs nothing to keep.
+            out.push_str(" = ");
+            out.push_str(value);
+        }
+        out.push('\n');
     }
 
     for f in &component.fns {
@@ -175,6 +188,7 @@ end component a
         let src = "\
 component button
   prop variant: button_variant = default
+  prop label: text
   enum button_variant
     default      class \"bg-primary text-primary-foreground hover:bg-primary/80\"
     outline      class \"border-border bg-input/30 hover:bg-input/50 hover:text-foreground\"
