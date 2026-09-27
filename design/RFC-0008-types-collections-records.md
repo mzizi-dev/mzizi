@@ -336,7 +336,11 @@ the pass this RFC adds.
 All follow RFC-0001 §4: `say` at most 200 characters and quoting the source, deterministic
 order, and one diagnostic per real error — an unknown type is reported once, at its
 declaration, and every later use of that prop is silently the error type rather than a
-cascade of `MZ0709`s. A name inside `{...}` that is not snake_case is `MZ0101`, fixed
+cascade of `MZ0709`s. The same holds for a `field` line whose type fails to parse
+(`field note: list(`): the field is kept as known with an unknown type, as a broken `prop`
+line already was, so the broken line is the one diagnostic and later uses of `e.note` add
+none — while a misspelt `e.nope` is still `MZ0708`. The first build dropped such a field,
+and every use of it became another `MZ0708` (review of #20). A name inside `{...}` that is not snake_case is `MZ0101`, fixed
 segment by segment (`{item.Version}` → `item.version`, not `item._version`), and it is the
 only diagnostic for that path: its fix is `exact` when the corrected path resolves, and a
 `guess` — with the path's own error folded into it, not reported beside it — when it does
