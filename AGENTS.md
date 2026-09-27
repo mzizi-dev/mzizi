@@ -39,7 +39,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 107 tests
+cargo test                                                              # 174 tests
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
@@ -59,7 +59,10 @@ cd compiler
 cargo fmt -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
+for f in ../examples/*.mz; do
+  echo "checking $f"
+  cargo run --quiet --bin mz -- check "$f"
+done
 for f in ../primitives/*.mz; do
   echo "checking $f"
   cargo run --quiet --bin mz -- check "$f"
