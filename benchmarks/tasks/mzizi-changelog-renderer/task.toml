@@ -1,4 +1,4 @@
-name = "nyuchi-changelog-renderer"
+name = "mzizi-changelog-renderer"
 spec = "spec.tsx"
 reference = "reference.rs"
 enums = ["NodeAccent"]

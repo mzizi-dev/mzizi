@@ -194,7 +194,7 @@ fn score_argv(ep: &Path) -> Vec<String> {
 #[test]
 fn the_changelog_task_opt_in_reaches_the_real_scorer() {
     let out = Scratch::new("renames");
-    let ep = start_task(&out.0, "nyuchi-changelog-renderer");
+    let ep = start_task(&out.0, "mzizi-changelog-renderer");
     assert_eq!(
         score_argv(&ep).last().map(String::as_str),
         Some("--allow-variant-renames")

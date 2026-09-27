@@ -246,7 +246,7 @@ fn score_dioxus_reference_against_itself_is_clean() {
 /// task's `task.toml` opts in, so `mzbench` passes it) the variants pair by class.
 #[test]
 fn score_pilot_changelog_candidates_pair_the_renamed_variants_by_class() {
-    let reference = repo_root().join("benchmarks/tasks/nyuchi-changelog-renderer/reference.rs");
+    let reference = repo_root().join("benchmarks/tasks/mzizi-changelog-renderer/reference.rs");
     let pilot = repo_root().join("benchmarks/results/2026-09-27-pilot/claude-subagent");
     for (arm, file) in [("mzizi", "candidate.mz"), ("dioxus", "candidate.rs")] {
         let candidate = pilot

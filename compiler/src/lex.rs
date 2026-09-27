@@ -86,7 +86,7 @@ pub const KEYWORDS: &[&str] = &[
 /// Convert a `camelCase` or `PascalCase` identifier to `snake_case`.
 ///
 /// Used to build the `exact` fix on a naming diagnostic, and to map corpus component
-/// identity (`nyuchi-connectivity-bar`) onto source names by the fixed rule in RFC-0001 §2.
+/// identity (`mzizi-connectivity-bar`) onto source names by the fixed rule in RFC-0001 §2.
 pub fn to_snake_case(name: &str) -> String {
     let mut out = String::with_capacity(name.len() + 4);
     for (i, ch) in name.char_indices() {
@@ -487,8 +487,8 @@ mod tests {
         assert_eq!(to_snake_case("onStateChange"), "on_state_change");
         assert_eq!(to_snake_case("ConnectivityBar"), "connectivity_bar");
         assert_eq!(
-            to_snake_case("nyuchi-connectivity-bar"),
-            "nyuchi_connectivity_bar"
+            to_snake_case("mzizi-connectivity-bar"),
+            "mzizi_connectivity_bar"
         );
         assert_eq!(to_snake_case("already_snake"), "already_snake");
     }

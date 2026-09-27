@@ -265,7 +265,7 @@ decision doesn't trace to a failure mode, it doesn't belong in the language._ A 
 that cannot name the failure it removes will be asked to.
 
 **Examples come from the benchmark corpus, never invented.** RFC-0001 §1 says so explicitly
-and uses `nyuchi-connectivity-bar`, a real component whose TypeScript reference and Rust
+and uses `mzizi-connectivity-bar`, a real component whose TypeScript reference and Rust
 port both exist, so every line is checkable against known ground truth. Use a component
 from the corpus, or one of the nine primitives.
 
