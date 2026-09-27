@@ -258,6 +258,33 @@ fn an_emit_must_name_an_event_prop_and_fit_its_payload() {
     one(&component("  fn go\n    emit\n  end\n"), "MZ0405");
 }
 
+/// Review finding 3: `event(option(T))` was accepted, then every `emit` of it failed —
+/// `none` included. The payload is checked against the event's type; for `option(T)`,
+/// `none`, an `option(T)` value, and any `T` (wrapped implicitly) all fit.
+#[test]
+fn an_option_event_takes_none_or_a_value_of_its_inner_type() {
+    let with = |emit: &str| {
+        component(&format!(
+            "  enum pick\n    a  k \"1\"\n    b  k \"2\"\n  end\n  prop chosen: pick = a\n  prop maybe: option(pick)\n  prop label: text\n  prop picked: event(option(pick))\n  fn go\n    {emit}\n  end\n"
+        ))
+    };
+    for ok in [
+        "emit picked(none)",
+        "emit picked(b)",
+        "emit picked(chosen)",
+        "emit picked(maybe)",
+    ] {
+        clean(&with(ok));
+    }
+    let d = one(&with("emit picked(label)"), "MZ0715");
+    assert!(d.say.contains("option(pick)"), "{}", d.say);
+    exact_fix_repairs(&with("emit picked(bb)"), "MZ0708");
+    one(&with("emit picked"), "MZ0715");
+    clean(&component(
+        "  prop on_name: event(option(text))\n  fn go\n    emit on_name(\"x\")\n    emit on_name(none)\n  end\n",
+    ));
+}
+
 #[test]
 fn a_bad_interpolation_is_one_diagnostic() {
     let with = |s: &str| {
