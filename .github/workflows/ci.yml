@@ -58,9 +58,13 @@ jobs:
 
       # The example and every primitive must stay parseable by the shipped binary, not just
       # by the test harness — the charter's rule is that unverified bytes are worthless.
-      - name: mz check the corpus example
+      - name: mz check every corpus example
         working-directory: compiler
-        run: cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
+        run: |
+          for f in ../examples/*.mz; do
+            echo "checking $f"
+            cargo run --quiet --bin mz -- check "$f"
+          done
 
       - name: mz check every primitive
         working-directory: compiler
