@@ -110,13 +110,14 @@ mzizi/
 
 ## The RFCs
 
-| RFC                                                                        | What it settles                                                                                        |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [0001 — syntax](./design/RFC-0001-syntax.md)                               | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.           |
-| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md) | The design-target correction: small models, not frontier ones. Why the runtime is the product.         |
-| [0003 — IR](./design/RFC-0003-ir.md)                                       | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them. |
-| [0004 — test topology](./design/RFC-0004-test-topology.md)                 | What testing is public vs. held-out, and the dependency rule that keeps forks working.                 |
-| [0006 — contracts](./design/RFC-0006-contracts.md)                         | The contract clause grammar, what `mz contract` proves, and what it can't.                             |
+| RFC                                                                        | What it settles                                                                                                                    |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [0001 — syntax](./design/RFC-0001-syntax.md)                               | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.                                       |
+| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md) | The design-target correction: small models, not frontier ones. Why the runtime is the product.                                     |
+| [0003 — IR](./design/RFC-0003-ir.md)                                       | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them.                             |
+| [0004 — test topology](./design/RFC-0004-test-topology.md)                 | What testing is public vs. held-out, and the dependency rule that keeps forks working.                                             |
+| [0006 — contracts](./design/RFC-0006-contracts.md)                         | The contract clause grammar, what `mz contract` proves, and what it can't.                                                         |
+| [0007 — gap register](./design/RFC-0007-gap-register.md)                   | What the charter's scope needs that the language and compiler lack, checked against the code, and the order to build it in. Draft. |
 
 RFC-0005 is reserved (`mzizi-dev/agent-tools#76`, private — not linked, since a link to a
 private repo 404s for anyone without access) but not yet written. Every RFC ends with open
