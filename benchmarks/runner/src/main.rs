@@ -141,13 +141,19 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
             })
         };
     let check = template(f.take("check-cmd"), default_check(arm, &repo))?;
-    let score = template(f.take("score-cmd"), default_score(&repo))?;
+    let mut score = template(f.take("score-cmd"), default_score(&repo))?;
+    // Appended to a custom `--score-cmd` too, so the task's opt-in cannot be lost by
+    // overriding the scorer; the argv as written to meta.json is what ran.
+    if task.allow_variant_renames {
+        score.argv.push("--allow-variant-renames".into());
+    }
 
     let prompt = build_prompt(arm, &guide, &spec, &task.enums);
     let meta = EpisodeMeta {
         mode,
         task: task.name.clone(),
         enums: task.enums.clone(),
+        rename_reason: task.rename_reason.clone(),
         task_dir: task.dir.clone(),
         reference_path: task.reference_path.clone(),
         arm,

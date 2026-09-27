@@ -8,7 +8,7 @@
 ## What this repo is
 
 **`mzizi-dev/mzizi` is the language** — a Rust compiler/syntax research prototype, Phase 0
-of the Bundu Foundation's Mzizi charter. It is **not** the component registry
+of the Mzizi research charter. It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
 network access it needs is to crates.io, for the index and the benchmark runner's two pinned
@@ -125,8 +125,9 @@ Do not wire a build step, test, or script here that reaches out to `mzizi-regist
 ## Naming and ownership
 
 - The language repo is plain `mzizi`; every other repo in the org is `mzizi-`-prefixed.
-- Mzizi (this repo) is 100% Bundu Foundation IP. The Mzizi console ("Fundi") is
-  Nyuchi-owned. Keep that line — CHARTER.md draws it deliberately.
+- Mzizi (this repo) is 100% Mzizi IP, as are the framework, the component registry and
+  everything else non-revenue. Revenue-generating work (the Mzizi console "Fundi", paid
+  plans, billing) is Nyuchi-owned. Keep that line — CHARTER.md draws it deliberately.
 - Brand wordmarks are lowercase in prose: `mzizi`, `bundu`, `nyuchi`, `fundi`. Not
   "Mzizi™", not title case in running text.
 

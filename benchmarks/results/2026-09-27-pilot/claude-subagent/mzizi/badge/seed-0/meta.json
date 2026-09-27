@@ -1,0 +1,54 @@
+{
+  "arm": "mzizi",
+  "check": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "--manifest-path",
+      "compiler/Cargo.toml",
+      "--bin",
+      "mz",
+      "--",
+      "check",
+      "--agent",
+      "{file}"
+    ],
+    "cwd": "."
+  },
+  "endpoint": "http://127.0.0.1:8080",
+  "enums": [
+    "BadgeVariant"
+  ],
+  "guide_bytes": 10223,
+  "guide_fnv1a64": "675edc2370682334",
+  "guide_path": "benchmarks/prompts/mzizi-guide.md",
+  "iteration_count_enforced_by_runner": false,
+  "max_iters": 5,
+  "max_tokens": null,
+  "mode": "agent",
+  "model": "claude-subagent",
+  "reference_path": "benchmarks/tasks/badge/reference.rs",
+  "score": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "-p",
+      "mzizi-benchmark-harness",
+      "--",
+      "score",
+      "--arm",
+      "{arm}",
+      "--candidate",
+      "{candidate}",
+      "--reference",
+      "{reference}"
+    ],
+    "cwd": "."
+  },
+  "seed": 0,
+  "task": "badge",
+  "task_dir": "benchmarks/tasks/badge",
+  "temperature": null
+}

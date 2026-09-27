@@ -65,6 +65,10 @@ pub struct EpisodeMeta {
     pub task: String,
     /// The task's `enums` list, as passed to the prompt builder.
     pub enums: Vec<String>,
+    /// The task's `rename_reason`, when it opts in to `allow_variant_renames` (the scorer
+    /// argv then carries `--allow-variant-renames`). Recorded so the opt-in and its reason
+    /// sit beside the score they changed.
+    pub rename_reason: Option<String>,
     pub task_dir: PathBuf,
     pub reference_path: PathBuf,
     pub arm: Arm,
@@ -89,6 +93,8 @@ impl EpisodeMeta {
             "mode": self.mode.as_str(),
             "task": self.task,
             "enums": self.enums,
+            "allow_variant_renames": self.rename_reason.is_some(),
+            "rename_reason": self.rename_reason,
             "task_dir": self.task_dir.to_string_lossy(),
             "reference_path": self.reference_path.to_string_lossy(),
             "arm": self.arm.as_str(),
@@ -133,6 +139,10 @@ impl EpisodeMeta {
                         .collect()
                 })
                 .unwrap_or_default(),
+            rename_reason: v
+                .get("rename_reason")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             task_dir: PathBuf::from(st("task_dir")?),
             reference_path: PathBuf::from(st("reference_path")?),
             arm: Arm::parse(&st("arm")?)?,
@@ -464,6 +474,9 @@ struct ScoreResult {
     facts_checked: Option<u64>,
     defects: Option<u64>,
     class_token_jaccard: Option<f64>,
+    /// Variants the scorer paired by class string under a different name. `None` when the
+    /// scorer predates the field (or failed).
+    renames: Option<u64>,
     error: Option<String>,
 }
 
@@ -480,6 +493,7 @@ fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
         facts_checked: None,
         defects: None,
         class_token_jaccard: None,
+        renames: None,
         error: Some(why),
     };
     if out.code != Some(0) {
@@ -495,6 +509,7 @@ fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
             facts_checked: Some(f),
             defects: Some(d),
             class_token_jaccard: v["class_token_jaccard"].as_f64(),
+            renames: v["renames"].as_u64(),
             error: None,
         }),
         _ => Ok(failed("scorer JSON lacks facts_checked/defects".into())),
@@ -554,6 +569,7 @@ pub fn finish(dir: &Path, tok: &dyn Tokenizer) -> Result<Value, String> {
         "defects": sc.as_ref().and_then(|s| s.defects),
         "facts_checked": sc.as_ref().and_then(|s| s.facts_checked),
         "class_token_jaccard": sc.as_ref().and_then(|s| s.class_token_jaccard),
+        "renames": sc.as_ref().and_then(|s| s.renames),
     });
     append_line(&st.dir, &v)?;
     Ok(v)
@@ -692,6 +708,7 @@ mod tests {
             mode,
             task: "button".into(),
             enums: vec![],
+            rename_reason: None,
             task_dir: tmp.to_path_buf(),
             reference_path: reference,
             arm: Arm::Mzizi,
@@ -709,8 +726,7 @@ mod tests {
         }
     }
 
-    const SCORE_OK: &str =
-        r#"{"arm":"mzizi","facts_checked":5,"defects":1,"details":[],"class_token_jaccard":0.8}"#;
+    const SCORE_OK: &str = r#"{"arm":"mzizi","facts_checked":5,"defects":1,"renames":2,"details":[],"class_token_jaccard":0.8}"#;
 
     fn start(tmp: &Path, mode: Mode, score: CommandTemplate) -> PathBuf {
         let m = meta(tmp, mode, score);
@@ -765,6 +781,7 @@ mod tests {
         assert_eq!(fin["defects"], 1);
         assert_eq!(fin["facts_checked"], 5);
         assert_eq!(fin["class_token_jaccard"], 0.8);
+        assert_eq!(fin["renames"], 2);
         assert_eq!(fin["token_source"], "tokenizer_transcript_proxy");
         assert_eq!(fin["total_prompt_tokens"], Value::Null);
         // system(2) + user + cand1(1) + feedback1 + cand2(2); feedback only when sent.
