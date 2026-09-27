@@ -61,11 +61,11 @@ end component chip
 
 ## The parts, in order
 
-Write them in this order: doc lines, `use`, `enum`, `prop`, `view`, `contract`.
+Write them in this order: doc lines, `use`, `enum` and `record`, `prop`, `view`, `contract`.
 
 - **Shape.** `component <name>` opens the file; `end component <name>` closes it and must
-  repeat the name. Every other block (`enum`, `view`, `contract`, each element, each
-  `when`) closes with a bare `end`.
+  repeat the name. Every other block (`enum`, `record`, `view`, `contract`, each element,
+  each `when`, each `for each`) closes with a bare `end`.
 - **Doc comments.** `##` to end of line, before or inside the component. It is the only
   comment form; `//` and `/* */` are errors.
 - **Names.** Everything you name is `snake_case`. A `camelCase` name is a compile error
@@ -80,22 +80,33 @@ Each variant is one line: its name, then `column value` pairs. This replaces `cv
 `Record<Variant, string>` maps and variant `switch`es; one row holds everything about a
 variant. Every variant must have every column (`MZ0303` otherwise). Values are strings
 `"..."` or integers. In a size table, `height` is the pixels the class renders: `h-N` or
-`size-N` is `N * 4`, so `h-10` pairs with `height 40`.
+`size-N` is `N * 4`, so `h-10` pairs with `height 40`. A column may hold another enum's
+variant (`accent gold`); `{node.accent.class}` then reads through both tables.
+
+### Records
+
+A record is a named group of fields, one `field <name>: <type>` per line, closed by `end`.
+The example under "The view" declares one.
 
 ### Props
 
 `prop <name>: <type>`, optionally `= <default>`, one per line.
 
-| Type            | Default written as          | For                           |
-| --------------- | --------------------------- | ----------------------------- |
-| an enum name    | a bare variant: `= neutral` | variant / size props          |
-| `text`          | a string: `= "Remove"`      | labels, children text, values |
-| `bool`          | `= true` or `= false`       | flags such as `disabled`      |
-| `int`           | an integer: `= 3`           | counts                        |
-| `event(none)`   | none                        | `onClick`-style callbacks     |
-| `event(<type>)` | none                        | callbacks carrying a value    |
+| Type             | Default written as          | For                           |
+| ---------------- | --------------------------- | ----------------------------- |
+| an enum name     | a bare variant: `= neutral` | variant / size props          |
+| `text`           | a string: `= "Remove"`      | labels, children text, values |
+| `bool`           | `= true` or `= false`       | flags such as `disabled`      |
+| `int`            | an integer: `= 3`           | counts                        |
+| `event(none)`    | none                        | `onClick`-style callbacks     |
+| `event(<type>)`  | none                        | callbacks carrying a value    |
+| `list(<type>)`   | none: omitted means empty   | arrays, `T[]`                 |
+| `option(<type>)` | none: omitted means `none`  | an optional scalar, `x?: T`   |
+| a record name    | none                        | an object prop                |
 
-The compiler does not check type names or the names inside `{...}`, so spell them exactly.
+An optional array is `list(T)`, never `option(list(T))`: the empty list is its absence. An
+optional callback is plain `event(...)`. Every type and name is checked; a misspelling is
+an error whose fix is the nearest name.
 
 ### The view
 
@@ -107,23 +118,74 @@ tappable. Inside an element, every line is either:
 - a child element, a `when` block, or `nothing`.
 
 Attribute values are a string, an integer, `true`/`false`, a prop name (`text = label`),
-or a dotted cell (`role = variant.announce`). A string may interpolate cells and props with
-`{...}`: `class = "base {tone.class}"`. Interpolation inside a string is the only way to
-build a string; there is no `+`, and no `{...}` outside a string.
+or a dotted path (`role = variant.announce`, `text = entry.title`). A string may interpolate
+them with `{...}`: `class = "base {tone.class}"`. Interpolation inside a string is the only
+way to build a string; there is no `+`, and no `{...}` outside a string. A list or a whole
+record is never a value; iterate the list, name the field.
 
-| React                              | Mzizi                                      |
-| ---------------------------------- | ------------------------------------------ |
-| `className={cn(base, v[variant])}` | `class = "base {variant.class}"`           |
-| `data-slot="x"`                    | `slot = "x"`                               |
-| `role="status"`                    | `role = "status"`                          |
-| `{label}` / `children` as text     | `text = label`                             |
-| `onClick={onTap}`                  | `tap = on_tap`                             |
-| `onChange`                         | `change = on_change`                       |
-| `disabled={disabled}`              | `disabled = disabled`                      |
-| `{open && <X/>}`                   | `when open` ... `end`                      |
-| `a ? <X/> : <Y/>`                  | `when a` ... `end`, `when not a` ... `end` |
-| `{v === "x" && <X/>}`              | `when v is x` ... `end`                    |
-| `return null`                      | `nothing`                                  |
+Lists render with `for each`, whose first line is its `key`, a path from the item.
+`when x is none` ... `else` ... `end` tests an option or a list. Inside the `else` an option
+is its value; anywhere else, using it is an error. For a list, `is none` means empty.
+
+```mz
+## A release list: a record, a list of them, an option, and nested `for each`.
+component releases
+
+  record release
+    field version: text
+    field note: option(text)
+    field tags: list(text)
+  end
+
+  prop items: list(release)
+
+  view
+    row
+      slot = "releases"
+      for each item in items
+        key = item.version
+        article
+          text = item.version
+          when item.note is none
+            nothing
+          else
+            row
+              text = item.note
+            end
+          end
+          for each tag in item.tags
+            key = tag
+            chip
+              text = "#{tag}"
+            end
+          end
+        end
+      end
+    end
+  end
+
+  contract
+    slot is "releases"
+  end
+
+end component releases
+```
+
+| React                              | Mzizi                                         |
+| ---------------------------------- | --------------------------------------------- |
+| `className={cn(base, v[variant])}` | `class = "base {variant.class}"`              |
+| `data-slot="x"`                    | `slot = "x"`                                  |
+| `role="status"`                    | `role = "status"`                             |
+| `{label}` / `children` as text     | `text = label`                                |
+| `onClick={onTap}`                  | `tap = on_tap`                                |
+| `onChange`                         | `change = on_change`                          |
+| `disabled={disabled}`              | `disabled = disabled`                         |
+| `{open && <X/>}`                   | `when open` ... `end`                         |
+| `a ? <X/> : <Y/>`                  | `when a` ... `else` ... `end`                 |
+| `{v === "x" && <X/>}`              | `when v is x` ... `end`                       |
+| `{xs.map(x => <X key={x.id}/>)}`   | `for each x in xs`, `key = x.id`, ... `end`   |
+| `{x && x.length > 0 && <X/>}`      | `when x is none`, `nothing`, `else` ... `end` |
+| `return null`                      | `nothing`                                     |
 
 Drop `...props` spreading and `className` pass-through: there is no equivalent.
 
@@ -163,7 +225,8 @@ Assert what the source guarantees: every interactive size clears 48
   (unclosed blocks). When you see those, look for a missing `=` first.
 - **`is` in contracts.** `chip_size.snug height 52` is `MZ0602`; write `height is 52`.
 - **`is` compares as written.** `height is "52"` fails against `height 52`.
-- **No `else`, no `match`/`case`.** Both are errors in a view. Write two `when` blocks.
+- **No `match`/`case`.** An error in a view. Write `when v is x` blocks.
+- **No `some`, no `when x` on an option.** Presence is `when x is none` / `else`.
 - **No `if`.** `if open` is not an error: it silently becomes an element named `if`. Use
   `when`.
 - **Event attribute names.** Use `tap` and `change`. `on_click = on_tap` also compiles,
