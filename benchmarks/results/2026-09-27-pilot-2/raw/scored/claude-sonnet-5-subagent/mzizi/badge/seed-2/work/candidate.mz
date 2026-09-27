@@ -1,0 +1,36 @@
+## Badge: a small status/label indicator with several visual variants.
+## Purely presentational; not a tappable control.
+component badge
+
+  enum badge_variant
+    default      class "bg-primary text-primary-foreground"
+    secondary    class "bg-secondary text-secondary-foreground"
+    destructive  class "bg-destructive/10 text-destructive dark:bg-destructive/20"
+    outline      class "border-border text-foreground bg-input/30"
+    ghost        class "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50"
+    link         class "text-primary underline-offset-4 hover:underline"
+  end
+
+  prop variant: badge_variant = default
+  prop label: text
+
+  view
+    row
+      slot = "badge"
+      class = "h-5 gap-1 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium inline-flex items-center justify-center w-fit whitespace-nowrap shrink-0 {variant.class}"
+      text = label
+    end
+  end
+
+  contract
+    every badge_variant class not_empty
+    badge_variant.default class contains "bg-primary"
+    badge_variant.secondary class contains "bg-secondary"
+    badge_variant.destructive class contains "bg-destructive/10"
+    badge_variant.outline class contains "border-border"
+    badge_variant.ghost class contains "hover:bg-muted"
+    badge_variant.link class contains "underline-offset-4"
+    slot is "badge"
+  end
+
+end component badge

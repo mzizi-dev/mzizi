@@ -1,0 +1,12 @@
+error: argument never used
+   --> candidate.rs:105:64
+    |
+105 |     format!("{BASE} {} {}", variant.classes(), size.classes(), extra)
+    |             -------------- formatting specifier missing        ^^^^^ argument never used
+
+
+error: Attributes must come before children in an element
+   --> candidate.rs:141:13
+    |
+141 |             onclick: move |event| {
+    |             ^^^^^^^

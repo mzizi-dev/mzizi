@@ -1,0 +1,104 @@
+```mz
+component changelog_renderer
+
+  enum node_accent
+    horizontal  class "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]"
+    vertical    class "bg-[var(--color-tanzanite)]/10 text-[var(--color-tanzanite)]"
+    depth       class "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]"
+    outlier     class "bg-[var(--color-gold)]/10 text-[var(--color-gold)]"
+  end
+
+  prop entries: list[changelog_entry]
+  prop class: text
+
+  view
+    div
+      slot = "nyuchi-changelog-renderer"
+      class = "flex flex-col gap-8 {class}"
+      role = "feed"
+      aria_label = "Changelog"
+      entries.each entry
+        article
+          key = entry.version
+          class = "relative border-l-2 border-border pl-6"
+          div
+            slot = "timeline-dot"
+            class = "absolute top-1 -left-[5px] size-2 rounded-full bg-primary"
+          div
+            class = "flex flex-wrap items-baseline gap-3"
+            span
+              class = "font-mono text-sm font-bold text-primary"
+              text = entry.version
+            time
+              class = "text-xs text-muted-foreground"
+              text = entry.date
+          h3
+            class = "mt-1 text-lg font-semibold"
+            text = entry.title
+          p
+            class = "mt-1 text-sm text-muted-foreground"
+            text = entry.description
+          when entry.nodesAffected and entry.nodesAffected.length > 0
+            div
+              slot = "nodes-affected"
+              class = "mt-2 flex flex-wrap gap-1"
+              entry.nodesAffected.each n
+                span
+                  key = n
+                  class = "rounded-full px-2 py-0.5 text-xs font-medium {node_accent[NODE_AXIS[n] ?? 'horizontal']}"
+                  title = "N{n} — {NODE_LABELS[n] ?? 'Unknown'} ({NODE_AXIS[n] ?? 'unknown'} axis)"
+                  text = "N{n}"
+              end
+          end
+          when entry.componentsAdded and entry.componentsAdded.length > 0
+            div
+              slot = "components-added"
+              class = "mt-2 flex flex-wrap gap-1"
+              entry.componentsAdded.each c
+                span
+                  key = c
+                  class = "rounded bg-[var(--status-success,#64FFDA)]/10 px-1.5 py-0.5 text-xs text-[var(--status-success,#22C55E)]"
+                  text = "+{c}"
+              end
+          end
+          when entry.componentsModified and entry.componentsModified.length > 0
+            div
+              slot = "components-modified"
+              class = "mt-1 flex flex-wrap gap-1"
+              entry.componentsModified.each c
+                span
+                  key = c
+                  class = "rounded bg-[var(--color-cobalt)]/10 px-1.5 py-0.5 text-xs text-[var(--color-cobalt)]"
+                  text = "~{c}"
+              end
+          end
+          when entry.componentsDeprecated and entry.componentsDeprecated.length > 0
+            div
+              slot = "components-deprecated"
+              class = "mt-1 flex flex-wrap gap-1"
+              entry.componentsDeprecated.each c
+                span
+                  key = c
+                  class = "rounded bg-[var(--status-warning,#F59E0B)]/10 px-1.5 py-0.5 text-xs text-[var(--status-warning,#F59E0B)] line-through"
+                  text = c
+              end
+          end
+        end
+      end
+    end
+  end
+
+  contract
+    slot is "nyuchi-changelog-renderer"
+    slot is "timeline-dot"
+    slot is "nodes-affected"
+    slot is "components-added"
+    slot is "components-modified"
+    slot is "components-deprecated"
+    every node_accent class not_empty
+    every node_accent class contains "bg-[var(--color-"
+    every node_accent class contains "/10 text-[var(--color-"
+  end
+
+end component changelog_renderer
+```

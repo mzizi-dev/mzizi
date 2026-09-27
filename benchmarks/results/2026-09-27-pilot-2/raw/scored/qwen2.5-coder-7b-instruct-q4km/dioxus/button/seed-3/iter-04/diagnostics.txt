@@ -1,0 +1,5 @@
+error: Attributes must come before children in an element
+   --> candidate.rs:146:13
+    |
+146 |             onclick: move |event| {
+    |             ^^^^^^^
