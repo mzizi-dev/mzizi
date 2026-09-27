@@ -485,15 +485,15 @@ Every divergence from the spec, each forced by the language as it stands:
 
 ### 9.4 Tests, speed and the IR
 
-| Measure                                                                | Value                                                     |
-| ---------------------------------------------------------------------- | --------------------------------------------------------- |
-| `cargo test -p mzizi-lang-compiler`                                    | **174 passed**, was 107; 63 in `tests/types.rs`           |
-| `cargo test --workspace` (harness and runner too)                      | 244 passed                                                |
-| `exact` fixes applied blind by the tests and re-checked to zero errors | 35 fixtures across 13 codes, all repaired to zero errors  |
-| corpus contract coverage (`tests/contracts.rs`)                        | 45 assertions across 11 files, all evaluated, 0 failing   |
-| parse + resolve + evaluate, all 11 files, debug build                  | ~4–5 ms (budget 250 ms)                                   |
-| structural sharing (`tests/ir_measured.rs`)                            | 242 shared vs 248 isolated nodes, 6 saved across 11 files |
-| `benchmarks/prompts/mzizi-guide.md`                                    | 10,223 → 12,306 bytes (+20.4%); `verify-guide.sh` all ok  |
+| Measure                                                                | Value                                                                                                           |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `cargo test -p mzizi-lang-compiler`                                    | **179 passed**, was 107; 68 in `tests/types.rs`                                                                 |
+| `cargo test --workspace` (harness and runner too)                      | 251 passed                                                                                                      |
+| `exact` fixes applied blind by the tests and re-checked to zero errors | 46 fixtures across 13 codes, all repaired to zero errors (34 before the #20 review fixes, counted the same way) |
+| corpus contract coverage (`tests/contracts.rs`)                        | 45 assertions across 11 files, all evaluated, 0 failing                                                         |
+| parse + resolve + evaluate, all 11 files, debug build                  | ~4–5 ms (budget 250 ms)                                                                                         |
+| structural sharing (`tests/ir_measured.rs`)                            | 242 shared vs 248 isolated nodes, 6 saved across 11 files                                                       |
+| `benchmarks/prompts/mzizi-guide.md`                                    | 10,223 → 12,306 bytes (+20.4%); `verify-guide.sh` all ok                                                        |
 
 The IR moved once before the new example was added: hashing `emit` statements took the ten
 original files from RFC-0006 §9's 169 vs 174 to 170 vs 175. The one new node is
