@@ -301,8 +301,8 @@ the React design system to Nyuchi; see the 2026-09-27 note at the top of this fi
 
 - **`nyuchi/mzizi`** — the React/TSX component registry and mzizi.dev. The charter, as of
   2026-08-23, named it the "Nyuchi-owned Mzizi design system/registry", distinct from the
-  framework (corrected 2026-09-27: the registry is Mzizi's).
-  Stays. **It is also the benchmark corpus** — the ground-truth implementations tasks are
+  framework (corrected 2026-09-27: the registry is Mzizi's, and it has since moved to
+  `mzizi-dev/mzizi-registry`, so the "Stays" below is superseded). Stays. **It is also the benchmark corpus** — the ground-truth implementations tasks are
   scored against — so the new session needs it in scope (§8).
 - **`nyuchi/mzizi-tools`** — fundi, the console app, the MCP server, the CLI, the skills
   bundle. Nyuchi console tooling. Stays. Only `mzizi-lang/` leaves.
@@ -327,6 +327,10 @@ The move is one part of a three-way split along ownership and revenue lines:
 | `nyuchi`    | `mzizi-console` (new)                   | The console app, extracted from `mzizi-tools` → `console.mzizi.dev` | owner's call |
 
 The naming rule holds throughout: the language is `mzizi`, everything else is `mzizi-`.
+
+_Superseded (2026-09-27):_ the `nyuchi` / `mzizi-registry` row. The registry lives at
+`mzizi-dev/mzizi-registry` and is Mzizi's, not Nyuchi's; see the ownership correction at the
+top of this file. The table is otherwise kept as the plan was written.
 
 This is a good boundary: revenue vs non-revenue is simultaneously a licence line, a
 visibility line and an ownership line, which is exactly when a repo beats a directory. Note
