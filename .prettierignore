@@ -32,3 +32,8 @@ pnpm-lock.yaml
 # Benchmark task specs are byte-identical copies of the registry source
 # (benchmarks/tasks/README.md); reformatting them would break that.
 benchmarks/tasks/*/spec.tsx
+
+# Recorded benchmark episodes are the runner's output as written (benchmarks/results/*/RUN.md
+# says how each was produced); reformatting them would change the record. The run's own
+# write-ups (RUN.md) sit one level up and stay formatted.
+benchmarks/results/*/*/

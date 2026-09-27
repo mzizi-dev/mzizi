@@ -1,0 +1,104 @@
+## Nyuchi changelog renderer — N10: Documentation Outlier.
+## Renders one changelog entry as a timeline article: version, date, title,
+## description, an optional node badge coloured by its architecture axis
+## (node_accent mirrors the source's nodesAffected -> axis mapping), and
+## optional added / modified / deprecated component tags.
+## Mzizi has no list/array prop type, so the original `entries[]` and each
+## entry's `nodesAffected` / `componentsAdded` / `componentsModified` /
+## `componentsDeprecated` arrays reduce here to the fields of one entry;
+## render this component once per entry to reproduce the original feed.
+component changelog_renderer
+
+  enum node_accent
+    horizontal  class "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]"
+    vertical    class "bg-[var(--color-tanzanite)]/10 text-[var(--color-tanzanite)]"
+    depth       class "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]"
+    outlier     class "bg-[var(--color-gold)]/10 text-[var(--color-gold)]"
+  end
+
+  prop accent: node_accent = horizontal
+  prop version: text
+  prop title: text
+  prop description: text
+  prop date: text
+  prop node_label: text = ""
+  prop has_node: bool = false
+  prop has_added: bool = false
+  prop added_label: text = ""
+  prop has_modified: bool = false
+  prop modified_label: text = ""
+  prop has_deprecated: bool = false
+  prop deprecated_label: text = ""
+
+  view
+    row
+      slot = "changelog-entry"
+      role = "article"
+      class = "relative border-l-2 border-border pl-6"
+      row
+        slot = "changelog-version"
+        class = "font-mono text-sm font-bold text-primary"
+        text = version
+      end
+      row
+        slot = "changelog-date"
+        class = "text-xs text-muted-foreground"
+        text = date
+      end
+      row
+        slot = "changelog-title"
+        class = "mt-1 text-lg font-semibold"
+        text = title
+      end
+      row
+        slot = "changelog-description"
+        class = "mt-1 text-sm text-muted-foreground"
+        text = description
+      end
+      when has_node
+        row
+          slot = "changelog-node"
+          class = "rounded-full px-2 py-0.5 text-xs font-medium {accent.class}"
+          text = node_label
+        end
+      end
+      when has_added
+        row
+          slot = "changelog-added"
+          class = "rounded bg-[var(--status-success,#64FFDA)]/10 px-1.5 py-0.5 text-xs text-[var(--status-success,#22C55E)]"
+          text = added_label
+        end
+      end
+      when has_modified
+        row
+          slot = "changelog-modified"
+          class = "rounded bg-[var(--color-cobalt)]/10 px-1.5 py-0.5 text-xs text-[var(--color-cobalt)]"
+          text = modified_label
+        end
+      end
+      when has_deprecated
+        row
+          slot = "changelog-deprecated"
+          class = "rounded bg-[var(--status-warning,#F59E0B)]/10 px-1.5 py-0.5 text-xs text-[var(--status-warning,#F59E0B)] line-through"
+          text = deprecated_label
+        end
+      end
+    end
+  end
+
+  contract
+    every node_accent class not_empty
+    node_accent.horizontal class contains "cobalt"
+    node_accent.vertical class contains "tanzanite"
+    node_accent.depth class contains "malachite"
+    node_accent.outlier class contains "gold"
+    slot is "changelog-entry"
+    role is "article"
+    accent is horizontal
+    has_node is false
+    has_added is false
+    has_modified is false
+    has_deprecated is false
+  end
+
+end component changelog_renderer
