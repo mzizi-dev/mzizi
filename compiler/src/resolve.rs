@@ -937,7 +937,12 @@ impl<'a> Resolver<'a> {
                 "`{head}` is not a prop, loop binding, fn or variant in this file; another component's variant is written `<enum>.<variant>`"
             ),
         };
-        self.unknown("MZ0707", head_span, say, fix.map(|(to, c)| (head_span, to, c)));
+        self.unknown(
+            "MZ0707",
+            head_span,
+            say,
+            fix.map(|(to, c)| (head_span, to, c)),
+        );
         Ty::Unknown
     }
 
@@ -1143,7 +1148,10 @@ impl<'a> Resolver<'a> {
                 (Confidence::Exact, String::new())
             } else {
                 self.diags.truncate(before);
-                (Confidence::Guess, format!(", though `{}` does not resolve either", clip(&snake)))
+                (
+                    Confidence::Guess,
+                    format!(", though `{}` does not resolve either", clip(&snake)),
+                )
             };
             self.err_fix(
                 "MZ0101",
