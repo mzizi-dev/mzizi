@@ -1,0 +1,27 @@
+# The Leptos arm's compile sandbox. See ../README.md.
+#
+# Standalone on purpose: the root `Cargo.toml` lists `benchmarks/arms/leptos` under
+# `exclude`, so CI's `cargo … --workspace` never builds Leptos. The empty `[workspace]`
+# table below makes this crate its own workspace root, so Cargo never walks up and tries
+# to attach it to the repository's workspace.
+[workspace]
+
+[package]
+name = "leptos-arm-sandbox"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# EXACT pin to the latest stable release on crates.io at the time this arm was built
+# (checked 2026-09-27; 0.9 is still pre-release as `0.9.0-beta2`). Unlike the Dioxus arm,
+# there is no hand-written Leptos reference in `mzizi-dev/mzizi-registry` to match a
+# version against, so this pin tracks upstream stable instead of a registry lockfile.
+# `csr` (client-side rendering) is the feature set a browser-only component library
+# compiles against; no server integration (`ssr`), hydration, or renderer beyond it is
+# needed to type-check one component file. `Cargo.lock` in this directory pins every
+# transitive dependency too and is committed, the same as the Dioxus arm's.
+leptos = { version = "=0.8.21", default-features = false, features = ["csr"] }
