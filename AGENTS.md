@@ -31,7 +31,7 @@ crate without arguing for it in the commit message against that standing decisio
 
 ```bash
 cd compiler
-cargo test                                                              # 107 tests
+cargo test                                                              # 174 tests
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
@@ -46,7 +46,7 @@ exactly:
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo run --bin mz -- check ../examples/connectivity_bar.mz
+cargo run --bin mz -- check ../examples/*.mz     # every example
 cargo run --bin mz -- check ../primitives/*.mz   # every primitive
 cargo run --bin mz -- contract ../examples/connectivity_bar.mz
 cargo run --bin mz -- contract ../primitives/*.mz
