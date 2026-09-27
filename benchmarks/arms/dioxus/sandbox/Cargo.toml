@@ -1,0 +1,27 @@
+# The Dioxus arm's compile sandbox. See ../README.md.
+#
+# Standalone on purpose: the root `Cargo.toml` lists `benchmarks/arms/dioxus` under
+# `exclude`, so CI's `cargo … --workspace` never builds Dioxus. The empty `[workspace]`
+# table below makes this crate its own workspace root, so Cargo never walks up and tries
+# to attach it to the repository's workspace.
+[workspace]
+
+[package]
+name = "dioxus-arm-sandbox"
+version = "0.0.0"
+# Matches `mzizi-dev/mzizi-registry`'s `mzizi-rs/Cargo.toml` (`edition = "2024"`), the
+# edition the reference `.rs` files are compiled at.
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# EXACT pin to the version the registry's own `mzizi-rs/Cargo.lock` resolves
+# (`dioxus 0.7.10`, registry commit 3afeb752253a86b5488867078c2238d2cf62b4f0), and the
+# same feature set `mzizi-rs/crates/mzizi-ui/Cargo.toml` declares — so the reference
+# components compile here unmodified, against the same Dioxus they compile against there.
+# `Cargo.lock` in this directory is seeded from that same registry lockfile, so the
+# transitive versions match too.
+dioxus = { version = "=0.7.10", default-features = false, features = ["macro", "signals", "hooks", "html"] }
