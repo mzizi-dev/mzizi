@@ -342,6 +342,17 @@ only diagnostic for that path: its fix is `exact` when the corrected path resolv
 `guess` — with the path's own error folded into it, not reported beside it — when it does
 not (review of #20).
 
+No two `exact` fixes in one file's diagnostic set overlap, so `mz fix` can apply all of
+them blind in one pass; `tests/types.rs` asserts it over the whole corpus under eight
+many-line mutations. Two rules keep it true. A camelCase word the lexer reports as
+`MZ0101` that still names nothing once snake-cased is reported once, by the resolver, whose
+nearest-name fix replaces the whole written word. And where two separate mistakes share
+text — `list<string>` is both `MZ0105` and `MZ0701` — the outer fix (the one that starts
+first, the longer on a tie) stays `exact` and the inner one is downgraded to `guess`: it is
+still right once the outer fix is applied and the file re-checked, but no longer promised
+safe beside it. Insertions at the same point (several missing closers) do not overlap and
+keep applying in diagnostic order.
+
 ## 7. The IR and the outline
 
 - `record` → a `record` node, `field` children in declaration order, each with its type.

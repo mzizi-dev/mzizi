@@ -494,6 +494,63 @@ fn a_nested_or_camel_case_symbolic_type_is_one_diagnostic_and_one_fix() {
     }
 }
 
+/// Every `exact` fix in a file's diagnostic set can be applied blind, together, only if no
+/// two of them touch the same text. Checked over the whole corpus under a set of
+/// mutations that each break many lines at once, plus the reviewers' cases.
+#[test]
+fn no_two_exact_fixes_ever_overlap() {
+    let mut fixtures: Vec<String> = Vec::new();
+    for dir in ["examples", "primitives"] {
+        let path = format!("{}/../{dir}", env!("CARGO_MANIFEST_DIR"));
+        let mut files: Vec<_> = std::fs::read_dir(&path)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|x| x == "mz"))
+            .collect();
+        files.sort();
+        for f in files {
+            let src = std::fs::read_to_string(f).unwrap();
+            let mutations: [&dyn Fn(&str) -> String; 8] = [
+                &|s| s.replace(": text", ": Option<Text>"),
+                &|s| s.replace(": text", ": list<String>"),
+                &|s| s.replace(": text", ": Text[]"),
+                &|s| s.replace("list(", "list<").replace("))", ")>"),
+                &|s| s.replace("{", "{X"),
+                &|s| s.replace(".", ".Z"),
+                &|s| s.replace("prop ", "prop my").replace("field ", "field my"),
+                &|s| s.replace("end\n", "\n"),
+            ];
+            fixtures.push(src.clone());
+            fixtures.extend(mutations.iter().map(|m| m(&src)));
+        }
+    }
+    for body in [
+        "  prop x: list<string>\n",
+        "  prop x: Vec<Option<String>>\n",
+        "  record entry\n    field a: text\n  end\n  prop x: Option<Entry>\n  prop y: list<entry[]>\n",
+        "  record entry\n    field version: text\n  end\n  prop items: list(entry)\n  view\n    for each item in items\n      key = item.version\n      row\n        class = \"{item.Version} {item.Versoin} {Item.version}\"\n      end\n    end\n  end\n",
+    ] {
+        fixtures.push(component(body));
+    }
+    for src in &fixtures {
+        let exact: Vec<_> = diags(src)
+            .into_iter()
+            .filter_map(|d| d.fix.map(|f| (d.code, f)))
+            .filter(|(_, f)| f.confidence == Confidence::Exact)
+            .collect();
+        for (i, (ca, a)) in exact.iter().enumerate() {
+            for (cb, b) in &exact[i + 1..] {
+                assert!(
+                    !a.span.overlaps(&b.span),
+                    "{ca} {:?} and {cb} {:?} overlap in:\n{src}",
+                    a,
+                    b
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn a_question_mark_says_how_optional_is_spelt() {
     let found = errors(&component("  prop x?: text\n"));

@@ -35,7 +35,7 @@ pub mod outline;
 pub mod parse;
 pub mod resolve;
 
-use diagnostic::CheckReport;
+use diagnostic::{CheckReport, Severity};
 
 /// Parse, then resolve every name and type (RFC-0008). Resolution runs even when parsing
 /// reported errors, so an agent sees the whole error set in one pass (FM-5); names a
@@ -43,7 +43,18 @@ use diagnostic::CheckReport;
 fn front_end(src: &str, file: &str) -> (Option<ast::Component>, Vec<diagnostic::Diagnostic>) {
     let (component, mut diagnostics) = parse::parse(src, file);
     if let Some(component) = &component {
-        diagnostics.append(&mut resolve::resolve(component, file));
+        let resolved = resolve::resolve(component, file);
+        // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.
+        // If that form still names nothing, the resolver reports the same token again —
+        // one mistake, two overlapping fixes. Keep the resolver's: its fix replaces the
+        // whole written word with the name that does resolve.
+        diagnostics.retain(|d| {
+            d.code != "MZ0101"
+                || !resolved
+                    .iter()
+                    .any(|r| r.severity == Severity::Error && r.span == d.span)
+        });
+        diagnostics.extend(resolved);
     }
     (component, diagnostics)
 }
@@ -52,6 +63,7 @@ fn front_end(src: &str, file: &str) -> (Option<ast::Component>, Vec<diagnostic::
 pub fn check(src: &str, file: &str) -> CheckReport {
     let (_component, diagnostics) = front_end(src, file);
     let mut report = CheckReport { diagnostics };
+    report.disjoint_exact_fixes();
     report.sort();
     report
 }
@@ -76,6 +88,7 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
         tally = evaluated;
         report.diagnostics.append(&mut failures);
     }
+    report.disjoint_exact_fixes();
     report.sort();
     (report, tally)
 }
@@ -84,6 +97,7 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
 pub fn check_with_ast(src: &str, file: &str) -> (Option<ast::Component>, CheckReport) {
     let (component, diagnostics) = front_end(src, file);
     let mut report = CheckReport { diagnostics };
+    report.disjoint_exact_fixes();
     report.sort();
     (component, report)
 }
