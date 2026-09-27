@@ -803,6 +803,7 @@ impl Parser {
         self.recover_line();
 
         let mut fields = Vec::new();
+        let mut broken = Vec::new();
         loop {
             self.skip_newlines();
             if self.at_eof() {
@@ -877,33 +878,42 @@ impl Parser {
                     at,
                     format!("`field {fname}` needs a type: write `field {fname}: <type>`"),
                 ));
+                broken.push(fname);
                 self.recover_line();
                 continue;
             }
             self.bump();
-            if let Some(ty) = self.parse_type(&format!("`field {fname}:`")) {
-                if matches!(self.peek(), Tok::Equals) {
-                    let at = self.peek_span();
-                    self.diags.push(Diagnostic::error(
-                        "MZ0310",
-                        &self.file,
-                        at,
-                        format!(
-                            "record fields take no default — `field {fname}: {ty}` is supplied whole by the caller"
-                        ),
-                    ));
-                } else {
-                    self.expect_line_end(&format!("`field {fname}: {ty}`"));
-                }
-                fields.push(FieldDecl {
-                    name: fname,
-                    span: fspan,
-                    ty,
-                });
+            let Some(ty) = self.parse_type(&format!("`field {fname}:`")) else {
+                broken.push(fname);
+                self.recover_line();
+                continue;
+            };
+            if matches!(self.peek(), Tok::Equals) {
+                let at = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0310",
+                    &self.file,
+                    at,
+                    format!(
+                        "record fields take no default — `field {fname}: {ty}` is supplied whole by the caller"
+                    ),
+                ));
+            } else {
+                self.expect_line_end(&format!("`field {fname}: {ty}`"));
             }
+            fields.push(FieldDecl {
+                name: fname,
+                span: fspan,
+                ty,
+            });
             self.recover_line();
         }
-        Some(RecordDecl { name, span, fields })
+        Some(RecordDecl {
+            name,
+            span,
+            fields,
+            broken,
+        })
     }
 
     /// A `fn` body. Statements are not modelled (RFC-0001 §7.1) except `emit`, which the
