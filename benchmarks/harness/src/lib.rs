@@ -1131,6 +1131,14 @@ pub enum FactKind {
     /// A variant's height equals the one derived from the reference's `classes()` string.
     /// One per reference variant whose class string carries an `h-N` / `size-N` token.
     Height,
+    /// The candidate named the enum's variants differently from the reference, and, because
+    /// the task opted in, they were paired by class-token similarity instead (see
+    /// [`rename_map`]). Never a defect, and so **not a checked fact**: it is in `details` so
+    /// the rename is visible in the output, not silent, but not in `facts_checked`, so
+    /// defects per fact is the same for a renaming candidate and a non-renaming one with the
+    /// same behaviour. `actual` lists each renamed pair as `candidate -> reference` with its
+    /// class-token Jaccard. One per reference enum that was paired this way.
+    VariantNames,
 }
 
 impl FactKind {
@@ -1140,6 +1148,7 @@ impl FactKind {
             FactKind::VariantSet => "variant_set",
             FactKind::Default => "default",
             FactKind::Height => "height",
+            FactKind::VariantNames => "variant_names",
         }
     }
 }
@@ -1170,6 +1179,10 @@ pub struct ScoreReport {
     pub facts: Vec<Fact>,
     /// See [`class_token_jaccard`].
     pub class_token_jaccard: Option<f64>,
+    /// How many candidate variants were paired with a differently named reference variant
+    /// by [`rename_map`], summed over every enum. `0` when every enum matched by name, and
+    /// always `0` for a task that did not opt in to renames.
+    pub renames: usize,
 }
 
 impl ScoreReport {
@@ -1178,17 +1191,27 @@ impl ScoreReport {
         self.facts.iter().filter(|f| f.defect).count()
     }
 
+    /// How many facts were checked: every fact except [`FactKind::VariantNames`], which
+    /// records a pairing and can never be a defect.
+    pub fn facts_checked(&self) -> usize {
+        self.facts
+            .iter()
+            .filter(|f| f.kind != FactKind::VariantNames)
+            .count()
+    }
+
     /// The report as the one JSON object the `score` subcommand prints:
-    /// `{"arm","facts_checked","defects","details":[{"enum","variant","fact","expected",
-    /// "actual","defect"}],"class_token_jaccard"}`.
+    /// `{"arm","facts_checked","defects","renames","details":[{"enum","variant","fact",
+    /// "expected","actual","defect"}],"class_token_jaccard"}`.
     pub fn to_json(&self) -> String {
         let mut s = String::new();
         s.push_str("{\"arm\":");
         push_json_str(&mut s, self.arm.as_str());
         s.push_str(&format!(
-            ",\"facts_checked\":{},\"defects\":{},\"details\":[",
-            self.facts.len(),
-            self.defects()
+            ",\"facts_checked\":{},\"defects\":{},\"renames\":{},\"details\":[",
+            self.facts_checked(),
+            self.defects(),
+            self.renames
         ));
         for (i, f) in self.facts.iter().enumerate() {
             if i > 0 {
@@ -1241,6 +1264,148 @@ fn set_text(vs: &[String]) -> String {
     format!("{{{}}}", vs.join(", "))
 }
 
+/// One reference variant's pairing under [`rename_map`]: the candidate variant it pairs
+/// with, and the class-token Jaccard of the two class strings, as the exact fraction
+/// `(|A ∩ B|, |A ∪ B|)` so ties and the threshold are compared without float rounding.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pair {
+    /// The candidate's name for the reference variant.
+    pub candidate: String,
+    /// `|A ∩ B|` over the two class strings' token sets.
+    pub inter: usize,
+    /// `|A ∪ B|` over the two class strings' token sets.
+    pub union: usize,
+}
+
+impl Pair {
+    /// The pair's class-token Jaccard similarity.
+    pub fn similarity(&self) -> f64 {
+        if self.union == 0 {
+            1.0
+        } else {
+            self.inter as f64 / self.union as f64
+        }
+    }
+}
+
+/// The lowest class-token Jaccard a [`rename_map`] pair may have: at least half the union
+/// of the two class strings' tokens shared. Below that, "the same variant under another
+/// name" is a guess, and a guess must not turn a disagreement into a pass.
+pub const RENAME_MIN_SIMILARITY: (usize, usize) = (1, 2);
+
+/// Pair a candidate enum's variants with the reference's by class-token similarity, for a
+/// candidate that named them differently. Returns reference variant → [`Pair`], or `None`
+/// when no pairing is safe — and then the caller matches by name, exactly as it would with
+/// no pairing step at all.
+///
+/// **Only for tasks that opt in** (`allow_variant_renames = true` in `task.toml`, with a
+/// `rename_reason`; see `benchmarks/tasks/README.md`): [`score`] calls this only when told
+/// to. Without the opt-in a candidate that renames against its spec — button `destructive`
+/// as `danger` — would score 0 defects for a rename the spec never asked for.
+///
+/// A pairing is accepted only when every one of these holds:
+///
+/// - the two variant-name sets differ (equal sets need no pairing);
+/// - both sides have the same number of distinct variants, and every variant on both sides
+///   has a class string;
+/// - each reference variant's best candidate, by the Jaccard of the two strings'
+///   whitespace-split token sets, is unique (no tie), and that candidate's best reference
+///   variant is unique and is the same variant — mutual best, both ways. With equal counts
+///   and every reference variant paired, that is a complete bijection, never a best-effort
+///   partial match. (Two variants with one token set on either side always tie, so they
+///   are never paired.)
+/// - every pair's similarity is at least [`RENAME_MIN_SIMILARITY`];
+/// - a variant name present on both sides pairs with itself. A candidate whose `a` carries
+///   the reference's `b` classes has swapped two behaviours, which is a disagreement, not a
+///   rename.
+///
+/// A pair need not be identical: one differing class token still pairs, and the difference
+/// shows up in [`class_token_jaccard`], which is never a defect — rather than as a missing
+/// variant, an extra variant and a wrong default, which are.
+///
+/// Why this exists: a spec and its reference can disagree on names. The changelog task's
+/// `.tsx` keys its colours by axis (`horizontal`, …) and the registry's Rust reference names
+/// the same four class strings by mineral (`cobalt`, …), a renaming its module docs record
+/// as deliberate. An author told to keep the spec's variants was scored two defects for
+/// following the spec, and no jaccard at all. Pairing by class string — the thing the
+/// variant actually renders — scores the behaviour, and the [`FactKind::VariantNames`]
+/// detail keeps the rename in the output.
+pub fn rename_map(r: &EnumModel, c: &EnumModel) -> Option<BTreeMap<String, Pair>> {
+    let rs: BTreeSet<&str> = r.variants.iter().map(String::as_str).collect();
+    let cs: BTreeSet<&str> = c.variants.iter().map(String::as_str).collect();
+    if rs == cs
+        || rs.len() != r.variants.len()
+        || cs.len() != c.variants.len()
+        || rs.len() != cs.len()
+    {
+        return None;
+    }
+    fn token_sets(m: &EnumModel) -> Option<Vec<(&str, BTreeSet<&str>)>> {
+        m.variants
+            .iter()
+            .map(|v| Some((v.as_str(), m.classes.get(v)?.split_whitespace().collect())))
+            .collect()
+    }
+    let rt = token_sets(r)?;
+    let ct = token_sets(c)?;
+    // sim[i][j]: reference variant i against candidate variant j, as (inter, union).
+    let sim: Vec<Vec<(usize, usize)>> = rt
+        .iter()
+        .map(|(_, a)| {
+            ct.iter()
+                .map(|(_, b)| (a.intersection(b).count(), a.union(b).count()))
+                .collect()
+        })
+        .collect();
+    // a/b vs c/d without rounding; an empty union (two empty strings) is similarity 1.
+    let frac = |(i, u): (usize, usize)| if u == 0 { (1, 1) } else { (i, u) };
+    let cmp = |x: (usize, usize), y: (usize, usize)| {
+        let ((a, b), (c, d)) = (frac(x), frac(y));
+        (a * d).cmp(&(c * b))
+    };
+    // The index of the unique maximum, or `None` on a tie for first.
+    let unique_best = |scores: &mut dyn Iterator<Item = (usize, usize)>| -> Option<usize> {
+        let mut best: Option<(usize, (usize, usize))> = None;
+        let mut tied = false;
+        for (k, s) in scores.enumerate() {
+            match best.map(|(_, b)| cmp(s, b)) {
+                None | Some(std::cmp::Ordering::Greater) => {
+                    best = Some((k, s));
+                    tied = false;
+                }
+                Some(std::cmp::Ordering::Equal) => tied = true,
+                Some(std::cmp::Ordering::Less) => {}
+            }
+        }
+        if tied { None } else { best.map(|(k, _)| k) }
+    };
+    let mut map = BTreeMap::new();
+    for (i, (rv, _)) in rt.iter().enumerate() {
+        let j = unique_best(&mut sim[i].iter().copied())?;
+        if unique_best(&mut sim.iter().map(|row| row[j]))? != i {
+            return None;
+        }
+        let s = sim[i][j];
+        if cmp(s, RENAME_MIN_SIMILARITY) == std::cmp::Ordering::Less {
+            return None;
+        }
+        let cv = ct[j].0;
+        if rv != &cv && (cs.contains(rv) || rs.contains(cv)) {
+            return None;
+        }
+        let (inter, union) = s;
+        map.insert(
+            rv.to_string(),
+            Pair {
+                candidate: cv.to_string(),
+                inter,
+                union,
+            },
+        );
+    }
+    Some(map)
+}
+
 /// Score a candidate's enums against the reference's.
 ///
 /// For each reference enum, in source order:
@@ -1248,6 +1413,11 @@ fn set_text(vs: &[String]) -> String {
 ///   variants missing from, and extra in, the candidate. A candidate that lacks the enum
 ///   entirely fails this fact (and every other fact for that enum) rather than being
 ///   skipped: an absent enum is the most wrong a variant set can be (RFC-0006 FM-12).
+///   When `allow_variant_renames` is set (the task opted in), the sets differ, and
+///   [`rename_map`] pairs every variant by class-token similarity, the set is not a defect,
+///   and a `variant_names` detail follows it listing each renamed pair
+///   (`candidate -> reference`, with its similarity); every later fact for the enum is then
+///   read through that pairing. Without the opt-in, variants match by name only.
 /// - `default` — checked only when the reference declares one (a reference with no default
 ///   has nothing for the candidate to disagree with). A defect if the candidate's differs or
 ///   is absent.
@@ -1255,58 +1425,124 @@ fn set_text(vs: &[String]) -> String {
 ///   token; a defect if the candidate's height for it differs or is missing.
 ///
 /// Candidate enums the reference does not have are not facts and are ignored.
-pub fn score(arm: Arm, reference: &[EnumModel], candidate: &[EnumModel]) -> ScoreReport {
+pub fn score(
+    arm: Arm,
+    reference: &[EnumModel],
+    candidate: &[EnumModel],
+    allow_variant_renames: bool,
+) -> ScoreReport {
     let mut facts = Vec::new();
+    let mut renames = 0;
     for r in reference {
         let c = candidate.iter().find(|c| c.name == r.name);
-
-        let expected_missing: Vec<String> = r
-            .variants
-            .iter()
-            .filter(|v| !c.is_some_and(|c| c.has_variant(v)))
-            .cloned()
-            .collect();
-        let extra: Vec<String> = c
-            .map(|c| {
-                c.variants
-                    .iter()
-                    .filter(|v| !r.has_variant(v))
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        let mut expected = set_text(&r.variants);
-        let mut actual = match c {
-            Some(c) => set_text(&c.variants),
-            None => "enum absent".to_string(),
+        let paired = c
+            .filter(|_| allow_variant_renames)
+            .and_then(|c| rename_map(r, c));
+        // The candidate's name for a reference variant: its pair, or the same name.
+        let cand_name = |v: &str| -> String {
+            paired
+                .as_ref()
+                .and_then(|m| m.get(v))
+                .map_or_else(|| v.to_string(), |p| p.candidate.clone())
         };
-        if !expected_missing.is_empty() {
-            expected.push_str(&format!(
-                "; missing from candidate: {}",
-                set_text(&expected_missing)
-            ));
+
+        if let (Some(c), Some(map)) = (c, &paired) {
+            facts.push(Fact {
+                enum_name: r.name.clone(),
+                variant: None,
+                kind: FactKind::VariantSet,
+                expected: set_text(&r.variants),
+                actual: format!(
+                    "{}; paired with the reference by class-token similarity (see variant_names)",
+                    set_text(&c.variants)
+                ),
+                defect: false,
+            });
+            let pairs: Vec<String> = r
+                .variants
+                .iter()
+                .filter_map(|rv| {
+                    let p = &map[rv];
+                    (&p.candidate != rv)
+                        .then(|| format!("{} -> {rv} (jaccard {:.4})", p.candidate, p.similarity()))
+                })
+                .collect();
+            renames += pairs.len();
+            facts.push(Fact {
+                enum_name: r.name.clone(),
+                variant: None,
+                kind: FactKind::VariantNames,
+                expected: set_text(&r.variants),
+                actual: format!("renamed (candidate -> reference): {}", pairs.join(", ")),
+                defect: false,
+            });
+        } else {
+            let expected_missing: Vec<String> = r
+                .variants
+                .iter()
+                .filter(|v| !c.is_some_and(|c| c.has_variant(v)))
+                .cloned()
+                .collect();
+            let extra: Vec<String> = c
+                .map(|c| {
+                    c.variants
+                        .iter()
+                        .filter(|v| !r.has_variant(v))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut expected = set_text(&r.variants);
+            let mut actual = match c {
+                Some(c) => set_text(&c.variants),
+                None => "enum absent".to_string(),
+            };
+            if !expected_missing.is_empty() {
+                expected.push_str(&format!(
+                    "; missing from candidate: {}",
+                    set_text(&expected_missing)
+                ));
+            }
+            if !extra.is_empty() {
+                actual.push_str(&format!("; extra in candidate: {}", set_text(&extra)));
+            }
+            facts.push(Fact {
+                enum_name: r.name.clone(),
+                variant: None,
+                kind: FactKind::VariantSet,
+                expected,
+                actual,
+                defect: c.is_none() || !expected_missing.is_empty() || !extra.is_empty(),
+            });
         }
-        if !extra.is_empty() {
-            actual.push_str(&format!("; extra in candidate: {}", set_text(&extra)));
-        }
-        facts.push(Fact {
-            enum_name: r.name.clone(),
-            variant: None,
-            kind: FactKind::VariantSet,
-            expected,
-            actual,
-            defect: c.is_none() || !expected_missing.is_empty() || !extra.is_empty(),
-        });
 
         if let Some(rd) = &r.default {
             let cd = c.and_then(|c| c.default.clone());
+            // The candidate's default under the reference's name for it.
+            // Under a pairing — a bijection over every candidate variant — a default that
+            // pairs with nothing is not one of the candidate's own variants (a reference
+            // name the candidate never declared, say), so it has no reference name and is a
+            // defect. Without one, the default is compared by name as it stands.
+            let cd_ref = cd.as_ref().and_then(|d| match &paired {
+                Some(m) => m
+                    .iter()
+                    .find(|(_, p)| &p.candidate == d)
+                    .map(|(rv, _)| rv.clone()),
+                None => Some(d.clone()),
+            });
+            let actual = match (&cd, &cd_ref) {
+                (Some(d), Some(dr)) if d != dr => format!("{d} -> {dr}"),
+                (Some(d), Some(_)) => d.clone(),
+                (Some(d), None) => format!("{d} (not a candidate variant)"),
+                (None, _) => "none".to_string(),
+            };
             facts.push(Fact {
                 enum_name: r.name.clone(),
                 variant: None,
                 kind: FactKind::Default,
                 expected: rd.clone(),
-                actual: cd.clone().unwrap_or_else(|| "none".to_string()),
-                defect: cd.as_deref() != Some(rd.as_str()),
+                actual,
+                defect: cd_ref.as_deref() != Some(rd.as_str()),
             });
         }
 
@@ -1314,7 +1550,7 @@ pub fn score(arm: Arm, reference: &[EnumModel], candidate: &[EnumModel]) -> Scor
             let Some(want) = r.heights.get(v) else {
                 continue;
             };
-            let got = c.and_then(|c| c.heights.get(v)).copied();
+            let got = c.and_then(|c| c.heights.get(&cand_name(v))).copied();
             facts.push(Fact {
                 enum_name: r.name.clone(),
                 variant: Some(v.clone()),
@@ -1328,13 +1564,17 @@ pub fn score(arm: Arm, reference: &[EnumModel], candidate: &[EnumModel]) -> Scor
     ScoreReport {
         arm,
         facts,
-        class_token_jaccard: class_token_jaccard(reference, candidate),
+        class_token_jaccard: class_token_jaccard(reference, candidate, allow_variant_renames),
+        renames,
     }
 }
 
-/// The mean, over every variant that has a class string on both sides (matched by enum and
-/// variant name), of the Jaccard similarity `|A ∩ B| / |A ∪ B|` of the two strings'
-/// whitespace-split token sets. `None` when no variant has a class on both sides.
+/// The mean, over every variant that has a class string on both sides, of the Jaccard
+/// similarity `|A ∩ B| / |A ∪ B|` of the two strings' whitespace-split token sets. Variants
+/// are matched by enum and variant name, or — when `allow_variant_renames` is set — through
+/// [`rename_map`] where that pairs an enum, so a renamed variant whose classes differ by a
+/// token contributes its real similarity here rather than a defect anywhere. `None` when no
+/// variant has a class on both sides.
 ///
 /// **Reported, never counted as a defect.** The charter's defect (CHARTER.md §6) is
 /// behavioural — code that compiles but disagrees with the reference on what it does — and
@@ -1345,15 +1585,24 @@ pub fn score(arm: Arm, reference: &[EnumModel], candidate: &[EnumModel]) -> Scor
 /// and a threshold on this number would call that file defective for being a faithful port
 /// of the behaviour it declares. So the number is published beside the defect count, for a
 /// reader to weigh, and the defect count does not move with it.
-pub fn class_token_jaccard(reference: &[EnumModel], candidate: &[EnumModel]) -> Option<f64> {
+pub fn class_token_jaccard(
+    reference: &[EnumModel],
+    candidate: &[EnumModel],
+    allow_variant_renames: bool,
+) -> Option<f64> {
     let mut sum = 0.0;
     let mut n = 0usize;
     for r in reference {
         let Some(c) = candidate.iter().find(|c| c.name == r.name) else {
             continue;
         };
+        let paired = allow_variant_renames.then(|| rename_map(r, c)).flatten();
         for v in &r.variants {
-            let (Some(rc), Some(cc)) = (r.classes.get(v), c.classes.get(v)) else {
+            let cv = paired
+                .as_ref()
+                .and_then(|m| m.get(v))
+                .map_or(v.as_str(), |p| p.candidate.as_str());
+            let (Some(rc), Some(cc)) = (r.classes.get(v), c.classes.get(cv)) else {
                 continue;
             };
             let a: BTreeSet<&str> = rc.split_whitespace().collect();
@@ -1604,7 +1853,7 @@ impl E {
     #[test]
     fn the_button_shapes_score_clean() {
         let r = parse_rust_enums(BUTTON_RS);
-        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(BUTTON_MZ));
+        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(BUTTON_MZ), false);
         assert_eq!(report.defects(), 0, "{:#?}", report.facts);
         // 2 variant sets + 2 defaults + 5 heights.
         assert_eq!(report.facts.len(), 9);
@@ -1615,7 +1864,7 @@ impl E {
     #[test]
     fn a_rust_candidate_scored_against_itself_is_clean() {
         let r = parse_rust_enums(BUTTON_RS);
-        let report = score(Arm::Dioxus, &r, &r);
+        let report = score(Arm::Dioxus, &r, &r, false);
         assert_eq!(report.defects(), 0);
         assert_eq!(report.class_token_jaccard, Some(1.0));
     }
@@ -1624,7 +1873,7 @@ impl E {
     fn a_missing_candidate_enum_is_a_defect_not_a_skip() {
         let r = parse_rust_enums(BUTTON_RS);
         let only_variant = "enum button_variant\n  default class \"x\"\n  outline\nend\nprop v: button_variant = default\n";
-        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(only_variant));
+        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(only_variant), false);
         let size_facts: Vec<&Fact> = report
             .facts
             .iter()
@@ -1647,7 +1896,7 @@ impl E {
     fn variant_set_default_and_height_defects_are_each_reported() {
         let r = parse_rust_enums(BUTTON_RS);
         let wrong = "enum button_size\n  default class \"h-14\" height 56\n  sm class \"h-12\" height 44\n  lg height 56\n  icon height 56\n  huge height 80\nend\nprop s: button_size = sm\n";
-        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(wrong));
+        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(wrong), false);
         let get = |kind: FactKind, v: Option<&str>| {
             report
                 .facts
@@ -1689,7 +1938,7 @@ impl E {
     fn a_reference_without_a_default_checks_no_default_fact() {
         let r = parse_rust_enums("enum Tone { Calm, Loud }");
         let c = parse_mzizi_enums("enum tone\n  calm\n  loud\nend\nprop t: tone = loud\n");
-        let report = score(Arm::Mzizi, &r, &c);
+        let report = score(Arm::Mzizi, &r, &c, false);
         assert_eq!(report.facts.len(), 1);
         assert_eq!(report.defects(), 0);
         assert_eq!(report.class_token_jaccard, None);
@@ -1702,10 +1951,275 @@ impl E {
         );
         let c =
             parse_mzizi_enums("enum e\n  a class \"x y\"\n  b class \"p q\"\nend\nprop e: e = a\n");
-        let report = score(Arm::Mzizi, &r, &c);
+        let report = score(Arm::Mzizi, &r, &c, false);
         assert_eq!(report.defects(), 0);
         // (1.0 + 2/4) / 2
         assert_eq!(report.class_token_jaccard, Some(0.75));
+    }
+
+    /// The changelog task's shape: the reference names four accents by mineral, the spec
+    /// (and so the candidate) by axis, with identical class strings.
+    const ACCENT_RS: &str = r#"
+#[derive(Default)]
+pub enum NodeAccent { #[default] Cobalt, Tanzanite, Malachite, Gold }
+impl NodeAccent {
+    pub const fn classes(self) -> &'static str {
+        match self {
+            Self::Cobalt => "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]",
+            Self::Tanzanite => "bg-[var(--color-tanzanite)]/10 text-[var(--color-tanzanite)]",
+            Self::Malachite => "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]",
+            Self::Gold => "bg-[var(--color-gold)]/10 text-[var(--color-gold)]",
+        }
+    }
+}
+"#;
+
+    const ACCENT_MZ: &str = r#"enum node_accent
+    horizontal  class "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]"
+    vertical    class "text-[var(--color-tanzanite)]   bg-[var(--color-tanzanite)]/10"
+    depth       class "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]"
+    outlier     class "bg-[var(--color-gold)]/10 text-[var(--color-gold)]"
+end
+prop accent: node_accent = horizontal
+"#;
+
+    #[test]
+    fn renamed_variants_with_identical_classes_are_paired_not_defects() {
+        let r = parse_rust_enums(ACCENT_RS);
+        for (arm, c) in [
+            (Arm::Mzizi, parse_mzizi_enums(ACCENT_MZ)),
+            (
+                Arm::Dioxus,
+                parse_rust_enums(
+                    &ACCENT_RS
+                        .replace("Cobalt", "Horizontal")
+                        .replace("Tanzanite", "Vertical")
+                        .replace("Malachite", "Depth")
+                        // Class strings are lowercase, so they survive the renames.
+                        .replace("Gold", "Outlier"),
+                ),
+            ),
+        ] {
+            let report = score(arm, &r, &c, true);
+            assert_eq!(report.defects(), 0, "{:#?}", report.facts);
+            assert_eq!(report.renames, 4);
+            assert_eq!(report.facts.len(), 3, "variant_set, variant_names, default");
+            assert_eq!(
+                report.facts_checked(),
+                2,
+                "variant_names is a detail, not a checked fact"
+            );
+            let names = &report.facts[1];
+            assert_eq!(names.kind, FactKind::VariantNames);
+            assert!(!names.defect);
+            assert_eq!(
+                names.actual,
+                "renamed (candidate -> reference): horizontal -> cobalt (jaccard 1.0000), vertical -> tanzanite (jaccard 1.0000), depth -> malachite (jaccard 1.0000), outlier -> gold (jaccard 1.0000)"
+            );
+            assert_eq!(report.facts[2].actual, "horizontal -> cobalt");
+            // Token order and spacing differ in `vertical` above; token sets do not.
+            assert_eq!(report.class_token_jaccard, Some(1.0));
+        }
+    }
+
+    #[test]
+    fn without_the_task_opt_in_renames_are_matched_by_name_only() {
+        let r = parse_rust_enums(ACCENT_RS);
+        let c = parse_mzizi_enums(ACCENT_MZ);
+        let report = score(Arm::Mzizi, &r, &c, false);
+        // Exactly the pre-pairing result: variant_set and default are defects, no jaccard.
+        assert_eq!(report.renames, 0);
+        assert_eq!(report.facts.len(), 2);
+        assert_eq!(report.facts_checked(), 2);
+        assert_eq!(report.defects(), 2, "{:#?}", report.facts);
+        assert!(
+            report
+                .facts
+                .iter()
+                .all(|f| f.kind != FactKind::VariantNames)
+        );
+        assert_eq!(report.class_token_jaccard, None);
+        assert_eq!(class_token_jaccard(&r, &c, false), None);
+        // A button candidate that renames `destructive` against its spec is caught.
+        let rb = parse_rust_enums(
+            r#"enum V { #[default] Default, Destructive } impl V { fn classes(&self) -> &str { match self { Self::Default => "bg-primary", Self::Destructive => "bg-destructive/10 text-destructive" } } }"#,
+        );
+        let cb = parse_mzizi_enums(
+            "enum v\n  default class \"bg-primary\"\n  danger class \"bg-destructive/10 text-destructive\"\nend\nprop v: v = default\n",
+        );
+        assert_eq!(score(Arm::Mzizi, &rb, &cb, false).defects(), 1);
+        assert_eq!(score(Arm::Mzizi, &rb, &cb, true).defects(), 0);
+    }
+
+    #[test]
+    fn a_rename_one_class_token_apart_pairs_and_shows_in_jaccard_not_defects() {
+        let r = parse_rust_enums(ACCENT_RS);
+        let near = ACCENT_MZ.replace(
+            "text-[var(--color-gold)]\"",
+            "text-[var(--color-gold)] font-medium\"",
+        );
+        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(&near), true);
+        assert_eq!(report.defects(), 0, "{:#?}", report.facts);
+        assert_eq!(report.renames, 4);
+        assert!(
+            report.facts[1]
+                .actual
+                .ends_with("outlier -> gold (jaccard 0.6667)"),
+            "{}",
+            report.facts[1].actual
+        );
+        // (1 + 1 + 1 + 2/3) / 4
+        let j = report.class_token_jaccard.unwrap();
+        assert!((j - 11.0 / 12.0).abs() < 1e-9, "{j}");
+    }
+
+    #[test]
+    fn a_tie_for_best_pairs_nothing() {
+        let r = parse_rust_enums(
+            r#"enum E { #[default] A, B } impl E { fn classes(&self) -> &str { match self { Self::A => "x y", Self::B => "x z" } } }"#,
+        );
+        // `p` is equally close (1/2) to `a` and `b`: no unique best, so no mapping.
+        let c =
+            parse_mzizi_enums("enum e\n  p class \"x\"\n  q class \"w z\"\nend\nprop e: e = p\n");
+        assert_eq!(rename_map(&r[0], &c[0]), None);
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.renames, 0);
+        assert_eq!(
+            report.defects(),
+            2,
+            "name-only, as before: {:#?}",
+            report.facts
+        );
+        assert_eq!(report.class_token_jaccard, None);
+    }
+
+    #[test]
+    fn a_renamed_default_that_disagrees_is_still_a_defect() {
+        let r = parse_rust_enums(ACCENT_RS);
+        let c = parse_mzizi_enums(&ACCENT_MZ.replace("= horizontal", "= outlier"));
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.defects(), 1);
+        let d = report
+            .facts
+            .iter()
+            .find(|f| f.kind == FactKind::Default)
+            .unwrap();
+        assert!(d.defect);
+        assert_eq!(
+            (d.expected.as_str(), d.actual.as_str()),
+            ("cobalt", "outlier -> gold")
+        );
+    }
+
+    #[test]
+    fn a_paired_default_that_names_no_candidate_variant_is_a_defect() {
+        let r = parse_rust_enums(ACCENT_RS);
+        // `cobalt` is the reference's name; the candidate never declares it.
+        let c = parse_mzizi_enums(&ACCENT_MZ.replace("= horizontal", "= cobalt"));
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.renames, 4);
+        let d = report
+            .facts
+            .iter()
+            .find(|f| f.kind == FactKind::Default)
+            .unwrap();
+        assert!(d.defect, "{d:#?}");
+        assert_eq!(d.actual, "cobalt (not a candidate variant)");
+        assert_eq!(report.defects(), 1);
+    }
+
+    #[test]
+    fn a_genuinely_missing_variant_is_still_a_defect() {
+        let r = parse_rust_enums(ACCENT_RS);
+        // Three of the four: no bijection, so no pairing, so today's name-only result.
+        let three: String = ACCENT_MZ
+            .lines()
+            .filter(|l| !l.contains("outlier"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let report = score(Arm::Mzizi, &r, &parse_mzizi_enums(&three), true);
+        assert_eq!(report.renames, 0);
+        assert!(
+            report
+                .facts
+                .iter()
+                .all(|f| f.kind != FactKind::VariantNames)
+        );
+        assert!(report.facts[0].defect, "{:#?}", report.facts);
+        assert!(
+            report.facts[0]
+                .expected
+                .contains("missing from candidate: {cobalt, tanzanite, malachite, gold}")
+        );
+        // A fourth variant only 1/3 like the reference's `gold` ({bg-…/20, text-…} against
+        // {bg-…/10, text-…}): below the 1/2 threshold, so no mapping, and name-only scoring.
+        let wrong = ACCENT_MZ.replace("--color-gold)]/10 text", "--color-gold)]/20 text");
+        let c = parse_mzizi_enums(&wrong);
+        assert_eq!(rename_map(&r[0], &c[0]), None);
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.renames, 0);
+        assert_eq!(report.defects(), 2, "{:#?}", report.facts);
+        assert_eq!(report.class_token_jaccard, None);
+    }
+
+    #[test]
+    fn duplicate_class_strings_are_never_paired() {
+        let r = parse_rust_enums(ACCENT_RS);
+        let dup = ACCENT_MZ.replace(
+            "--color-gold)]/10 text-[var(--color-gold)]",
+            "--color-malachite)]/10 text-[var(--color-malachite)]",
+        );
+        let c = parse_mzizi_enums(&dup);
+        assert_eq!(rename_map(&r[0], &c[0]), None);
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.renames, 0);
+        assert_eq!(
+            report.defects(),
+            2,
+            "name-only, as before: {:#?}",
+            report.facts
+        );
+        assert_eq!(report.class_token_jaccard, None);
+        // And the same on the reference's side.
+        let dup_rs = ACCENT_RS.replace(
+            "--color-gold)]/10 text-[var(--color-gold)]",
+            "--color-malachite)]/10 text-[var(--color-malachite)]",
+        );
+        let rr = parse_rust_enums(&dup_rs);
+        assert_eq!(rename_map(&rr[0], &parse_mzizi_enums(ACCENT_MZ)[0]), None);
+    }
+
+    #[test]
+    fn swapped_classes_under_shared_names_are_not_a_rename() {
+        let r = parse_rust_enums(
+            r#"enum E { #[default] A, B } impl E { fn classes(&self) -> &str { match self { Self::A => "x", Self::B => "y" } } }"#,
+        );
+        // `a` renders like the reference's `b` and vice versa, plus one renamed extra — a
+        // pairing would call the swap a rename, so none is made.
+        let c = parse_mzizi_enums("enum e\n  a class \"y\"\n  b class \"x\"\nend\nprop e: e = a\n");
+        assert_eq!(
+            rename_map(&r[0], &c[0]),
+            None,
+            "equal name sets are never paired"
+        );
+        let r3 = parse_rust_enums(
+            r#"enum E { #[default] A, B, C } impl E { fn classes(&self) -> &str { match self { Self::A => "x", Self::B => "y", Self::C => "z" } } }"#,
+        );
+        let c3 = parse_mzizi_enums(
+            "enum e\n  a class \"y\"\n  b class \"x\"\n  d class \"z\"\nend\nprop e: e = a\n",
+        );
+        assert_eq!(rename_map(&r3[0], &c3[0]), None);
+        // A partial rename that keeps shared names on their own classes is accepted.
+        let ok = parse_mzizi_enums(
+            "enum e\n  a class \"x\"\n  b class \"y\"\n  d class \"z\"\nend\nprop e: e = a\n",
+        );
+        let report = score(Arm::Mzizi, &r3, &ok, true);
+        assert_eq!(report.defects(), 0, "{:#?}", report.facts);
+        assert_eq!(report.renames, 1);
+        assert_eq!(
+            report.facts[1].actual,
+            "renamed (candidate -> reference): d -> c (jaccard 1.0000)"
+        );
     }
 
     #[test]
@@ -1731,11 +2245,12 @@ impl E {
                 },
             ],
             class_token_jaccard: Some(0.5),
+            renames: 1,
         };
         assert_eq!(
             report.to_json(),
             concat!(
-                r#"{"arm":"dioxus","facts_checked":2,"defects":1,"details":["#,
+                r#"{"arm":"dioxus","facts_checked":2,"defects":1,"renames":1,"details":["#,
                 r#"{"enum":"button_size","variant":"sm","fact":"height","expected":"48px","actual":"44px","defect":true},"#,
                 r#"{"enum":"q\"uote\\back","variant":null,"fact":"variant_set","expected":"tab\there\nnl\u0001—","actual":"{a}","defect":false}"#,
                 r#"],"class_token_jaccard":0.5000}"#
@@ -1745,10 +2260,11 @@ impl E {
             arm: Arm::Mzizi,
             facts: vec![],
             class_token_jaccard: None,
+            renames: 0,
         };
         assert_eq!(
             empty.to_json(),
-            r#"{"arm":"mzizi","facts_checked":0,"defects":0,"details":[],"class_token_jaccard":null}"#
+            r#"{"arm":"mzizi","facts_checked":0,"defects":0,"renames":0,"details":[],"class_token_jaccard":null}"#
         );
     }
 

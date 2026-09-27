@@ -1,5 +1,6 @@
 //! `mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>`
-//! `mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs>`
+//! `mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs>
+//!  [--allow-variant-renames]`
 //!
 //! **`diff`** — prerequisite: `mz contract --agent <file.mz>` must exit 0. `mz contract` is
 //! a self-consistency check (RFC-0006), so if a component fails its own declared contract
@@ -13,6 +14,9 @@
 //! It does not run `mz contract` or any compiler: whether the candidate compiles is a
 //! separate measurement the benchmark takes, and a defect is only meaningful for a candidate
 //! that does. Exit 0 whenever scoring ran, defects or not; exit 2 on a usage or IO error.
+//! `--allow-variant-renames` turns on class-token pairing of renamed variants
+//! (`mzizi_benchmark_harness::rename_map`); `mzbench` passes it only for a task whose
+//! `task.toml` sets `allow_variant_renames = true`. Without it, variants match by name.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -30,6 +34,7 @@ enum Cmd {
         arm: Arm,
         candidate: PathBuf,
         reference: PathBuf,
+        allow_variant_renames: bool,
     },
 }
 
@@ -41,7 +46,12 @@ fn parse_args() -> Result<Cmd, String> {
     }
 
     let mut flags: Vec<(String, String)> = Vec::new();
+    let mut allow_variant_renames = false;
     while let Some(flag) = args.next() {
+        if subcommand == "score" && flag == "--allow-variant-renames" {
+            allow_variant_renames = true;
+            continue;
+        }
         let allowed: &[&str] = if subcommand == "diff" {
             &["--mzizi", "--reference"]
         } else {
@@ -79,13 +89,15 @@ fn parse_args() -> Result<Cmd, String> {
             arm,
             candidate: PathBuf::from(get("--candidate")?),
             reference: PathBuf::from(get("--reference")?),
+            allow_variant_renames,
         })
     }
 }
 
 fn usage() -> String {
     "usage: mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>\n       \
-     mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs>"
+     mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs> \
+     [--allow-variant-renames]"
         .to_string()
 }
 
@@ -113,18 +125,25 @@ fn main() -> ExitCode {
             arm,
             candidate,
             reference,
-        } => run_score(arm, &candidate, &reference),
+            allow_variant_renames,
+        } => run_score(arm, &candidate, &reference, allow_variant_renames),
     };
     result.unwrap_or_else(|code| code)
 }
 
-fn run_score(arm: Arm, candidate: &Path, reference: &Path) -> Result<ExitCode, ExitCode> {
+fn run_score(
+    arm: Arm,
+    candidate: &Path,
+    reference: &Path,
+    allow_variant_renames: bool,
+) -> Result<ExitCode, ExitCode> {
     let candidate_src = read(candidate)?;
     let reference_src = read(reference)?;
     let report = score(
         arm,
         &parse_rust_enums(&reference_src),
         &arm.extract(&candidate_src),
+        allow_variant_renames,
     );
     println!("{}", report.to_json());
     Ok(ExitCode::SUCCESS)

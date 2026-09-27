@@ -71,9 +71,12 @@ a `.mz` component's variants, defaults and touch heights against the hand-writte
 ([RFC-0006](./design/RFC-0006-contracts.md) §10.1). It is a prototype. It is tested end to end
 against one component, `primitives/button.mz`, and a byte-identical copy of the registry's
 `button.rs`. The `mzbench` runner calls it to score the three pilot tasks in
-`benchmarks/tasks/`. No scored run over the pilot tasks or the full corpus exists yet.
+`benchmarks/tasks/`. A pilot over those three tasks was scored on 2026-09-27
+([RUN.md](./benchmarks/results/2026-09-27-pilot/RUN.md)). It is not the Phase 0 number: it is
+frontier-only, n=3, and the Mzizi checker could not fail on names at the time. No scored run
+over the full corpus exists yet.
 
-**What doesn't exist yet:** a scored benchmark run, lowering to Rust, code generation, a
+**What doesn't exist yet:** a scored Phase 0 benchmark run, lowering to Rust, code generation, a
 runtime, rendering, a release, a published binary.
 
 **The number that decides everything:** the Phase 0 benchmark — an LLM agent authoring N
@@ -138,7 +141,7 @@ ecosystem lives. It holds no work items of its own — plans live next to the co
 ## Where this sits in the ecosystem
 
 Mzizi-the-language is one repository in [`mzizi-dev`](https://github.com/mzizi-dev), the
-Foundation-governed Mzizi org. **The language repo is plain `mzizi`; everything else is
+Mzizi org. **The language repo is plain `mzizi`; everything else is
 `mzizi-`-prefixed** — the language is the project.
 
 | Repository                                                            | What it is                                                                                                                                                                                                                                                                                                                     | Relationship to this repo                                                               |
@@ -172,6 +175,7 @@ This repository was created by a `git subtree split` out of `mzizi-dev/agent-too
 carrying the full design history of the `mzizi-lang/` directory it grew up in.
 [`MIGRATION.md`](./MIGRATION.md) is the record of that move.
 
-Mzizi is **100% Bundu Foundation IP** (CHARTER.md), licensed under the
-[Apache License 2.0](./LICENSE) — an open-architecture project of the **Bundu Foundation**,
-operated and developed by **Nyuchi**.
+Mzizi is **100% Mzizi IP** (CHARTER.md), licensed under the
+[Apache License 2.0](./LICENSE). Mzizi — the framework, the language and the component
+registry — is non-revenue; the revenue-generating products built on it (the Mzizi console,
+Fundi, paid plans and billing) are **Nyuchi**'s.

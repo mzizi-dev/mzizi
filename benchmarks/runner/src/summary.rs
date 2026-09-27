@@ -10,6 +10,8 @@
 //!   A clean episode whose scorer failed is neither defective nor defect-free; it is
 //!   excluded and counted in its own column, never folded into "0 defects".
 //! - mean defects, class_token_jaccard: over scored clean episodes (non-null jaccard).
+//! - renamed variants: a total, over scored clean episodes whose final line carries
+//!   `renames` (episodes scored before the harness reported it are not in `n`).
 //!
 //! Episode directories with no final line (aborted, or agent episodes never finished)
 //! are listed separately and counted in no denominator.
@@ -32,6 +34,7 @@ pub struct EpisodeFinal {
     pub scored: bool,
     pub defects: Option<u64>,
     pub class_token_jaccard: Option<f64>,
+    pub renames: Option<u64>,
 }
 
 impl EpisodeFinal {
@@ -56,6 +59,7 @@ impl EpisodeFinal {
             scored: v["scored"].as_bool().unwrap_or(defects.is_some()) && defects.is_some(),
             defects,
             class_token_jaccard: v["class_token_jaccard"].as_f64(),
+            renames: v["renames"].as_u64(),
         })
     }
 }
@@ -108,6 +112,8 @@ pub struct Stats {
     pub defects_mean: Option<f64>,
     pub jaccard_mean: Option<f64>,
     pub jaccard_n: usize,
+    pub renames_total: u64,
+    pub renames_n: usize,
 }
 
 impl Stats {
@@ -164,6 +170,7 @@ pub fn compute(eps: &[&EpisodeFinal]) -> Stats {
         .iter()
         .filter_map(|e| e.class_token_jaccard)
         .collect();
+    let renames: Vec<u64> = scored.iter().filter_map(|e| e.renames).collect();
     Stats {
         n: eps.len(),
         clean: clean.len(),
@@ -180,6 +187,8 @@ pub fn compute(eps: &[&EpisodeFinal]) -> Stats {
         defects_mean: mean(&defects),
         jaccard_mean: mean(&jacc),
         jaccard_n: jacc.len(),
+        renames_total: renames.iter().sum(),
+        renames_n: renames.len(),
     }
 }
 
@@ -200,11 +209,12 @@ fn num(x: Option<f64>, n: usize, prec: usize) -> String {
 
 const HEADER: &str = "| n | clean compile | iters to clean mean | iters to clean median | \
                       transcript tokens mean | endpoint tokens mean | defect rate | \
-                      clean unscored | mean defects | class-token jaccard mean |";
+                      clean unscored | mean defects | class-token jaccard mean | \
+                      renamed variants |";
 
 fn cells(s: &Stats) -> String {
     format!(
-        "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |",
+        "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} (n={}) |",
         s.n,
         pct(s.clean, s.n),
         num(s.iters_mean, s.iters_n, 2),
@@ -215,6 +225,8 @@ fn cells(s: &Stats) -> String {
         s.clean_unscored,
         num(s.defects_mean, s.scored, 2),
         num(s.jaccard_mean, s.jaccard_n, 3),
+        s.renames_total,
+        s.renames_n,
     )
 }
 
@@ -248,7 +260,7 @@ pub fn render(finals: &[EpisodeFinal], unfinished: &[PathBuf]) -> String {
     }
 
     out.push_str("## By model and arm\n\n");
-    out.push_str(&format!("| model | arm {HEADER}\n{}\n", separator(12)));
+    out.push_str(&format!("| model | arm {HEADER}\n{}\n", separator(13)));
     for ((model, arm), eps) in &by_arm {
         out.push_str(&format!("| {model} | {arm} {}\n", cells(&compute(eps))));
     }
@@ -256,7 +268,7 @@ pub fn render(finals: &[EpisodeFinal], unfinished: &[PathBuf]) -> String {
     out.push_str("\n## By task\n\n");
     out.push_str(&format!(
         "| model | arm | task {HEADER}\n{}\n",
-        separator(13)
+        separator(14)
     ));
     for ((model, arm, task), eps) in &by_task {
         out.push_str(&format!(
@@ -290,6 +302,7 @@ mod tests {
             scored: defects.is_some(),
             defects,
             class_token_jaccard: defects.map(|_| 0.5),
+            renames: defects.map(|_| 1),
         }
     }
 
@@ -316,6 +329,12 @@ mod tests {
         assert_eq!(s.endpoint_mean, None);
         assert_eq!(s.endpoint_n, 0);
         assert_eq!(s.jaccard_mean, Some(0.5));
+        assert_eq!((s.renames_total, s.renames_n), (3, 3));
+        assert!(
+            cells(&s).ends_with("| 0.500 (n=3) | 3 (n=3) |"),
+            "{}",
+            cells(&s)
+        );
     }
 
     #[test]
@@ -387,5 +406,6 @@ mod tests {
         assert_eq!(f.endpoint_tokens, Some(15));
         assert_eq!(f.transcript_tokens, None);
         assert!(f.scored);
+        assert_eq!(f.renames, None, "a line from before the field existed");
     }
 }

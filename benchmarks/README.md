@@ -54,6 +54,23 @@ contract`'s job (RFC-0006 §5), not this harness's. Missing variants on either s
 as defects too, never silently skipped, for the same reason RFC-0006's FM-12 treats an
 unevaluable assertion as a failure rather than a pass.
 
+Variants are matched by name. The one exception is opt-in, per task: a task whose
+`task.toml` sets `allow_variant_renames = true` (with a required `rename_reason`) is scored
+with `score --allow-variant-renames`, and then, when the candidate's and the reference's
+variant-name sets differ, the scorer pairs variants by class-token Jaccard instead. It pairs
+each reference variant with its best candidate, and accepts the pairing only if it is a
+complete bijection, every pair is mutual-best with no ties, every pair's similarity is at
+least 0.5, and any name the two sides share pairs with itself. Then the variant set is not a
+defect, a `variant_names` detail lists each renamed pair (`candidate -> reference`, with its
+similarity), the score JSON's `renames` counts them, and the default, heights and jaccard are
+read through the pairing — so a class difference inside a pair lowers the jaccard and is never
+a defect. `variant_names` is not a checked fact: it is in `details` but not `facts_checked`.
+Otherwise, and for every task that does not opt in, matching is by name only — a candidate
+that renames `destructive` to `danger` against its spec scores that as a defect. The opt-in
+exists because a spec and its reference can disagree on names: only
+`nyuchi-changelog-renderer` sets it (see [`tasks/README.md`](tasks/README.md), and the pilot
+that found it in [`results/2026-09-27-pilot/RUN.md`](results/2026-09-27-pilot/RUN.md)).
+
 Sequencing: the harness requires `mz contract --agent <file.mz>` to exit 0 _before_ it runs the
 reference diff. A component that fails its own contract is reported as that failure and the
 reference diff does not run — the two checks answer different questions, and conflating them
@@ -85,6 +102,17 @@ passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` var
 run over the corpus. How many components a real run covers, how agent runs are invoked and
 sandboxed, how tokens-consumed and iterations-to-clean-compile are measured and reported end to
 end, and the held-out task set itself (below) all remain unresolved.
+
+## Recorded runs
+
+Scored runs are committed under [`results/`](results/), one directory per run, each with a
+`RUN.md` stating how it was produced and what it does not show. The first is a pilot:
+[`results/2026-09-27-pilot/`](results/2026-09-27-pilot/RUN.md) — `mzbench` Mode 2, 3 tasks ×
+2 arms (mzizi, dioxus), one seed, one frontier model, every episode clean on iteration 1, and
+no token counts. It is not the Phase 0 number: it has no small-model arm, and the Mzizi
+checker it ran against cannot fail on type or interpolation names. It is recorded because it
+found a harness false positive (the changelog task's renamed variants, fixed above), and so
+that the next run has something exact to be compared against.
 
 ## Where the task set lives (RFC-0004)
 
