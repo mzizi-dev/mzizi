@@ -208,7 +208,8 @@ Rejected alternatives, and why:
   be a new keyword, and it pulls toward Rust's `Some(x)` pattern-binding prior, which Mzizi
   has no grammar for. It is not accepted; on an option it is `MZ0712` with an `exact` fix
   rewriting the line to `when image is none` / `nothing` / `else`, so the prior still costs
-  no round trip.
+  no round trip. When the `when` already has an `else`, the repair would swap the two
+  branches — not one span — so the error names the swap and carries no fix.
 - **`when image`** as a presence test — overloads bool truthiness. `when flag` on an
   `option(bool)` would silently mean "present", not "true". `when p` and `when not p` are
   for `bool` only; on an option or list they are `MZ0712`, naming the form to use.
@@ -306,32 +307,32 @@ The hundreds digit keeps its existing meaning (01 lexical, 02 structure, 03 decl
 04 view grammar, 05 warnings, 06 contracts). **`MZ07xx` is new: name and type resolution**,
 the pass this RFC adds.
 
-| Code     | Sev.    | Means                                                                                                                        |
-| -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `MZ0105` | error   | a type constructor written with symbols (`list<T>`, `T[]`, `[T]`) — `exact` fix                                              |
-| `MZ0307` | error   | `record` without a name                                                                                                      |
-| `MZ0308` | error   | a record body line that is not `field <name>: <type>` — `exact` fix when it is `<name>: <type>` (inserts `field`)            |
-| `MZ0309` | error   | a malformed type: `list(` with no `)`, `list()` with nothing inside                                                          |
-| `MZ0310` | error   | tokens left over after a `prop` or `field` declaration (was silently ignored), incl. a field default                         |
-| `MZ0404` | error   | `else` outside a `when`, or a second `else`                                                                                  |
-| `MZ0405` | error   | an `emit` with no event name                                                                                                 |
-| `MZ0502` | warning | an external reference (`<other>_enum.variant`) that cannot be checked until modules — a `guess` fix if a local name is close |
-| `MZ0701` | error   | an unknown type name — alias or nearest-name fix                                                                             |
-| `MZ0702` | error   | a type built wrongly: bare `list` / `option` / `event`, `text(…)`, `none` outside `event(none)`, an event that is data       |
-| `MZ0703` | error   | a second way to say nothing: `option(list(T))`, `option(option(T))`, `option(event(T))` — `exact` fix                        |
-| `MZ0704` | error   | a duplicate prop, field, enum or record, or one named like a built-in type                                                   |
-| `MZ0705` | error   | a record that contains itself                                                                                                |
-| `MZ0706` | error   | a default that does not fit its type, or a default where the type has an implicit one (§1.2)                                 |
-| `MZ0707` | error   | a bare name that resolves to nothing in scope — nearest-name fix                                                             |
-| `MZ0708` | error   | no such variant, column or field — nearest-name fix among that enum's or record's members                                    |
-| `MZ0709` | error   | a dotted access on something without members (`text`, `list`, `bool`, an event, a fn)                                        |
-| `MZ0710` | error   | an option used without being narrowed by `when … is none … else`                                                             |
-| `MZ0711` | error   | a value of the wrong kind for its position: a list as text, `for each` over a non-list, `tap` on a non-event                 |
-| `MZ0712` | error   | a `when` condition that does not fit its operand's type, incl. `is some` / `is true` (both `exact`-fixed)                    |
-| `MZ0713` | error   | a malformed `for each`: its shape, a shadowing binding, a missing / second / constant / string key                           |
-| `MZ0714` | error   | a malformed `{...}`: empty, not a name or dotted path, or unclosed                                                           |
-| `MZ0715` | error   | an `emit` whose target is not an event prop, or whose payload does not fit the event                                         |
-| `MZ0716` | error   | an enum column whose values disagree in type, or a bare-word column value naming no variant                                  |
+| Code     | Sev.    | Means                                                                                                                                       |
+| -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MZ0105` | error   | a type constructor written with symbols (`list<T>`, `T[]`, `[T]`) — `exact` fix                                                             |
+| `MZ0307` | error   | `record` without a name                                                                                                                     |
+| `MZ0308` | error   | a record body line that is not `field <name>: <type>` — `exact` fix when it is `<name>: <type>` (inserts `field`)                           |
+| `MZ0309` | error   | a malformed type: `list(` with no `)` (`exact` only at line end), `list()` with nothing inside                                              |
+| `MZ0310` | error   | tokens left over after a `prop` or `field` declaration (was silently ignored), incl. a field default                                        |
+| `MZ0404` | error   | `else` outside a `when`, or a second `else`                                                                                                 |
+| `MZ0405` | error   | an `emit` with no event name                                                                                                                |
+| `MZ0502` | warning | an external reference (`<other>_enum.variant`) that cannot be checked until modules — a `guess` fix if a local name is close                |
+| `MZ0701` | error   | an unknown type name — alias or nearest-name fix                                                                                            |
+| `MZ0702` | error   | a type built wrongly: bare `list` / `option` / `event`, `text(…)`, `none` outside `event(none)`, an event that is data                      |
+| `MZ0703` | error   | a second way to say nothing: `option(list(T))`, `option(option(T))`, `option(event(T))` — `exact` fix                                       |
+| `MZ0704` | error   | a duplicate prop, field, enum or record, or one named like a built-in type                                                                  |
+| `MZ0705` | error   | a record that contains itself                                                                                                               |
+| `MZ0706` | error   | a default that does not fit its type, or a default where the type has an implicit one (§1.2)                                                |
+| `MZ0707` | error   | a bare name that resolves to nothing in scope — nearest-name fix                                                                            |
+| `MZ0708` | error   | no such variant, column or field — nearest-name fix among that enum's or record's members                                                   |
+| `MZ0709` | error   | a dotted access on something without members (`text`, `list`, `bool`, an event, a fn)                                                       |
+| `MZ0710` | error   | an option used without being narrowed by `when … is none … else`                                                                            |
+| `MZ0711` | error   | a value of the wrong kind for its position: a list as text, `for each` over a non-list, `tap` on a non-event                                |
+| `MZ0712` | error   | a `when` condition that does not fit its operand's type, incl. `is some` / `is true` (both `exact`-fixed; `is some` only without an `else`) |
+| `MZ0713` | error   | a malformed `for each`: its shape, a shadowing binding, a missing / second / constant / string key                                          |
+| `MZ0714` | error   | a malformed `{...}`: empty, not a name or dotted path, or unclosed                                                                          |
+| `MZ0715` | error   | an `emit` whose target is not an event prop, or whose payload does not fit the event                                                        |
+| `MZ0716` | error   | an enum column whose values disagree in type, or a bare-word column value naming no variant                                                 |
 
 All follow RFC-0001 §4: `say` at most 200 characters and quoting the source, deterministic
 order, and one diagnostic per real error — an unknown type is reported once, at its
@@ -487,9 +488,9 @@ Every divergence from the spec, each forced by the language as it stands:
 
 | Measure                                                                | Value                                                                                                           |
 | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `cargo test -p mzizi-lang-compiler`                                    | **179 passed**, was 107; 68 in `tests/types.rs`                                                                 |
-| `cargo test --workspace` (harness and runner too)                      | 251 passed                                                                                                      |
-| `exact` fixes applied blind by the tests and re-checked to zero errors | 46 fixtures across 13 codes, all repaired to zero errors (34 before the #20 review fixes, counted the same way) |
+| `cargo test -p mzizi-lang-compiler`                                    | **183 passed**, was 107; 72 in `tests/types.rs`                                                                 |
+| `cargo test --workspace` (harness and runner too)                      | 255 passed                                                                                                      |
+| `exact` fixes applied blind by the tests and re-checked to zero errors | 47 fixtures across 13 codes, all repaired to zero errors (34 before the #20 review fixes, counted the same way) |
 | corpus contract coverage (`tests/contracts.rs`)                        | 45 assertions across 11 files, all evaluated, 0 failing                                                         |
 | parse + resolve + evaluate, all 11 files, debug build                  | ~4–5 ms (budget 250 ms)                                                                                         |
 | structural sharing (`tests/ir_measured.rs`)                            | 242 shared vs 248 isolated nodes, 6 saved across 11 files                                                       |
