@@ -484,6 +484,12 @@ Every divergence from the spec, each forced by the language as it stands:
 - **Four `nothing` + `else` pairs** — eight lines — are the price of §4's absence-first
   form. It is recorded here because it is exactly the kind of cost Phase 0 measures.
 
+One divergence is not forced by the language. The port's `slot` and `portal`, and its
+`slot is` contract, use the component's current name, `mzizi-changelog-renderer`, as the
+live registry does since mzizi-registry #355. The vendored `spec.tsx` and `reference.rs`
+are byte-identical to the pinned commit, so they still emit `nyuchi-changelog-renderer`.
+The harness does not score either value.
+
 ### 9.4 Tests, speed and the IR
 
 | Measure                                                                | Value                                                                                                           |
