@@ -119,25 +119,32 @@ implementation — which is what CHARTER.md §6's defect metric actually require
 corpus lexes, parses, lowers to IR, keeps its own promises, and the shipped binary agrees_ —
 it does not mean any component matches the ground truth the benchmark will score against.
 
-## Merge commits only — and why that is a research decision, not a style preference
+## Rebase merges only, never squash — and why that is a research decision, not a style preference
 
-**Squash merging and rebase merging are disabled, org-wide and on this repository.** Merge
-the pull request:
+**Squash merging and merge commits are disabled, org-wide and on this repository; rebase
+merging is the only method.** Merge the pull request:
 
 ```bash
-gh pr merge <n> --merge --delete-branch
+gh pr merge <n> --rebase --delete-branch
 ```
 
-The reason is recorded in [`MIGRATION.md`](./MIGRATION.md) §1.1, in the settings table
-applied to every repository in the org:
+This section previously said the opposite — merge commits only, rebase disabled — and the
+API disagreed. Measured on 2026-09-12 (commit `c52a7d8`, which corrected the README but not
+this file) and again on 2026-09-27, when `--merge` on PR #10 was refused with "Merge commits
+are not allowed on this repository": `allow_rebase_merge` is true, merge commits and squash
+are both false. Because rebase merging cannot replay merge commits, **keep branches linear**
+— cherry-pick or rebase, never merge `main` into a PR branch.
 
-| Setting              | Value   | Why                                                              |
-| -------------------- | ------- | ---------------------------------------------------------------- |
-| Allow merge commits  | **yes** | The ecosystem convention is merge-only; history stays truthful   |
-| Allow squash merging | **no**  | Squash discards the per-commit reasoning this project depends on |
-| Allow rebase merging | **no**  | Same                                                             |
+The settings table [`MIGRATION.md`](./MIGRATION.md) §1.1 planned for every repository in the
+org read:
 
-Read that middle row literally. **The commit messages in this repository are the research
+| Setting              | Planned | Actual  | Why the part that survived matters                               |
+| -------------------- | ------- | ------- | ---------------------------------------------------------------- |
+| Allow merge commits  | yes     | **no**  | —                                                                |
+| Allow squash merging | no      | **no**  | Squash discards the per-commit reasoning this project depends on |
+| Allow rebase merging | no      | **yes** | Rebase keeps every commit and its message                        |
+
+Read the squash row literally. **The commit messages in this repository are the research
 record.** This is a project whose entire output so far is a set of design decisions and the
 reasoning behind them; the RFCs carry the large decisions and the commit log carries every
 smaller one — why a lint was allowed, why a filter was removed, why a claim in an RFC was
@@ -149,9 +156,10 @@ irreplaceable half of a commit for tidiness in `git log --oneline`. For a projec
 value is currently the reasoning rather than the code, that is a bad trade, and it is the
 one this convention exists to prevent.
 
-A rebase merge is the same loss in a different shape: it discards the branch point, so a
-sequence of commits that only makes sense as a unit of work is flattened into `main` with
-no record of what it was.
+A rebase merge loses something smaller: the branch point, so a sequence of commits that only
+makes sense as a unit of work lands in `main` without a merge commit saying what it was. The
+per-commit reasoning — the part this convention exists to protect — survives intact. Say
+what the unit of work was in the PR description, which GitHub keeps linked to every commit.
 
 Practical consequences:
 

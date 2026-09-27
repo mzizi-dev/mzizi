@@ -63,10 +63,20 @@ would repeat RFC-0006 §7's own argument (FM-13) one level up.
 
 `benchmarks/harness/` (`mzizi-benchmark-harness`, a Cargo workspace member alongside
 `compiler/`) implements the mechanism above and is proved end to end against
-`primitives/button.mz` — a real component in this repo — using a checked-in fixture copy of the
-real `button.rs` reference (`benchmarks/harness/tests/fixtures/button_reference.rs`; this
-session had no access to `mzizi-dev/mzizi-registry`, so the fixture cites the file path it
-mirrors rather than a commit). `benchmarks/harness/tests/button_diff.rs` asserts both the
+`primitives/button.mz` — a real component in this repo — using a byte-identical copy of the
+real `button.rs` reference at registry commit `3afeb75`
+(`benchmarks/harness/tests/fixtures/button_reference.rs`; provenance in that directory's
+README).
+
+**Correction.** The first version of this harness (PR #10) shipped a fixture whose header
+called it "copied verbatim" from the registry. It was a reconstruction, written without
+access to the registry, and it matched the parser rather than the file. Run against the
+real `button.rs`, that harness reported five false defects: it read the `slug()` match arms
+as class strings, missed the block-bodied `classes()` arms, and merged `ButtonVariant` and
+`ButtonSize` because both have a `Default` variant. The extractor now reads each `impl`
+block's `classes()` method only, and the fixture is `cmp`-identical to the real file. This
+is the FM-10 failure — a check that reads as verification without being one — in the harness
+that exists to catch it. `benchmarks/harness/tests/button_diff.rs` asserts both the
 passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` variant declares
 `height 44` while its class stays `h-12`, with its own contract weakened to match — the exact
 "satisfies its own contract, wrong against the reference" shape this harness exists to catch).
