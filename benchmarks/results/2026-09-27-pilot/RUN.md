@@ -156,8 +156,8 @@ changelog task, and its 2 defects are a harness artifact, not behaviour: see
    harness scores enums only — variant sets, defaults, heights — so it does not see this,
    and both arms score the same.
 7. **Both arms' 2 changelog "defects" are a harness artifact.** The harness matched variants
-   by name only; the task's reference renamed its own spec's variants. Details and the fix
-   below.
+   by name only, and the task's spec and reference disagree on the variant names; both
+   candidates followed the spec. Details and the fix below.
 
 ## Rescored with rename-aware matching
 
@@ -166,37 +166,51 @@ Scoring the changelog task, both arms got the identical 2 defects: `variant_set`
 `default` (expected `cobalt`, actual `horizontal`), with `class_token_jaccard: null`
 because no variant name matched. The class strings are identical to the reference's. The
 task's `spec.tsx` keys its colours by axis
-(`AXIS_COLOURS = { horizontal: "bg-[var(--color-cobalt)]/10 …", … }`) and the Rust
-reference renamed the same four variants by mineral. Both authors followed the spec, so
-the harness was measuring the reference's drift from its own spec.
+(`AXIS_COLOURS = { horizontal: "bg-[var(--color-cobalt)]/10 …", … }`), and the Rust
+reference names the same four variants by mineral, a renaming its module docs record as
+deliberate. The spec and the reference disagree on the names. The prompt says "Keep the
+same variants", and both authors correctly followed the spec, so the 2 defects measured
+that disagreement, not either candidate's behaviour.
 
-The harness now pairs variants by class-token set when the name sets differ, under strict
-conditions (complete bijection, unique token sets on each side, shared names pair with
-themselves), and reports the pairing as a `variant_names` fact instead of hiding it;
-otherwise it matches by name as before. See `rename_map` in
-[`benchmarks/harness/src/lib.rs`](../../harness/src/lib.rs) and RFC-0006 §10.1.
+The harness can now pair renamed variants by class string, but **only for a task that opts
+in**: `allow_variant_renames = true` in its `task.toml`, with a required `rename_reason`.
+Only `nyuchi-changelog-renderer` does, for the reason above; every other task is matched by
+name exactly as at `ded425a`, so a candidate that renames against its spec still scores the
+rename. For an opted-in task whose name sets differ, each reference variant is paired with
+its best candidate by class-token Jaccard, and the pairing is accepted only as a complete
+bijection of mutual-best, tie-free pairs, each with similarity at least 0.5, with shared
+names pairing with themselves. The pairing is reported as a `variant_names` detail, which
+lists each renamed pair and its similarity and is never a defect. It is not counted in
+`facts_checked`, so a renaming candidate and a non-renaming one with the same behaviour are
+scored on the same facts. Otherwise the variants are matched by name. See `rename_map` in
+[`benchmarks/harness/src/lib.rs`](../../harness/src/lib.rs), RFC-0006 §10.1, and
+[`../../tasks/README.md`](../../tasks/README.md).
 
-[`rescored.jsonl`](rescored.jsonl) is the new harness's score JSON for each of the six
-committed candidates, one line per episode, with the harness commit it came from. That is
-this branch's commit `648b0d2` ("fix(benchmarks): pair renamed variants by class
-string…"); because this repository rebase-merges, the SHA on `main` will differ, so each
-line also records `harness_tree`, the git tree hash of `benchmarks/harness/`
-(`4610cf1c12998ae99edc2254bc1d01050a6e362f`), which a rebase does not change. Each
-episode's `episode.jsonl` and `score.json` are untouched: they stay the record of what the
-harness at `ded425a` said.
+[`rescored.jsonl`](rescored.jsonl) is the final harness's score JSON for each of the six
+committed candidates, one line per episode. Each line records the harness commit it came from
+(`ddaeb82`, "fix(benchmarks): make rename pairing opt-in per task…", on this branch). Because
+this repository rebase-merges, that SHA will differ on `main`, so each line also records
+`harness_tree`, the git tree hash of `benchmarks/harness/`
+(`8ab09aeed849b060351ac7752ffe2500bd134ce9`), which a rebase does not change. Each line also
+records whether the task opted in (`allow_variant_renames`), and so whether the scorer ran
+with `--allow-variant-renames`. Each episode's `episode.jsonl` and `score.json` are
+untouched: they stay the record of what the harness at `ded425a` said.
 
 | Episode                            | facts checked | defects   | renames | class-token jaccard |
 | ---------------------------------- | ------------- | --------- | ------- | ------------------- |
 | dioxus / badge                     | 2 → 2         | 0 → 0     | — → 0   | 1.0000 → 1.0000     |
 | dioxus / button                    | 9 → 9         | 0 → 0     | — → 0   | 1.0000 → 1.0000     |
-| dioxus / nyuchi-changelog-renderer | 2 → 3         | **2 → 0** | — → 4   | null → 1.0000       |
+| dioxus / nyuchi-changelog-renderer | 2 → 2         | **2 → 0** | — → 4   | null → 1.0000       |
 | mzizi / badge                      | 2 → 2         | 0 → 0     | — → 0   | 0.6833 → 0.6833     |
 | mzizi / button                     | 9 → 9         | 0 → 0     | — → 0   | 1.0000 → 1.0000     |
-| mzizi / nyuchi-changelog-renderer  | 2 → 3         | **2 → 0** | — → 4   | null → 1.0000       |
+| mzizi / nyuchi-changelog-renderer  | 2 → 2         | **2 → 0** | — → 4   | null → 1.0000       |
 
-The changelog's third fact is `variant_names` itself (never a defect), which lists the
-pairing: `horizontal -> cobalt, vertical -> tanzanite, depth -> malachite, outlier -> gold`.
-The `default` fact now reads `horizontal -> cobalt`, and passes.
+The changelog's two checked facts are the same two as before, `variant_set` and `default`.
+Its `variant_names` detail lists the pairing:
+`horizontal -> cobalt (jaccard 1.0000), vertical -> tanzanite (jaccard 1.0000),
+depth -> malachite (jaccard 1.0000), outlier -> gold (jaccard 1.0000)`. The `default` fact
+now reads `horizontal -> cobalt`, and passes. `badge` and `button` do not opt in, so they
+were scored by name, and nothing about them changed.
 
 Per arm, before → after:
 
@@ -205,18 +219,19 @@ Per arm, before → after:
 | dioxus | 1/3 → 0/3   | 0.67 → 0.00  | 1.000 (n=2) → 1.000 (n=3)  |
 | mzizi  | 1/3 → 0/3   | 0.67 → 0.00  | 0.842 (n=2) → 0.894 (n=3)  |
 
-Read those "after" numbers with caveats 5 and 6 still in force: 0 defects on the changelog
-task means both candidates' `NodeAccent` enums agree with the reference, not that the Mzizi
-candidate renders what the spec renders.
+Read those "after" numbers with caveats 5 and 6 still in force. 0 defects on the changelog
+task means both candidates' `NodeAccent` enums agree with the reference. It does not mean
+the Mzizi candidate renders what the spec renders.
 
-## Upstream: the reference diverges from its own spec
+## Upstream: the spec and the reference disagree on names
 
-The changelog task's Rust reference renamed its spec's `AXIS_COLOURS` keys (`horizontal`,
-`vertical`, `depth`, `outlier`) to mineral names (`Cobalt`, `Tanzanite`, `Malachite`,
-`Gold`); its module docs call the axis words retired. That divergence lives in
-`mzizi-dev/mzizi-registry` (`components/registry/n10-documentation/`, pinned at
-`3afeb75`), and is worth an issue there: the `.tsx` and `.rs` should agree on the names.
-It is noted here and in [`../../tasks/README.md`](../../tasks/README.md), not filed.
+The changelog task's Rust reference names its spec's `AXIS_COLOURS` keys (`horizontal`,
+`vertical`, `depth`, `outlier`) by mineral (`Cobalt`, `Tanzanite`, `Malachite`, `Gold`).
+Its module docs say this is deliberate and call the axis words retired. The spec was never
+updated to match, so the two files in `mzizi-dev/mzizi-registry`
+(`components/registry/n10-documentation/`, pinned at `3afeb75`) disagree. That is worth an
+issue there: the `.tsx` and `.rs` should use the same names. It is noted here and in
+[`../../tasks/README.md`](../../tasks/README.md), not filed.
 
 ## Files
 
@@ -227,4 +242,5 @@ It is noted here and in [`../../tasks/README.md`](../../tasks/README.md), not fi
 - `summary.txt` — `mzbench summarize` over this directory, at `ded425a`. (Run at a later
   commit, `summarize` adds a "renamed variants" column; these episodes' final lines predate
   the `renames` field, so it reads `0 (n=0)`.)
-- `rescored.jsonl` — the six candidates rescored by the rename-aware harness.
+- `rescored.jsonl` — the six candidates rescored by the final harness (rename pairing on for
+  the changelog task only).
