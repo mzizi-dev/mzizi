@@ -95,13 +95,13 @@ Measured on the same container as the Dioxus arm's numbers, rustc 1.94.1. "Cold"
 an empty `target/`; crate sources were already in `~/.cargo/registry` (fetched by
 `cargo generate-lockfile`), so fetch time is not included.
 
-| Run                                        | Result | Time    |
-| ------------------------------------------- | ------ | ------- |
-| `dot.rs` (a real minimal component), cold   | exit 0 | 34.8 s  |
-| `dot.rs`, warm                              | exit 0 | 0.26 s  |
-| `tag.rs` (props, an enum-free event handler, `children`), warm | exit 0 | 0.32 s  |
-| `dot.rs` with one injected error (`IntoVew` for `IntoView`) | exit 1 | —       |
-| No arguments; two arguments; bad path       | exit 2 | —       |
+| Run                                                            | Result | Time   |
+| -------------------------------------------------------------- | ------ | ------ |
+| `dot.rs` (a real minimal component), cold                      | exit 0 | 34.8 s |
+| `dot.rs`, warm                                                 | exit 0 | 0.26 s |
+| `tag.rs` (props, an enum-free event handler, `children`), warm | exit 0 | 0.32 s |
+| `dot.rs` with one injected error (`IntoVew` for `IntoView`)    | exit 1 | —      |
+| No arguments; two arguments; bad path                          | exit 2 | —      |
 
 The injected-error run printed rustc's real `error[E0405]` with its `help:` suggestion
 (`a trait with a similar name exists`) — the same diagnostic quality the Dioxus arm
