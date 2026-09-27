@@ -388,6 +388,20 @@ reference implementations. See §10.1.
    to each `impl` block's `classes()` method, and also scores each enum's variant set and
    `#[default]`, with class-token Jaccard similarity reported but not counted as a defect.
 
+   _Amended 2026-09-27:_ variants were matched by name only, and the first scored pilot
+   (`benchmarks/results/2026-09-27-pilot/RUN.md`) showed what that costs. The changelog
+   task's `.tsx` keys its four colour classes by axis (`horizontal`, …) and its Rust
+   reference renamed the same four class strings by mineral (`cobalt`, …), so both arms,
+   having followed the spec, scored a wrong variant set and a wrong default for the
+   reference's own rename. When the two variant-name sets differ, the scorer now tries to
+   pair variants by class string (each normalised to its token set) and accepts the pairing
+   only as a complete bijection with every token set unique on its side, and with any name
+   shared by both sides paired to itself. An accepted pairing is never silent: it is
+   reported as a `variant_names` fact listing `candidate -> reference`, the score JSON
+   carries a `renames` count, and the default, heights and Jaccard are all read through it.
+   Anything short of that — a missing variant, a changed class, two variants sharing one
+   class — falls back to name-only matching exactly as before.
+
 2. **Cross-file contracts.** `uses button` currently checks a tag in the view. With the
    manifest's name→hash namespace it could check that the composed component exists, that
    its contract holds, and that the props passed to it are ones it declares. That is the

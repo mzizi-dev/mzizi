@@ -170,7 +170,8 @@ fn score_mzizi_button_against_the_real_reference() {
     // Two variant sets, two defaults, five heights — and button.mz agrees with the real
     // reference on all nine.
     assert!(
-        stdout.starts_with(r#"{"arm":"mzizi","facts_checked":9,"defects":0,"details":["#),
+        stdout
+            .starts_with(r#"{"arm":"mzizi","facts_checked":9,"defects":0,"renames":0,"details":["#),
         "{stdout}"
     );
     assert_eq!(details(&stdout).len(), 9);
@@ -196,7 +197,7 @@ fn score_mzizi_broken_button_finds_the_one_height_defect() {
     );
     assert!(output.status.success(), "defects still exit 0: {stdout}");
     assert!(
-        stdout.contains(r#""facts_checked":9,"defects":1,"#),
+        stdout.contains(r#""facts_checked":9,"defects":1,"renames":0,"#),
         "{stdout}"
     );
     let defects: Vec<&str> = details(&stdout)
@@ -217,13 +218,52 @@ fn score_dioxus_reference_against_itself_is_clean() {
     let (output, stdout) = run_score("dioxus", &reference, &reference);
     assert!(output.status.success(), "{stdout}");
     assert!(
-        stdout.starts_with(r#"{"arm":"dioxus","facts_checked":9,"defects":0,"#),
+        stdout.starts_with(r#"{"arm":"dioxus","facts_checked":9,"defects":0,"renames":0,"#),
         "{stdout}"
     );
     assert!(
         stdout.ends_with("\"class_token_jaccard\":1.0000}\n"),
         "{stdout}"
     );
+}
+
+/// The 2026-09-27 pilot's changelog candidates, one per arm, scored against the real task
+/// reference. Both followed `spec.tsx`, which keys its four colour classes by axis
+/// (`horizontal`, …); the reference renamed the same four class strings by mineral
+/// (`cobalt`, …). Before rename-aware pairing both scored 2 defects (`variant_set`,
+/// `default`) and a null jaccard for the reference's rename, not for anything they did.
+#[test]
+fn score_pilot_changelog_candidates_pair_the_renamed_variants_by_class() {
+    let reference = repo_root().join("benchmarks/tasks/nyuchi-changelog-renderer/reference.rs");
+    let pilot = repo_root().join("benchmarks/results/2026-09-27-pilot/claude-subagent");
+    for (arm, file) in [("mzizi", "candidate.mz"), ("dioxus", "candidate.rs")] {
+        let candidate = pilot
+            .join(arm)
+            .join("nyuchi-changelog-renderer/seed-0/iter-01")
+            .join(file);
+        let (output, stdout) = run_score(arm, &candidate, &reference);
+        assert!(output.status.success(), "{arm}: {stdout}");
+        assert!(
+            stdout.contains(r#""facts_checked":3,"defects":0,"renames":4,"#),
+            "{arm}: {stdout}"
+        );
+        assert!(
+            stdout.contains(
+                r#""fact":"variant_names","expected":"{cobalt, tanzanite, malachite, gold}","actual":"renamed (candidate -> reference): horizontal -> cobalt, vertical -> tanzanite, depth -> malachite, outlier -> gold","defect":false"#
+            ),
+            "{arm}: {stdout}"
+        );
+        assert!(
+            stdout.contains(
+                r#""fact":"default","expected":"cobalt","actual":"horizontal -> cobalt","defect":false"#
+            ),
+            "{arm}: {stdout}"
+        );
+        assert!(
+            stdout.ends_with("\"class_token_jaccard\":1.0000}\n"),
+            "{arm}: {stdout}"
+        );
+    }
 }
 
 #[test]

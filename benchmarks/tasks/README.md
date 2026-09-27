@@ -128,6 +128,21 @@ match variants by their class string rather than by name for this task, or repor
 name-level result separately from the other two. Either way, do not quietly count it as a
 defect.
 
+**What happened (2026-09-27).** The first scored pilot
+([`../results/2026-09-27-pilot/RUN.md`](../results/2026-09-27-pilot/RUN.md)) hit exactly
+this: both arms named the variants after the axes, as the spec does, and both scored the
+same 2 defects (`variant_set`, `default`) and a null jaccard. The harness now takes the first
+option, for every task rather than this one alone: when the name sets differ it pairs
+variants by an identical class-token set, reports the pairing as a `variant_names` fact, and
+scores the rest through it (`../README.md`, and RFC-0006 §10.1). With the pairing, this task
+scores 3 facts (`variant_set`, `variant_names`, `default`) for a candidate that renamed, and
+the 2 above for one that did not.
+
+**Upstream.** The divergence itself — the Rust reference renaming its own spec's
+`AXIS_COLOURS` keys to mineral names — lives in `mzizi-dev/mzizi-registry`, and is worth an
+issue there: either the `.tsx` should adopt the mineral names too, or the `.rs` should keep
+the axis keys. It is noted here, not filed.
+
 ## Survey: all 21 `.rs` files with a `.tsx` sibling
 
 _Scoreable_ means scoreable under the extractor rules above. _Unscored but checkable_ lists
