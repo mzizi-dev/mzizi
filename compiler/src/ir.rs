@@ -205,8 +205,20 @@ pub fn lower(component: &Component, store: &mut Store) -> Hash {
         children.push(store.put(enum_node));
     }
 
+    // Records sit with enums (RFC-0001 §3's canonical order). Fields are children in
+    // declaration order: unlike a contract's clauses, their order is the layout a
+    // serialiser and an FFI binding emit, so it is meaning (RFC-0008 §2).
+    for r in &component.records {
+        let mut record = Node::leaf("record", Some(&r.name));
+        for f in &r.fields {
+            let field = Node::leaf("field", Some(&f.name)).field("type", f.ty.to_string());
+            record = record.child(store.put(field));
+        }
+        children.push(store.put(record));
+    }
+
     for p in &component.props {
-        let mut node = Node::leaf("prop", Some(&p.name)).field("type", p.ty.clone());
+        let mut node = Node::leaf("prop", Some(&p.name)).field("type", p.ty.to_string());
         if p.has_default {
             node = node.field("has_default", "true");
         }
@@ -221,8 +233,18 @@ pub fn lower(component: &Component, store: &mut Store) -> Hash {
         children.push(store.put(view_node));
     }
 
+    // A `fn`'s `emit`s are its hashed body. Before RFC-0008 nothing of a body was hashed,
+    // so a `retry` that emitted a different variant left the component's identity alone.
     for f in &component.fns {
-        children.push(store.put(Node::leaf("fn", Some(f))));
+        let mut node = Node::leaf("fn", Some(f));
+        for e in component.emits.iter().filter(|e| &e.in_fn == f) {
+            let mut emit = Node::leaf("emit", Some(&e.target));
+            if let Some((arg, _)) = &e.arg {
+                emit = emit.field("arg", arg.clone());
+            }
+            node = node.child(store.put(emit));
+        }
+        children.push(store.put(node));
     }
 
     if let Some(contract) = &component.contract {
@@ -263,17 +285,26 @@ pub fn lower(component: &Component, store: &mut Store) -> Hash {
 
 fn lower_element(el: &Element, store: &mut Store) -> Hash {
     let mut node = Node::leaf("element", Some(&el.tag));
-    for (name, value) in &el.attrs {
-        let key = if name.is_empty() {
+    for attr in &el.attrs {
+        let key = if attr.name.is_empty() {
             "value"
         } else {
-            name.as_str()
+            attr.name.as_str()
         };
-        node = node.field(key, value.clone());
+        node = node.field(key, attr.value.clone());
     }
     let mut children = Vec::new();
     for child in &el.children {
         children.push(lower_element(child, store));
+    }
+    // The `else` branch is one trailing child, so a `when` without one hashes exactly as
+    // it did before `else` existed (RFC-0008 §7).
+    if let Some(otherwise) = &el.else_children {
+        let mut else_node = Node::leaf("else", None);
+        for child in otherwise {
+            else_node = else_node.child(lower_element(child, store));
+        }
+        children.push(store.put(else_node));
     }
     for c in children {
         node = node.child(c);
@@ -402,15 +433,21 @@ mod tests {
 
     #[test]
     fn identical_subtrees_are_stored_once() {
-        // Structural sharing (RB-7). Two props with identical content are one node.
+        // Structural sharing (RB-7). Two variant rows with identical content are one node,
+        // even in different enums. (This fixture used two identical `prop x` lines until
+        // RFC-0008 made a duplicate prop the error it always was.)
         let (store, _) = lowered(
-            "component a\n  prop x: bool\n  prop x: bool\n  contract\n  end\nend component a\n",
+            "component a\n  enum e\n    one k \"1\"\n  end\n  enum f\n    one k \"1\"\n  end\n  contract\n  end\nend component a\n",
         );
-        let prop_nodes = store
+        let variant_nodes = store
             .nodes
             .values()
-            .filter(|n| n.kind == "prop" && n.label.as_deref() == Some("x"));
-        assert_eq!(prop_nodes.count(), 1, "duplicate props must share one node");
+            .filter(|n| n.kind == "variant" && n.label.as_deref() == Some("one"));
+        assert_eq!(
+            variant_nodes.count(),
+            1,
+            "identical variants must share one node"
+        );
     }
 
     #[test]

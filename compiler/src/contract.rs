@@ -479,13 +479,20 @@ fn outermost_attr<'a>(view: &'a [Element], name: &str) -> Option<&'a str> {
     let mut level: Vec<&'a Element> = view.iter().collect();
     while !level.is_empty() {
         for el in &level {
-            if let Some((_, value)) = el.attrs.iter().find(|(k, _)| k == name) {
-                return Some(value.as_str());
+            if let Some(attr) = el.attrs.iter().find(|a| a.name == name) {
+                return Some(attr.value.as_str());
             }
         }
-        level = level.iter().flat_map(|el| el.children.iter()).collect();
+        level = level.iter().flat_map(|el| branches(el)).collect();
     }
     None
+}
+
+/// An element's children and, for a `when` with an `else`, the other branch too.
+fn branches(el: &Element) -> impl Iterator<Item = &Element> {
+    el.children
+        .iter()
+        .chain(el.else_children.iter().flat_map(|e| e.iter()))
 }
 
 fn find_tag<'a>(view: &'a [Element], tag: &str) -> Option<&'a Element> {
@@ -494,6 +501,9 @@ fn find_tag<'a>(view: &'a [Element], tag: &str) -> Option<&'a Element> {
             return Some(el);
         }
         if let Some(found) = find_tag(&el.children, tag) {
+            return Some(found);
+        }
+        if let Some(found) = el.else_children.as_deref().and_then(|e| find_tag(e, tag)) {
             return Some(found);
         }
     }
@@ -508,6 +518,13 @@ fn find_tag_with_text<'a>(view: &'a [Element], tag: &str, text: &str) -> Option<
         if let Some(found) = find_tag_with_text(&el.children, tag, text) {
             return Some(found);
         }
+        if let Some(found) = el
+            .else_children
+            .as_deref()
+            .and_then(|e| find_tag_with_text(e, tag, text))
+        {
+            return Some(found);
+        }
     }
     None
 }
@@ -516,18 +533,23 @@ fn find_tag_with_text<'a>(view: &'a [Element], tag: &str, text: &str) -> Option<
 /// corpus, but also `label = "Retry"`, because which attribute holds a control's words is
 /// an element's business and not the contract's.
 fn has_text(el: &Element, text: &str) -> bool {
-    el.attrs
-        .iter()
-        .any(|(_, value)| text_of(value) == Some(text))
+    el.attrs.iter().any(|a| text_of(&a.value) == Some(text))
 }
 
 /// A `when` element anywhere in the view whose condition mentions `variant`.
 fn find_guard<'a>(view: &'a [Element], variant: &str) -> Option<&'a Element> {
     for el in view {
-        if el.tag == "when" && el.attrs.iter().any(|(_, value)| value == variant) {
+        if el.tag == "when" && el.attrs.iter().any(|a| a.value == variant) {
             return Some(el);
         }
         if let Some(found) = find_guard(&el.children, variant) {
+            return Some(found);
+        }
+        if let Some(found) = el
+            .else_children
+            .as_deref()
+            .and_then(|e| find_guard(e, variant))
+        {
             return Some(found);
         }
     }
@@ -543,8 +565,8 @@ fn find_guard<'a>(view: &'a [Element], variant: &str) -> Option<&'a Element> {
 /// is `h-12` reports unevaluable, which is the honest answer.
 fn element_height(el: &Element) -> Option<i64> {
     for key in ["height", "min_height"] {
-        if let Some((_, value)) = el.attrs.iter().find(|(k, _)| k == key)
-            && let Ok(n) = value.parse::<i64>()
+        if let Some(attr) = el.attrs.iter().find(|a| a.name == key)
+            && let Ok(n) = attr.value.parse::<i64>()
         {
             return Some(n);
         }
@@ -552,8 +574,8 @@ fn element_height(el: &Element) -> Option<i64> {
     let class = el
         .attrs
         .iter()
-        .find(|(k, _)| k == "class")
-        .and_then(|(_, v)| text_of(v))?;
+        .find(|a| a.name == "class")
+        .and_then(|a| text_of(&a.value))?;
     for prefix in ["min-h-[", "h-["] {
         if let Some(px) = bracketed_pixels(class, prefix) {
             return Some(px);
