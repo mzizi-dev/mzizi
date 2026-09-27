@@ -16,7 +16,7 @@ owed an RFC-0001 §1.5 amendment or a deletion.
 | `badge`       | variant                  | The simplest real variant table                                                    |
 | `alert`       | variant with a11y column | Shows a column that is not styling — `announce` pins the ARIA role to the severity |
 | `card`        | container                | Surface + nested slots                                                             |
-| `avatar`      | size, with fallback      | Two columns per variant, and `when` on an optional value                           |
+| `avatar`      | size, with fallback      | Two columns per variant, and `when … is none … else` on an `option(text)`          |
 | `separator`   | axis                     | Smallest useful primitive                                                          |
 | `spinner`     | size, `use motion`       | The capability declaration in practice                                             |
 | `confirm_bar` | composition              | Uses `button` and `alert` **with no import line** — see below                      |

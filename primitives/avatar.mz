@@ -9,7 +9,7 @@ component avatar
   end
 
   prop size: avatar_size = default
-  prop image: text
+  prop image: option(text)
   prop initials: text
   prop alt: text
 
@@ -25,8 +25,7 @@ component avatar
           class = "flex size-full items-center justify-center rounded-full bg-muted text-muted-foreground {size.text_class}"
           text = initials
         end
-      end
-      when image is some
+      else
         picture
           slot = "avatar-image"
           source = image
