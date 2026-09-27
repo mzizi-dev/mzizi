@@ -197,10 +197,14 @@ fn a_component_that_stops_composing_what_it_promised_is_caught() {
         .find("      when not destructive")
         .expect("the default branch");
     let mutated = format!("{}{}", &src[..start], &src[end..]);
-    let mutated = mutated.replace(
-        "      when not destructive\n        alert\n          variant = default\n          title = \"Please confirm\"\n          message = message\n        end\n      end\n",
-        "",
+    let branch = "      when not destructive\n        alert\n          variant = alert_variant.default\n          title = \"Please confirm\"\n          message = message\n        end\n      end\n";
+    // A `replace` that matches nothing is a mutation that did not happen — which is how
+    // this test went quiet when RFC-0008 qualified the variant. Guard it.
+    assert!(
+        mutated.contains(branch),
+        "the branch this mutation deletes is gone — update the test"
     );
+    let mutated = mutated.replace(branch, "");
     let report = check(&mutated, "confirm_bar.mz");
     assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
     let said = failures("confirm_bar.mz", &mutated);
