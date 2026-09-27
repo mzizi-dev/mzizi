@@ -1,7 +1,7 @@
 //! `mzbench` — the Phase 0 benchmark runner. See `benchmarks/runner/README.md`.
 //!
 //! ```text
-//! mzbench run --task <dir> --arm <mzizi|dioxus> --model-label <s> --seed <n>
+//! mzbench run --task <dir> --arm <mzizi|dioxus|leptos> --model-label <s> --seed <n>
 //!             --temperature <f> --out <results> [--endpoint <url>] [--max-iters 5]
 //!             [--max-tokens 4096] [--timeout-secs 3600] [common options]
 //! mzbench episode start --task <dir> --arm <a> --model-label <s> --out <results>
@@ -36,7 +36,7 @@ use mzizi_benchmark_runner::task::load_task;
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8080";
 
 const USAGE: &str = "usage:
-  mzbench run --task <dir> --arm <mzizi|dioxus> --model-label <s> --seed <n> --temperature <f>
+  mzbench run --task <dir> --arm <mzizi|dioxus|leptos> --model-label <s> --seed <n> --temperature <f>
               --out <results> [--endpoint <url>] [--max-iters 5] [--max-tokens 4096]
               [--timeout-secs 3600] [common]
   mzbench episode start --task <dir> --arm <a> --model-label <s> --out <results>

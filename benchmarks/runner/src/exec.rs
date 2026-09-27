@@ -146,6 +146,7 @@ pub fn default_check(arm: Arm, repo: &Path) -> CommandTemplate {
             "{file}",
         ]),
         Arm::Dioxus => s(&["{repo}/benchmarks/arms/dioxus/check.sh", "{file}"]),
+        Arm::Leptos => s(&["{repo}/benchmarks/arms/leptos/check.sh", "{file}"]),
     };
     let t = CommandTemplate {
         argv,

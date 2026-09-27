@@ -1,0 +1,6 @@
+# Written by ../check.sh for each candidate, then removed. Never committed.
+/src/component.rs
+/target/
+/target.lock
+# The root .gitignore ignores Cargo.lock; this one is part of the version pin.
+!/Cargo.lock

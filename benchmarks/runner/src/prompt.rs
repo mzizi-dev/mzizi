@@ -11,6 +11,7 @@ use crate::extract::ExtractError;
 pub enum Arm {
     Mzizi,
     Dioxus,
+    Leptos,
 }
 
 impl Arm {
@@ -18,7 +19,10 @@ impl Arm {
         match s {
             "mzizi" => Ok(Arm::Mzizi),
             "dioxus" => Ok(Arm::Dioxus),
-            other => Err(format!("unknown arm `{other}` (expected mzizi or dioxus)")),
+            "leptos" => Ok(Arm::Leptos),
+            other => Err(format!(
+                "unknown arm `{other}` (expected mzizi, dioxus or leptos)"
+            )),
         }
     }
 
@@ -26,6 +30,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "mzizi",
             Arm::Dioxus => "dioxus",
+            Arm::Leptos => "leptos",
         }
     }
 
@@ -33,6 +38,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "Mzizi",
             Arm::Dioxus => "Dioxus",
+            Arm::Leptos => "Leptos",
         }
     }
 
@@ -41,6 +47,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "a single Mzizi source file (.mz)",
             Arm::Dioxus => "a single Rust source file (.rs) using Dioxus",
+            Arm::Leptos => "a single Rust source file (.rs) using Leptos",
         }
     }
 
@@ -48,6 +55,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "mz",
             Arm::Dioxus => "rs",
+            Arm::Leptos => "rs",
         }
     }
 
@@ -55,6 +63,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "mzizi-guide.md",
             Arm::Dioxus => "dioxus-guide.md",
+            Arm::Leptos => "leptos-guide.md",
         }
     }
 
@@ -62,7 +71,7 @@ impl Arm {
     pub fn enum_name(self, pascal: &str) -> String {
         match self {
             Arm::Mzizi => snake_case(pascal),
-            Arm::Dioxus => pascal.to_string(),
+            Arm::Dioxus | Arm::Leptos => pascal.to_string(),
         }
     }
 
@@ -71,7 +80,25 @@ impl Arm {
     pub fn class_accessor_phrase(self) -> &'static str {
         match self {
             Arm::Mzizi => "each with a `class` column",
-            Arm::Dioxus => "each with a `classes()` method returning its Tailwind classes",
+            Arm::Dioxus | Arm::Leptos => {
+                "each with a `classes()` method returning its Tailwind classes"
+            }
+        }
+    }
+
+    /// The `--arm` value passed to `mzizi-benchmark-harness score`, which is out of
+    /// scope for this change and only knows `mzizi` and `dioxus`. The harness's
+    /// `dioxus` extractor reads plain `enum … { … }` / `impl … { fn classes() { match … } }`
+    /// shapes — nothing Dioxus-macro-specific (see that crate's own doc comment) — and
+    /// this arm's guide teaches candidates the identical enum/`classes()`/`slug()`
+    /// convention, so Leptos candidates are scored through the same, already-generic
+    /// extractor rather than a Dioxus-specific one. This is distinct from [`Arm::as_str`],
+    /// which still reports `"leptos"` everywhere else (episode directories, `meta.json`,
+    /// the final JSONL line).
+    pub fn harness_arm_str(self) -> &'static str {
+        match self {
+            Arm::Mzizi => "mzizi",
+            Arm::Dioxus | Arm::Leptos => "dioxus",
         }
     }
 }
@@ -208,10 +235,16 @@ mod tests {
     fn arms_differ_only_in_language_name_and_file_kind() {
         let m = build_prompt(Arm::Mzizi, "G", SPEC, &[]);
         let d = build_prompt(Arm::Dioxus, "G", SPEC, &[]);
+        let l = build_prompt(Arm::Leptos, "G", SPEC, &[]);
         assert_ne!(m.user, d.user);
+        assert_ne!(d.user, l.user);
         assert_eq!(
             neutralise(Arm::Mzizi, &m.user),
             neutralise(Arm::Dioxus, &d.user)
+        );
+        assert_eq!(
+            neutralise(Arm::Dioxus, &d.user),
+            neutralise(Arm::Leptos, &l.user)
         );
         assert!(!m.user.contains("Name the variant enums"));
     }
@@ -220,6 +253,7 @@ mod tests {
     fn enum_sentence_is_the_same_modulo_naming_convention() {
         let m = build_prompt(Arm::Mzizi, "G", SPEC, &enums());
         let d = build_prompt(Arm::Dioxus, "G", SPEC, &enums());
+        let l = build_prompt(Arm::Leptos, "G", SPEC, &enums());
         assert!(m.user.contains(
             "Name the variant enums exactly `button_variant`, `button_size`, each with a \
              `class` column."
@@ -228,13 +262,22 @@ mod tests {
             "Name the variant enums exactly `ButtonVariant`, `ButtonSize`, each with a \
              `classes()` method returning its Tailwind classes."
         ));
+        // Dioxus and Leptos share both the naming convention (PascalCase) and the class
+        // accessor phrase, per prompt.rs's `Arm::enum_name`/`class_accessor_phrase`.
+        assert_eq!(d.user.replace("Dioxus", "Leptos"), l.user);
         assert_eq!(
             neutralise(Arm::Mzizi, &m.user),
             neutralise(Arm::Dioxus, &d.user)
         );
+        assert_eq!(
+            neutralise(Arm::Dioxus, &d.user),
+            neutralise(Arm::Leptos, &l.user)
+        );
         // Exactly one added sentence, and it hints at nothing scored beyond names.
         assert_eq!(m.user.matches("Name the variant enums").count(), 1);
-        assert!(!m.user.contains("height") && !d.user.contains("height"));
+        assert!(
+            !m.user.contains("height") && !d.user.contains("height") && !l.user.contains("height")
+        );
     }
 
     #[test]
@@ -251,6 +294,10 @@ mod tests {
         assert_eq!(build_prompt(Arm::Mzizi, guide, SPEC, &[]).system, guide);
         assert_eq!(
             build_prompt(Arm::Dioxus, guide, SPEC, &enums()).system,
+            guide
+        );
+        assert_eq!(
+            build_prompt(Arm::Leptos, guide, SPEC, &enums()).system,
             guide
         );
     }
