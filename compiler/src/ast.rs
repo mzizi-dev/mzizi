@@ -17,12 +17,20 @@ pub struct Component {
     pub uses: Vec<String>,
     /// Enum declarations.
     pub enums: Vec<EnumDecl>,
+    /// Record declarations (RFC-0008 §2).
+    pub records: Vec<RecordDecl>,
     /// Prop declarations.
     pub props: Vec<PropDecl>,
     /// The view tree, if a `view` block was present.
     pub view: Option<Vec<Element>>,
-    /// Function names declared (bodies are not modelled in the prototype).
+    /// Function names declared. Bodies are not modelled beyond `emit` (RFC-0008 §5).
     pub fns: Vec<String>,
+    /// Every `emit` statement in every `fn` body, in source order.
+    pub emits: Vec<Emit>,
+    /// Names declared by lines that failed to parse. The resolver treats them as known
+    /// with an unknown type, so one broken `prop` line is one diagnostic rather than one
+    /// per use of the prop (RFC-0001 §4.1).
+    pub broken: Vec<String>,
     /// The `contract` block, when one was present — its absence is a warning
     /// (RFC-0001 §1.6).
     ///
@@ -60,18 +68,109 @@ pub struct Variant {
     pub columns: Vec<(String, String)>,
 }
 
+/// A record declaration: named fields, closed with a bare `end` (RFC-0008 §2).
+#[derive(Debug, PartialEq)]
+pub struct RecordDecl {
+    /// Record name.
+    pub name: String,
+    /// Where the name is.
+    pub span: Span,
+    /// Fields in declaration order — order is meaning, because it is the layout a
+    /// serialiser and an FFI binding emit.
+    pub fields: Vec<FieldDecl>,
+}
+
+/// One `field <name>: <type>` line.
+#[derive(Debug, PartialEq)]
+pub struct FieldDecl {
+    /// Field name.
+    pub name: String,
+    /// Where the name is.
+    pub span: Span,
+    /// Declared type.
+    pub ty: TypeExpr,
+}
+
+/// A type as written: a name, or a constructor applied to one argument (RFC-0008 §1).
+///
+/// Names are resolved by the checker, not the parser, because a name may be a built-in
+/// (`text`), an enum or a record declared later in the file.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypeExpr {
+    /// What was written.
+    pub kind: TypeKind,
+    /// Where it was written, the whole expression.
+    pub span: Span,
+}
+
+/// The shape of a [`TypeExpr`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeKind {
+    /// `bool`, `int`, `text`, or a declared enum or record — or an unknown name.
+    Name(String),
+    /// `none`, legal only as the payload of `event(none)`.
+    Nothing,
+    /// `list(T)`, `option(T)`, `event(T)` — or any other word followed by `(...)`, which
+    /// the checker rejects with a precise diagnostic.
+    Apply(String, Box<TypeExpr>),
+}
+
+impl std::fmt::Display for TypeExpr {
+    /// The canonical spelling, independent of source whitespace. This is what the IR
+    /// hashes and what `mz outline` prints.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.kind {
+            TypeKind::Name(name) => f.write_str(name),
+            TypeKind::Nothing => f.write_str("none"),
+            TypeKind::Apply(ctor, arg) => write!(f, "{ctor}({arg})"),
+        }
+    }
+}
+
+impl PartialEq<&str> for TypeExpr {
+    /// Compare against a canonical spelling, structurally, without rendering.
+    fn eq(&self, other: &&str) -> bool {
+        match &self.kind {
+            TypeKind::Name(name) => name == other,
+            TypeKind::Nothing => *other == "none",
+            TypeKind::Apply(ctor, arg) => other
+                .strip_prefix(ctor.as_str())
+                .and_then(|rest| rest.strip_prefix('('))
+                .and_then(|rest| rest.strip_suffix(')'))
+                .is_some_and(|inner| **arg == inner),
+        }
+    }
+}
+
+/// An `emit` statement inside a `fn` body: `emit <event>` or `emit <event>(<value>)`.
+#[derive(Debug, PartialEq)]
+pub struct Emit {
+    /// The `fn` it appears in.
+    pub in_fn: String,
+    /// The event prop named.
+    pub target: String,
+    /// Where the event name is.
+    pub target_span: Span,
+    /// The payload as written, and where, when one was given.
+    pub arg: Option<(String, Span)>,
+}
+
 /// A prop declaration: `prop name: type [= default]`.
 #[derive(Debug, PartialEq)]
 pub struct PropDecl {
     /// Prop name.
     pub name: String,
-    /// Declared type, as written.
-    pub ty: String,
+    /// Where the name is.
+    pub span: Span,
+    /// Declared type.
+    pub ty: TypeExpr,
     /// Whether a default was supplied.
     pub has_default: bool,
     /// The default value as written, when there is one. Part of the interface: a caller
     /// needs to know what happens when the prop is omitted.
     pub default: Option<String>,
+    /// From the `=` through the end of the default, for fixes that delete or rewrite it.
+    pub default_span: Option<Span>,
 }
 
 /// A view element: a word, its attributes, and its children.
@@ -81,8 +180,24 @@ pub struct Element {
     pub tag: String,
     /// Where the tag is.
     pub span: Span,
-    /// `(name, value-as-written)` attribute pairs.
-    pub attrs: Vec<(String, String)>,
+    /// Attributes, and the condition words of a `when` / `for` line, in source order.
+    pub attrs: Vec<Attr>,
     /// Nested children.
     pub children: Vec<Element>,
+    /// The `else` branch of a `when`, when it has one (RFC-0008 §4).
+    pub else_children: Option<Vec<Element>>,
+}
+
+/// One attribute: `name = value`, or one word of a condition tail (`is offline`), whose
+/// name is the keyword before it or empty for the leading operand.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Attr {
+    /// Attribute name, condition keyword, or empty.
+    pub name: String,
+    /// The value as written: a string keeps its quotes, a dotted path its dots.
+    pub value: String,
+    /// Where the value is.
+    pub span: Span,
+    /// Each dotted segment's span, for a path; empty for a literal.
+    pub segments: Vec<Span>,
 }
