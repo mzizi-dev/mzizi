@@ -65,6 +65,10 @@ pub struct EpisodeMeta {
     pub task: String,
     /// The task's `enums` list, as passed to the prompt builder.
     pub enums: Vec<String>,
+    /// The task's `rename_reason`, when it opts in to `allow_variant_renames` (the scorer
+    /// argv then carries `--allow-variant-renames`). Recorded so the opt-in and its reason
+    /// sit beside the score they changed.
+    pub rename_reason: Option<String>,
     pub task_dir: PathBuf,
     pub reference_path: PathBuf,
     pub arm: Arm,
@@ -89,6 +93,8 @@ impl EpisodeMeta {
             "mode": self.mode.as_str(),
             "task": self.task,
             "enums": self.enums,
+            "allow_variant_renames": self.rename_reason.is_some(),
+            "rename_reason": self.rename_reason,
             "task_dir": self.task_dir.to_string_lossy(),
             "reference_path": self.reference_path.to_string_lossy(),
             "arm": self.arm.as_str(),
@@ -133,6 +139,10 @@ impl EpisodeMeta {
                         .collect()
                 })
                 .unwrap_or_default(),
+            rename_reason: v
+                .get("rename_reason")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             task_dir: PathBuf::from(st("task_dir")?),
             reference_path: PathBuf::from(st("reference_path")?),
             arm: Arm::parse(&st("arm")?)?,
@@ -698,6 +708,7 @@ mod tests {
             mode,
             task: "button".into(),
             enums: vec![],
+            rename_reason: None,
             task_dir: tmp.to_path_buf(),
             reference_path: reference,
             arm: Arm::Mzizi,

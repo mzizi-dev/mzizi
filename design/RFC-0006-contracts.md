@@ -393,14 +393,19 @@ reference implementations. See §10.1.
    task's `.tsx` keys its four colour classes by axis (`horizontal`, …) and its Rust
    reference renamed the same four class strings by mineral (`cobalt`, …), so both arms,
    having followed the spec, scored a wrong variant set and a wrong default for the
-   reference's own rename. When the two variant-name sets differ, the scorer now tries to
-   pair variants by class string (each normalised to its token set) and accepts the pairing
-   only as a complete bijection with every token set unique on its side, and with any name
-   shared by both sides paired to itself. An accepted pairing is never silent: it is
-   reported as a `variant_names` fact listing `candidate -> reference`, the score JSON
-   carries a `renames` count, and the default, heights and Jaccard are all read through it.
-   Anything short of that — a missing variant, a changed class, two variants sharing one
-   class — falls back to name-only matching exactly as before.
+   reference's own rename. A task may now opt in (`allow_variant_renames = true` in its
+   `task.toml`, with a required `rename_reason`; only the changelog task does), and for such
+   a task, when the two variant-name sets differ, the scorer pairs each reference variant
+   with its best candidate by class-token Jaccard. It accepts the pairing only as a complete
+   bijection in which every pair is mutual-best with no ties, every pair's similarity is at
+   least 0.5, and any name shared by both sides pairs with itself. An accepted pairing is
+   never silent: a `variant_names` detail lists each renamed pair `candidate -> reference`
+   with its similarity, the score JSON carries a `renames` count, and the default, heights
+   and Jaccard are all read through it — so a class difference inside a pair shows in the
+   Jaccard, never as a defect. `variant_names` is not a checked fact and is not counted in
+   `facts_checked`. Anything short of that — a missing variant, a tie, a pair below the
+   threshold — and every task that does not opt in, falls back to name-only matching exactly
+   as before.
 
 2. **Cross-file contracts.** `uses button` currently checks a tag in the view. With the
    manifest's name→hash namespace it could check that the composed component exists, that
