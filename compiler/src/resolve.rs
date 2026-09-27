@@ -283,6 +283,11 @@ impl<'a> Resolver<'a> {
                 let ty = self.ty_of(&f.ty, TyCtx::Field);
                 fields.push((f.name.clone(), ty));
             }
+            for name in &r.broken {
+                if names.insert(name.clone()) {
+                    fields.push((name.clone(), Ty::Unknown));
+                }
+            }
             self.records.entry(r.name.clone()).or_insert(fields);
         }
     }

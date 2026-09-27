@@ -405,6 +405,27 @@ fn an_external_head_near_a_local_name_is_a_warning_with_a_guess_not_an_error() {
     }
 }
 
+/// Review finding 7: a `field` whose type failed to parse was dropped, so every later use
+/// of it added an MZ0708. It is kept as known-with-unknown-type, as a broken `prop` line
+/// already was: the broken line is the only diagnostic.
+#[test]
+fn a_field_whose_type_fails_to_parse_is_one_diagnostic_not_a_cascade() {
+    for field in ["field note: list(", "field note: list()", "field note"] {
+        let src = component(&format!(
+            "  record entry\n    field title: text\n    {field}\n  end\n  prop items: list(entry)\n  view\n    for each e in items\n      key = e.title\n      row\n        text = e.note\n        class = \"{{e.note}} {{e.note}}\"\n      end\n    end\n  end\n"
+        ));
+        let found = errors(&src);
+        assert_eq!(found.len(), 1, "{field}: {found:#?}");
+        assert!(
+            matches!(found[0].code, "MZ0306" | "MZ0309" | "MZ0308"),
+            "{field}: {found:#?}"
+        );
+        // A misspelt use is still caught: the field is known, not a wildcard.
+        let typo = src.replace("text = e.note", "text = e.nope");
+        assert_eq!(errors(&typo).len(), 2, "{field}");
+    }
+}
+
 #[test]
 fn duplicates_and_built_in_names_are_caught() {
     one(&component("  prop a: text\n  prop a: text\n"), "MZ0704");
