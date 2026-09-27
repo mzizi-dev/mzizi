@@ -5,12 +5,12 @@
 A byte-identical copy of a file from another repository. Nothing has been added to it,
 including this provenance, which is why the provenance lives here instead.
 
-| | |
-|---|---|
-| Source repository | `mzizi-dev/mzizi-registry` |
-| Path | `components/registry/n2-primitives/button.rs` |
-| Commit | `3afeb752253a86b5488867078c2238d2cf62b4f0` |
-| Licence | Apache-2.0 (the registry's `LICENSE`; its `NOTICE` reads "Mzizi / Copyright 2026 The Bundu Foundation") |
+|                   |                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| Source repository | `mzizi-dev/mzizi-registry`                                                                              |
+| Path              | `components/registry/n2-primitives/button.rs`                                                           |
+| Commit            | `3afeb752253a86b5488867078c2238d2cf62b4f0`                                                              |
+| Licence           | Apache-2.0 (the registry's `LICENSE`; its `NOTICE` reads "Mzizi / Copyright 2026 The Bundu Foundation") |
 
 Verified identical with:
 

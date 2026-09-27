@@ -28,3 +28,7 @@ profile/governance/
 *-lock.yaml
 package-lock.json
 pnpm-lock.yaml
+
+# Benchmark task specs are byte-identical copies of the registry source
+# (benchmarks/tasks/README.md); reformatting them would break that.
+benchmarks/tasks/*/spec.tsx
