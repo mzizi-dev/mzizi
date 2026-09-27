@@ -70,13 +70,14 @@ reproducible baseline; what it did not produce is a measurement against the kill
 Defined in [`CHARTER.md`](../CHARTER.md) §4. Reproduced here only as far as their _gates_,
 because the phase descriptions belong to the charter and a second copy of them would drift.
 
-| Phase                                                 | State                       | Gate on the next one                                                                            |
-| ----------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
-| **0** — prove the core claim, no rendering            | in progress; **unmeasured** | A real number from the benchmark. Until then Phase 1 is not started, by the charter's own rule. |
-| **1** — Dioxus renderer interop, WASM/native artifact | not started                 | Blocked on Phase 0's number                                                                     |
-| **2** — edge-first deployment                         | not started                 | Blocked on Phase 1                                                                              |
-| **3** — Candle integration                            | not started                 | Blocked on Phase 1                                                                              |
-| **4** — distribution adapters, Astro first            | not started                 | Blocked on Phase 1's artifact standing alone                                                    |
+| Phase                                                                                            | State                       | Gate on the next one                                                                                         |
+| ------------------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **0** — prove the core claim, no rendering                                                       | in progress; **unmeasured** | A real number from the benchmark. Until then Phase 1 is not started, by the charter's own rule.              |
+| **1** — full-stack: `mzizi-ui` + Cloudflare Workers and Containers                               | not started                 | Blocked on Phase 0's number                                                                                  |
+| **2** — Candle integration                                                                       | not started                 | Blocked on Phase 1                                                                                           |
+| **3** — native mobile: `mzizi-ui` interop first (Dioxus today), native codegen scoped separately | not started                 | Blocked on Phase 1                                                                                           |
+| **4** — distribution adapters                                                                    | not started                 | Blocked on Phase 1's artifacts standing alone (the self-contained UI artifact CHARTER.md §4 Phase 1 defines) |
+| **5** — hardware / embedded                                                                      | not started                 | Blocked on Phase 1 having shipped a real full-stack deployment                                               |
 
 ## Where each plan lives
 
