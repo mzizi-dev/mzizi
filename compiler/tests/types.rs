@@ -308,6 +308,33 @@ fn a_camel_case_name_inside_an_interpolation_is_a_naming_error_with_its_fix() {
     );
 }
 
+/// Review finding 4: `{item.Version}` snake-cased the whole string to `item._version`
+/// and added an overlapping MZ0708. Each segment is snake-cased alone, and the one
+/// mistake is one diagnostic.
+#[test]
+fn a_dotted_interpolation_is_snake_cased_per_segment_as_one_diagnostic() {
+    let each = |interp: &str| {
+        component(&format!(
+            "  record entry\n    field version: text\n    field my_note: text\n  end\n  prop items: list(entry)\n  view\n    for each item in items\n      key = item.version\n      row\n        class = \"{interp}\"\n      end\n    end\n  end\n"
+        ))
+    };
+    for bad in ["{item.Version}", "{item.myNote}"] {
+        let src = each(bad);
+        let all = diags(&src);
+        assert_eq!(all.len(), 1, "{all:#?}");
+        let fix = all[0].fix.as_ref().unwrap();
+        assert!(!fix.replace.contains("._"), "{}", fix.replace);
+        exact_fix_repairs(&src, "MZ0101");
+    }
+    assert_eq!(
+        one(&each("{item.Version}"), "MZ0101").fix.unwrap().replace,
+        "item.version"
+    );
+    // Wrong case *and* no such field: still one diagnostic, and its fix is only a guess.
+    let d = one(&each("{item.Versoin}"), "MZ0101");
+    assert_eq!(d.fix.unwrap().confidence, Confidence::Guess);
+}
+
 #[test]
 fn an_enum_column_has_one_type() {
     one(
