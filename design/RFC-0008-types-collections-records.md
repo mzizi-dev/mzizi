@@ -69,7 +69,11 @@ Three rules keep that property true:
   `event(T)` already had: `list(entry)`, `option(text)`. `list<entry>`, `entry[]` and
   `[entry]` are the TypeScript and Rust priors a model samples from; each is `MZ0105`, whose
   `exact` fix is the Mzizi spelling, and the lexer hands the parser the repaired tokens so
-  one mistake is one diagnostic (FM-5).
+  one mistake is one diagnostic (FM-5). The fix covers the whole type expression, nesting
+  and case included: `list<entry[]>` is `list(list(entry))` and `Option<Entry>` is
+  `option(entry)`, one diagnostic each. The first build rewrote brackets in place, so
+  `list<entry[]>` became `list(entry())` and then `MZ0309`, and `Option<Entry>` added an
+  `MZ0101` for `Entry` whose fix overlapped (review of #20).
 
 Type names stay out of the keyword list, as `lex.rs` already argues for `bool` / `int` /
 `text`: `list`, `option`, `record` and `field` are resolved by position. `field` in
