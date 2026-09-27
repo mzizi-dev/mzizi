@@ -97,6 +97,17 @@ run over the corpus. How many components a real run covers, how agent runs are i
 sandboxed, how tokens-consumed and iterations-to-clean-compile are measured and reported end to
 end, and the held-out task set itself (below) all remain unresolved.
 
+## Recorded runs
+
+Scored runs are committed under [`results/`](results/), one directory per run, each with a
+`RUN.md` stating how it was produced and what it does not show. The first is a pilot:
+[`results/2026-09-27-pilot/`](results/2026-09-27-pilot/RUN.md) — `mzbench` Mode 2, 3 tasks ×
+2 arms (mzizi, dioxus), one seed, one frontier model, every episode clean on iteration 1, and
+no token counts. It is not the Phase 0 number: it has no small-model arm, and the Mzizi
+checker it ran against cannot fail on type or interpolation names. It is recorded because it
+found a harness false positive (the changelog task's renamed variants, fixed above), and so
+that the next run has something exact to be compared against.
+
 ## Where the task set lives (RFC-0004)
 
 Everything in this directory is and stays **public**: the runner, the metric definitions, the
