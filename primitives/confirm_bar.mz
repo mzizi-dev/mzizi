@@ -16,14 +16,14 @@ component confirm_bar
       class = "flex flex-col gap-3"
       when destructive
         alert
-          variant = destructive
+          variant = alert_variant.destructive
           title = "Please confirm"
           message = message
         end
       end
       when not destructive
         alert
-          variant = default
+          variant = alert_variant.default
           title = "Please confirm"
           message = message
         end
@@ -31,12 +31,12 @@ component confirm_bar
       row
         class = "flex items-center justify-end gap-2"
         button
-          variant = ghost
+          variant = button_variant.ghost
           label = cancel_label
           on_tap = on_cancel
         end
         button
-          variant = default
+          variant = button_variant.default
           label = confirm_label
           on_tap = on_confirm
         end
