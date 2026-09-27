@@ -210,7 +210,7 @@ no `net` cannot call anything that needs it — checked transitively, reported
 locally ("`retry` calls `fetch_status` which needs `net`; add `use net` to
 `connectivity_bar` or remove the call"). An agent reading the first five
 lines of any component knows its blast radius. `use ml` is the future
-Candle seam (Phase 3); it parses today and errors as "not yet available".
+Candle seam (Phase 2 in CHARTER.md v0.2); it parses today and errors as "not yet available".
 
 ### 1.8 No ownership at the surface — _FM-3_
 

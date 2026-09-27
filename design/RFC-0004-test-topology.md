@@ -61,7 +61,7 @@ preference.**
 
 ## 2. The split
 
-**Public** — `nyuchi/mzizi-tools` today, `mzizi-dev` later:
+**Public** — `mzizi-dev/mzizi` (it started inside `nyuchi/mzizi-tools`, since renamed to `mzizi-dev/agent-tools`):
 
 - The language, compiler, primitives, RFCs. All of it.
 - The **entire correctness suite**: unit tests, contract tests, the parse gates, the

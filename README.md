@@ -9,7 +9,7 @@ limited parameters, context and long-range attention.
 [![Lint](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml/badge.svg)](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 ![Rust](https://img.shields.io/badge/Rust-edition_2024-000000?style=flat-square&logo=rust&logoColor=white)
-![Dependencies](https://img.shields.io/badge/dependencies-none-informational?style=flat-square)
+![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
 **Tests:** 107 | **Phase:** 0, unmeasured
@@ -65,11 +65,16 @@ evaluation (`mz contract`), and nine primitives written in Mzizi itself.
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
 doesn't hold — all 33 assertions in the corpus evaluated, none merely counted. It checks
-nothing rendered, and **nothing against a reference implementation** — that's the other half
-of the Phase 0 defect metric, and it doesn't exist yet ([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1).
+nothing rendered and nothing against a reference implementation. That comparison is the other
+half of the Phase 0 defect metric, and it lives outside the compiler. `benchmarks/harness` diffs
+a `.mz` component's variants, defaults and touch heights against the hand-written Rust reference
+([RFC-0006](./design/RFC-0006-contracts.md) §10.1). It is a prototype. It is tested end to end
+against one component, `primitives/button.mz`, and a byte-identical copy of the registry's
+`button.rs`. The `mzbench` runner calls it to score the three pilot tasks in
+`benchmarks/tasks/`. No scored run over the pilot tasks or the full corpus exists yet.
 
-**What doesn't exist yet:** reference-implementation comparison, lowering to Rust, code
-generation, a runtime, rendering, a release, a published binary.
+**What doesn't exist yet:** a scored benchmark run, lowering to Rust, code generation, a
+runtime, rendering, a release, a published binary.
 
 **The number that decides everything:** the Phase 0 benchmark — an LLM agent authoring N
 equivalent components in Mzizi's syntax vs. raw Dioxus/Leptos, scored on tokens consumed,
@@ -86,14 +91,17 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 107 tests, zero dependencies
+cargo test                                                           # 107 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 ```
 
-A stable Rust toolchain is the entire dependency list — see
-[`AGENTS.md`](./AGENTS.md) for the full command set, the CI gates, and what an agent working
-in this repo needs to know before pushing.
+The compiler crate needs only a stable Rust toolchain. It has no dependencies of its own. The
+workspace's benchmark runner (`benchmarks/runner`) depends on `ureq` and `serde_json`, each
+pinned to an exact version. Cargo resolves the whole workspace, so the first build needs the
+crates.io index even though it downloads no crates for the compiler. After that it works
+offline. See [`AGENTS.md`](./AGENTS.md) for the full command set, the CI gates, and what an
+agent working in this repo needs to know before pushing.
 
 ## Layout
 
@@ -105,7 +113,7 @@ mzizi/
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
 ├── examples/           # one real corpus component, ported by hand
-└── benchmarks/         # Phase 0 benchmark harness — public; the task set is not
+└── benchmarks/         # Phase 0 harness, runner and public pilot tasks; the held-out set is private
 ```
 
 ## The RFCs
@@ -133,13 +141,13 @@ Mzizi-the-language is one repository in [`mzizi-dev`](https://github.com/mzizi-d
 Foundation-governed Mzizi org. **The language repo is plain `mzizi`; everything else is
 `mzizi-`-prefixed** — the language is the project.
 
-| Repository                                                            | What it is                                                                                        | Relationship to this repo                                                               |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — 577+ components, the brand system, the DNA-helix architecture. | **The benchmark corpus.** Charter §6 makes Mzizi's own components the Phase 0 task set. |
-| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | The documentation site — language reference, RFC index, registry guides.                          | Documents this repo. The RFCs stay **here**, next to the code they govern.              |
-| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | The front door — serves `mzizi.dev`.                                                              | Publishes; is not depended on.                                                          |
-| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | A pure-Rust Cloudflare Worker for `api.mzizi.dev`.                                                | Serves the registry, not the language.                                                  |
-| `mzizi-benchmark`                                                     | Planned, not yet created — the public Phase 0 harness.                                            | Will consume `mz` from this repo.                                                       |
+| Repository                                                            | What it is                                                                                                                                                                                                                                                                                                                     | Relationship to this repo                                                               |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — 577+ components, the brand system, the DNA-helix architecture.                                                                                                                                                                                                                              | **The benchmark corpus.** Charter §6 makes Mzizi's own components the Phase 0 task set. |
+| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | The documentation site — language reference, RFC index, registry guides.                                                                                                                                                                                                                                                       | Documents this repo. The RFCs stay **here**, next to the code they govern.              |
+| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | The front door — serves `mzizi.dev`.                                                                                                                                                                                                                                                                                           | Publishes; is not depended on.                                                          |
+| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | A pure-Rust Cloudflare Worker for `api.mzizi.dev`.                                                                                                                                                                                                                                                                             | Serves the registry, not the language.                                                  |
+| Held-out benchmark repository (private, unnamed)                      | Planned, not yet created. It will hold the held-out task set and its expected outputs, which stay private ([CHARTER.md](./CHARTER.md) §6, [RFC-0004](./design/RFC-0004-test-topology.md)). The harness, the runner and the public pilot tasks are in this repo, under `benchmarks/`, and CI runs the harness and runner tests. | Will run this repo's public harness. This repo never reads from it.                     |
 
 **The rule that keeps the ecosystem honest** — RFC-0004 §3 applied to code, not just tests:
 
