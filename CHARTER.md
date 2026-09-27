@@ -1,8 +1,8 @@
 # Mzizi — A General-Purpose Framework for the Agentic World, in Rust
 
-## Bundu Foundation Research Charter, v0.2
+## Mzizi Research Charter, v0.2
 
-**Owner:** Bundu Foundation (100% — Mzizi framework, components, and logic are Foundation IP)
+**Owner:** Mzizi (100% — Mzizi framework, components, and logic are Mzizi IP)
 **Adjacent, Nyuchi-owned:** the Mzizi console ("Fundi"), active cyber testing
 **Publishing:** `@bundu` npm scope
 **Status:** charter draft — defines direction and phasing, not a sprint plan
@@ -18,13 +18,13 @@
 <!-- -->
 
 > **Location note:** this project lives in its own repo, **`mzizi-dev/mzizi`**, in the
-> dedicated Mzizi org, **`mzizi-dev`**, which is Foundation-governed (`mzizi-dev/roadmap` —
-> "The Mzizi Roadmap by the Bundu Foundation" — plus org defaults in `mzizi-dev/.github`).
-> Not `bundu-labs`: that is the Foundation's general org and holds unrelated work. It
-> started inside `nyuchi/mzizi-tools` (since renamed and moved to `mzizi-dev/agent-tools`)
-> as a temporary host and has moved out. Per the charter's ownership line, this project is
-> 100% Bundu Foundation IP, distinct from the Nyuchi-owned Mzizi design system/registry
-> (`mzizi-dev/mzizi-registry`) and the Mzizi console tooling in `mzizi-dev/agent-tools`.
+> dedicated Mzizi org, **`mzizi-dev`** (`mzizi-dev/roadmap` plus org defaults in
+> `mzizi-dev/.github`). Not `bundu-labs`: that is the Bundu Foundation's general org and
+> holds unrelated work. It started inside `nyuchi/mzizi-tools` (since renamed and moved to
+> `mzizi-dev/agent-tools`) as a temporary host and has moved out. Per the charter's ownership line, this project is
+> 100% Mzizi IP. That includes the component registry (`mzizi-dev/mzizi-registry`), which is
+> Mzizi's too. The revenue-generating work (the Mzizi console "Fundi", its tooling in
+> `mzizi-dev/agent-tools`, paid plans and billing) is Nyuchi's.
 
 ---
 
@@ -87,7 +87,7 @@ Named, not designed. No target board, RTOS, or use case decided. Revisit once Ph
 - Not building a bespoke rendering ENGINE — the browser/GPU-level renderer itself — before proven interop is tried and found insufficient. `mzizi-ui` is Mzizi's own first-class component registry and contract; it renders through compatible third-party engines (Dioxus for web/desktop/mobile-interop today), `workers-rs`/Cloudflare Containers for edge, and (later, separately scoped) proven native-binding patterns for mobile. Owning the component contract is not the same claim as owning the rendering engine underneath it, and this charter does not commit to the latter.
 - Not addressing post-quantum cryptography in this charter. Future thread, not this one.
 - Not committing to hardware/embedded specifics in this version. Named as a direction (§2, Phase 5), not a designed phase.
-- Not blocked by, or blocking, Nyuchi/Mukoko revenue-phase work — different org, different clock, per Bundu Foundation's research mandate.
+- Not blocked by, or blocking, Nyuchi/Mukoko revenue-phase work — different org, different clock, per Mzizi's non-revenue research mandate.
 
 ## 6. Phase 0 benchmark design — resolved
 

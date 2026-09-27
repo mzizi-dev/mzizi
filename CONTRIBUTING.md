@@ -346,7 +346,7 @@ is — see [`SECURITY.md`](./SECURITY.md) for which of those to report privately
 ## Licensing
 
 Apache-2.0. Contributions are accepted under the same licence, per Apache-2.0 §5 — there is
-no separate CLA. The project is 100% Bundu Foundation IP (CHARTER.md), and RFC-0002 §3's
+no separate CLA. The project is 100% Mzizi IP (CHARTER.md), and RFC-0002 §3's
 discipline applies to anything copied in from elsewhere: a `NOTICE` file is required if
 Apache-2.0 code is ever vendored, and **GPL/AGPL code must never be**, whatever licence
 Mzizi itself carries. If you take an idea from another language — which RFC-0002 §3
