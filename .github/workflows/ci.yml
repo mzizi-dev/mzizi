@@ -82,6 +82,32 @@ jobs:
             cargo run --quiet --bin mz -- contract "$f"
           done
 
+  # The `compiler` job runs with `working-directory: compiler`, which by Cargo's own rule
+  # tests only that member. The benchmark harness and runner are workspace members too, and
+  # without this job their tests never ran in CI. The Dioxus sandbox is excluded from the
+  # workspace (root Cargo.toml), so nothing here builds Dioxus.
+  benchmarks:
+    name: benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check (workspace)
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy -D warnings (workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test (harness and runner)
+        run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest
