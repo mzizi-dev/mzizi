@@ -900,18 +900,31 @@ impl<'a> Resolver<'a> {
         }
         let names = self.names_in_scope(scope);
         let fix = nearest(head, names.iter().map(String::as_str));
-        if parts > 1 && fix.is_none() {
+        if parts > 1 {
             // Another component's enum, as `<enum>.<variant>`. It cannot be checked until
-            // modules exist (RFC-0007 G2.3), and saying so beats pretending it was.
-            self.diags.push(Diagnostic::warning(
+            // modules exist (RFC-0007 G2.3), and saying so beats pretending it was. A local
+            // name that is merely close (`tones` for `tone`) does not make it an error: the
+            // reference is still valid if the enum lives elsewhere, so the local name is
+            // offered as a `guess` only.
+            let mut d = Diagnostic::warning(
                 "MZ0502",
                 &self.file,
                 head_span,
-                format!(
-                    "`{}` names no enum in this file, so it is read as another component's — unchecked until modules land (RFC-0007 G2.3); nothing to fix",
-                    clip(value)
-                ),
-            ));
+                match &fix {
+                    Some((to, _)) => format!(
+                        "`{}` names no enum in this file, so it is read as another component's — unchecked until modules land (RFC-0007 G2.3); if you meant the local `{to}`, that is a guess",
+                        clip(value)
+                    ),
+                    None => format!(
+                        "`{}` names no enum in this file, so it is read as another component's — unchecked until modules land (RFC-0007 G2.3); nothing to fix",
+                        clip(value)
+                    ),
+                },
+            );
+            if let Some((to, _)) = fix {
+                d = d.with_fix(head_span, to, Confidence::Guess);
+            }
+            self.diags.push(d);
             return Ty::Unknown;
         }
         let say = match &fix {
@@ -924,12 +937,7 @@ impl<'a> Resolver<'a> {
                 "`{head}` is not a prop, loop binding, fn or variant in this file; another component's variant is written `<enum>.<variant>`"
             ),
         };
-        // A dotted path's head is only ever a guess: it might be an external enum after all.
-        let fix = fix.map(|(to, c)| {
-            let c = if parts > 1 { Confidence::Guess } else { c };
-            (head_span, to, c)
-        });
-        self.unknown("MZ0707", head_span, say, fix);
+        self.unknown("MZ0707", head_span, say, fix.map(|(to, c)| (head_span, to, c)));
         Ty::Unknown
     }
 
