@@ -244,19 +244,33 @@ impl Parser {
         let inner = self.parse_type(&format!("`{name}(`"))?;
         if !matches!(self.peek(), Tok::RParen) {
             let span = self.peek_span();
-            self.diags.push(
-                Diagnostic::error(
+            // Inserting `)` is only a safe repair when the line ends here. Anything else
+            // (`list(text, int)`) means the `)` is further on, and inserting one would
+            // leave the line broken.
+            if matches!(self.peek(), Tok::Newline | Tok::Eof) {
+                self.diags.push(
+                    Diagnostic::error(
+                        "MZ0309",
+                        &self.file,
+                        span,
+                        format!("`{name}({inner}` is missing its `)`"),
+                    )
+                    .with_fix(
+                        Span::single(inner.span.end_line, inner.span.end_col, 0),
+                        ")",
+                        Confidence::Exact,
+                    ),
+                );
+            } else {
+                self.diags.push(Diagnostic::error(
                     "MZ0309",
                     &self.file,
                     span,
-                    format!("`{name}({inner}` is missing its `)`"),
-                )
-                .with_fix(
-                    Span::single(inner.span.end_line, inner.span.end_col, 0),
-                    ")",
-                    Confidence::Exact,
-                ),
-            );
+                    format!(
+                        "`{name}({inner}` must close with `)` here — a type constructor takes exactly one type"
+                    ),
+                ));
+            }
             return None;
         }
         let close = self.peek_span();
