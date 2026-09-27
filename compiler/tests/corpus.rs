@@ -1,6 +1,6 @@
 //! The RFC-0001 worked example must parse clean.
 //!
-//! The example is a real corpus component (`nyuchi-connectivity-bar`, N7) whose TypeScript
+//! The example is a real corpus component (`mzizi-connectivity-bar`, N7) whose TypeScript
 //! reference and Rust port both exist, so its contract is known ground truth. If the
 //! grammar cannot express the corpus, the grammar is wrong — this test is the gate that
 //! keeps the RFC honest.
@@ -38,7 +38,7 @@ fn the_component_identity_matches_the_corpus_name() {
     let src = example("connectivity_bar");
     let (component, _) = check_with_ast(&src, "connectivity_bar.mz");
     let c = component.unwrap();
-    // The corpus name is `nyuchi-connectivity-bar`; RFC-0001 §2's fixed rule maps it to
+    // The corpus name is `mzizi-connectivity-bar`; RFC-0001 §2's fixed rule maps it to
     // this source name.
     assert_eq!(c.name, "connectivity_bar");
 }

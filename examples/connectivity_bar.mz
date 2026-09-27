@@ -1,5 +1,5 @@
 ## A status strip announcing the app's network state.
-## Corpus reference: n7-shell/nyuchi-connectivity-bar.
+## Corpus reference: n7-shell/mzizi-connectivity-bar.
 component connectivity_bar
 
   use motion
@@ -20,7 +20,7 @@ component connectivity_bar
       nothing
     end
     strip
-      slot = "nyuchi-connectivity-bar"
+      slot = "mzizi-connectivity-bar"
       class = "fixed inset-x-0 top-0 z-50 {state.color}"
       role = "status"
       text = state.label

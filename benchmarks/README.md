@@ -68,7 +68,7 @@ a defect. `variant_names` is not a checked fact: it is in `details` but not `fac
 Otherwise, and for every task that does not opt in, matching is by name only — a candidate
 that renames `destructive` to `danger` against its spec scores that as a defect. The opt-in
 exists because a spec and its reference can disagree on names: only
-`nyuchi-changelog-renderer` sets it (see [`tasks/README.md`](tasks/README.md), and the pilot
+`mzizi-changelog-renderer` sets it (see [`tasks/README.md`](tasks/README.md), and the pilot
 that found it in [`results/2026-09-27-pilot/RUN.md`](results/2026-09-27-pilot/RUN.md)).
 
 Sequencing: the harness requires `mz contract --agent <file.mz>` to exit 0 _before_ it runs the
