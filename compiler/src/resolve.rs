@@ -815,7 +815,7 @@ impl<'a> Resolver<'a> {
                             .collect();
                         let fix = nearest(member, cols.iter().map(String::as_str));
                         let say = format!(
-                            "`{}` — `{prefix}` is a `{e}`, which has no column `{member}`: {}",
+                            "`{}` — `{prefix}` is `{e}`, which has no column `{member}`: {}",
                             clip(value),
                             list_names(cols.iter().map(String::as_str))
                         );
@@ -835,7 +835,7 @@ impl<'a> Resolver<'a> {
                         None => {
                             let fix = nearest(member, fields.iter().map(|(f, _)| f.as_str()));
                             let say = format!(
-                                "`{}` — `{prefix}` is a `{r}`, which has no field `{member}`: {}",
+                                "`{}` — `{prefix}` is `{r}`, which has no field `{member}`: {}",
                                 clip(value),
                                 list_names(fields.iter().map(|(f, _)| f.as_str()))
                             );

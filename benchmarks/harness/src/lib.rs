@@ -1686,6 +1686,19 @@ impl E {
     }
 
     #[test]
+    fn record_and_field_lines_are_not_read_as_enums() {
+        // RFC-0008 added `record … end` blocks with `field <name>: <type>` lines, and
+        // `prop` types like `list(entry)`. This extractor is line-level by design, so pin
+        // that neither is mistaken for an enum, a variant, or an enum default.
+        let src = "component c\n  enum tone\n    calm  class \"a\"\n  end\n  record entry\n    field tone: tone\n    field tags: list(text)\n  end record\n  prop entries: list(entry)\n  prop maybe: option(tone)\n  prop t: tone = calm\nend component c\n";
+        let enums = parse_mzizi_enums(src);
+        assert_eq!(enums.len(), 1, "{enums:#?}");
+        assert_eq!(enums[0].name, "tone");
+        assert_eq!(enums[0].variants, vec!["calm".to_string()]);
+        assert_eq!(enums[0].default.as_deref(), Some("calm"));
+    }
+
+    #[test]
     fn a_reference_without_a_default_checks_no_default_fact() {
         let r = parse_rust_enums("enum Tone { Calm, Loud }");
         let c = parse_mzizi_enums("enum tone\n  calm\n  loud\nend\nprop t: tone = loud\n");

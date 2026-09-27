@@ -1,0 +1,165 @@
+## The database changelog as a visual timeline.
+## Corpus reference: n10-documentation/nyuchi-changelog-renderer (spec.tsx and reference.rs
+## in benchmarks/tasks/nyuchi-changelog-renderer). Divergences from the spec, each forced
+## by the language as it stands, are listed in RFC-0008 §9.3.
+component changelog_renderer
+
+  ## The four badge colours, named for their mineral as the Rust reference names them.
+  ## Class strings are byte-identical to the spec's `AXIS_COLOURS`.
+  enum node_accent
+    cobalt     class "bg-[var(--color-cobalt)]/10 text-[var(--color-cobalt)]"
+    tanzanite  class "bg-[var(--color-tanzanite)]/10 text-[var(--color-tanzanite)]"
+    malachite  class "bg-[var(--color-malachite)]/10 text-[var(--color-malachite)]"
+    gold       class "bg-[var(--color-gold)]/10 text-[var(--color-gold)]"
+  end
+
+  ## The spec keeps a node's label and axis in two parallel maps, `NODE_LABELS` and
+  ## `NODE_AXIS`, both stopping at N10. Here a node is one row, so the two cannot drift,
+  ## and N11 and N12 are rows too, as in the reference's `default_node_styles`.
+  enum ecosystem_node
+    n1   number 1   label "Tokens"         accent tanzanite
+    n2   number 2   label "Primitives"     accent cobalt
+    n3   number 3   label "Brand"          accent cobalt
+    n4   number 4   label "Safety"         accent tanzanite
+    n5   number 5   label "Resilience"     accent tanzanite
+    n6   number 6   label "Pages"          accent cobalt
+    n7   number 7   label "Shell"          accent cobalt
+    n8   number 8   label "Assurance"      accent malachite
+    n9   number 9   label "Fundi"          accent gold
+    n10  number 10  label "Documentation"  accent gold
+    n11  number 11  label "Discovery"      accent gold
+    n12  number 12  label "Skills"         accent gold
+  end
+
+  ## One released version. The spec's four optional arrays are lists: a list is never
+  ## optional, and the empty list is its absence (RFC-0008 §1.1).
+  record changelog_entry
+    field version: text
+    field title: text
+    field description: text
+    field date: text
+    field nodes_affected: list(ecosystem_node)
+    field components_added: list(text)
+    field components_modified: list(text)
+    field components_deprecated: list(text)
+  end
+
+  prop entries: list(changelog_entry)
+
+  view
+    feed
+      slot = "nyuchi-changelog-renderer"
+      portal = "https://mzizi.dev/components/nyuchi-changelog-renderer"
+      class = "flex flex-col gap-8"
+      role = "feed"
+      label = "Changelog"
+      for each entry in entries
+        key = entry.version
+        article
+          class = "relative border-l-2 border-border pl-6"
+          labelled_by = "changelog-{entry.version}"
+          dot
+            class = "absolute top-1 -left-[5px] size-2 rounded-full bg-primary"
+          end
+          row
+            class = "flex flex-wrap items-baseline gap-3"
+            version
+              class = "font-mono text-sm font-bold text-primary"
+              text = entry.version
+            end
+            time
+              class = "text-xs text-muted-foreground"
+              text = entry.date
+            end
+          end
+          heading
+            id = "changelog-{entry.version}"
+            class = "mt-1 text-lg font-semibold"
+            text = entry.title
+          end
+          paragraph
+            class = "mt-1 text-sm text-muted-foreground"
+            text = entry.description
+          end
+          when entry.nodes_affected is none
+            nothing
+          else
+            row
+              class = "mt-2 flex flex-wrap gap-1"
+              label = "Nodes affected"
+              for each node in entry.nodes_affected
+                key = node.number
+                badge
+                  class = "rounded-full px-2 py-0.5 text-xs font-medium {node.accent.class}"
+                  title = "N{node.number} — {node.label}"
+                  text = "N{node.number}"
+                end
+              end
+            end
+          end
+          when entry.components_added is none
+            nothing
+          else
+            row
+              class = "mt-2 flex flex-wrap gap-1"
+              label = "Components added"
+              for each name in entry.components_added
+                key = name
+                chip
+                  class = "rounded bg-[var(--status-success,#64FFDA)]/10 px-1.5 py-0.5 text-xs text-[var(--status-success,#22C55E)]"
+                  text = "+{name}"
+                end
+              end
+            end
+          end
+          when entry.components_modified is none
+            nothing
+          else
+            row
+              class = "mt-1 flex flex-wrap gap-1"
+              label = "Components modified"
+              for each name in entry.components_modified
+                key = name
+                chip
+                  class = "rounded bg-[var(--color-cobalt)]/10 px-1.5 py-0.5 text-xs text-[var(--color-cobalt)]"
+                  text = "~{name}"
+                end
+              end
+            end
+          end
+          when entry.components_deprecated is none
+            nothing
+          else
+            row
+              class = "mt-1 flex flex-wrap gap-1"
+              label = "Components deprecated"
+              for each name in entry.components_deprecated
+                key = name
+                chip
+                  class = "rounded bg-[var(--status-warning,#F59E0B)]/10 px-1.5 py-0.5 text-xs text-[var(--status-warning,#F59E0B)] line-through"
+                  text = name
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  contract
+    slot is "nyuchi-changelog-renderer"
+    role is "feed"
+    label is "Changelog"
+    every node_accent class not_empty
+    node_accent.cobalt class uses "--color-cobalt"
+    node_accent.gold class uses "--color-gold"
+    every ecosystem_node label not_empty
+    every ecosystem_node number at_least 1
+    ecosystem_node.n1 accent is tanzanite
+    ecosystem_node.n8 accent is malachite
+    ecosystem_node.n11 label is "Discovery"
+    ecosystem_node.n12 accent is gold
+  end
+
+end component changelog_renderer

@@ -20,7 +20,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-/// The nine primitives plus the corpus example, sorted for determinism.
+/// The primitives plus the corpus examples, sorted for determinism.
 fn corpus() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for dir in ["primitives", "examples"] {
@@ -110,7 +110,9 @@ fn every_corpus_clause_is_actually_evaluated() {
     // that would have caught `card_radius uses "--radius-lg"`, which named a subject that
     // did not exist anywhere in `card.mz`.
     let mut total = 0usize;
-    for (name, src) in corpus() {
+    let files = corpus();
+    let count = files.len();
+    for (name, src) in files {
         let (_, tally) = check_contract(&src, &name);
         let written = src
             .lines()
@@ -127,7 +129,8 @@ fn every_corpus_clause_is_actually_evaluated() {
         total += tally.clauses;
     }
     // Measured, so RFC-0006 §9 can quote a number rather than assert one.
-    println!("corpus contract coverage: {total} assertions across 10 files, all evaluated");
+    // The file count used to be a literal "10", which went false the day a file was added.
+    println!("corpus contract coverage: {total} assertions across {count} files, all evaluated");
     assert!(total >= 30, "only {total} assertions in the whole corpus");
 }
 
