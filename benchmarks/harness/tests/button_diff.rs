@@ -1,11 +1,16 @@
-//! End-to-end tests: run the real `mzizi-benchmark-harness` binary, which itself shells out
-//! to the real `mz contract --agent` (compiler/src/main.rs), against real files on disk.
+//! End-to-end tests: run the real `mzizi-benchmark-harness` binary against real files on
+//! disk. `diff` itself shells out to the real `mz contract --agent` (compiler/src/main.rs).
 //!
-//! This is the kill-criterion-relevant case RFC-0006 §10.1 asks for: a component whose own
+//! The reference is `tests/fixtures/button_reference.rs`, a byte-identical copy of the
+//! registry's `components/registry/n2-primitives/button.rs` (provenance in
+//! `tests/fixtures/README.md`). It has two enums that both have a `Default` variant, a
+//! `slug()` beside every `classes()`, and block-bodied arms — the three shapes that made the
+//! first, line-oriented extractor report five false defects against it.
+//!
+//! The broken case is the kill-criterion shape RFC-0006 §10.1 asks for: a component whose own
 //! contract it satisfies (so `mz contract` alone says nothing is wrong) but whose declared
-//! height disagrees with the reference's Tailwind class — the exact "compiles cleanly but is
-//! behaviourally wrong against the reference" shape CHARTER.md §6 defines as the Phase 0
-//! defect.
+//! height disagrees with the reference's Tailwind class — the "compiles cleanly but is
+//! behaviourally wrong against the reference" shape CHARTER.md §6 defines as the defect.
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -23,15 +28,35 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn run_diff(mzizi: &Path, reference: &Path) -> Output {
+fn harness(args: &[&std::ffi::OsStr]) -> Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_mzizi-benchmark-harness"))
-        .arg("diff")
-        .arg("--mzizi")
-        .arg(mzizi)
-        .arg("--reference")
-        .arg(reference)
+        .args(args)
         .output()
         .expect("failed to run mzizi-benchmark-harness")
+}
+
+fn run_diff(mzizi: &Path, reference: &Path) -> Output {
+    harness(&[
+        "diff".as_ref(),
+        "--mzizi".as_ref(),
+        mzizi.as_os_str(),
+        "--reference".as_ref(),
+        reference.as_os_str(),
+    ])
+}
+
+fn run_score(arm: &str, candidate: &Path, reference: &Path) -> (Output, String) {
+    let out = harness(&[
+        "score".as_ref(),
+        "--arm".as_ref(),
+        arm.as_ref(),
+        "--candidate".as_ref(),
+        candidate.as_os_str(),
+        "--reference".as_ref(),
+        reference.as_os_str(),
+    ]);
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    (out, stdout)
 }
 
 /// Find the report row for `variant` with the given `status` ("PASS" or "FAIL"), matching on
@@ -43,8 +68,20 @@ fn find_row<'a>(stdout: &'a str, status: &str, variant: &str) -> Option<&'a str>
     })
 }
 
+/// Every `{...}` detail object in a score JSON line (the details hold no nested objects).
+fn details(json: &str) -> Vec<&str> {
+    let start = json.find("\"details\":[").expect("details array") + "\"details\":[".len();
+    let end = json
+        .rfind("],\"class_token_jaccard\"")
+        .expect("jaccard after details");
+    json[start..end]
+        .split("},{")
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[test]
-fn the_real_button_component_has_zero_defects_against_its_reference() {
+fn the_real_button_component_has_zero_height_defects_against_the_real_reference() {
     let mzizi = repo_root().join("primitives/button.mz");
     let reference = fixture("button_reference.rs");
 
@@ -119,4 +156,82 @@ fn a_component_that_satisfies_its_own_contract_but_disagrees_with_the_reference_
         find_row(&stdout, "PASS", variant)
             .unwrap_or_else(|| panic!("expected a PASS row for {variant}; got:\n{stdout}"));
     }
+}
+
+#[test]
+fn score_mzizi_button_against_the_real_reference() {
+    let (output, stdout) = run_score(
+        "mzizi",
+        &repo_root().join("primitives/button.mz"),
+        &fixture("button_reference.rs"),
+    );
+    assert!(output.status.success(), "{stdout}");
+    assert_eq!(stdout.lines().count(), 1, "exactly one JSON line: {stdout}");
+    // Two variant sets, two defaults, five heights — and button.mz agrees with the real
+    // reference on all nine.
+    assert!(
+        stdout.starts_with(r#"{"arm":"mzizi","facts_checked":9,"defects":0,"details":["#),
+        "{stdout}"
+    );
+    assert_eq!(details(&stdout).len(), 9);
+    assert!(
+        stdout.contains(r#""enum":"button_size","variant":"sm","fact":"height","expected":"48px","actual":"48px","defect":false"#),
+        "{stdout}"
+    );
+    // The class strings are not identical: button.mz drops the reference's
+    // `has-data-[icon=...]` and `aria-expanded:` classes, among others. The run on the real
+    // files printed 0.7311; that is reported, not counted (see `class_token_jaccard`'s doc).
+    assert!(
+        stdout.ends_with("\"class_token_jaccard\":0.7311}\n"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn score_mzizi_broken_button_finds_the_one_height_defect() {
+    let (output, stdout) = run_score(
+        "mzizi",
+        &fixture("button_broken.mz"),
+        &fixture("button_reference.rs"),
+    );
+    assert!(output.status.success(), "defects still exit 0: {stdout}");
+    assert!(
+        stdout.contains(r#""facts_checked":9,"defects":1,"#),
+        "{stdout}"
+    );
+    let defects: Vec<&str> = details(&stdout)
+        .into_iter()
+        .filter(|d| d.contains("\"defect\":true"))
+        .collect();
+    assert_eq!(defects.len(), 1, "{stdout}");
+    assert!(
+        defects[0].contains(r#""variant":"sm","fact":"height","expected":"48px","actual":"44px""#),
+        "{}",
+        defects[0]
+    );
+}
+
+#[test]
+fn score_dioxus_reference_against_itself_is_clean() {
+    let reference = fixture("button_reference.rs");
+    let (output, stdout) = run_score("dioxus", &reference, &reference);
+    assert!(output.status.success(), "{stdout}");
+    assert!(
+        stdout.starts_with(r#"{"arm":"dioxus","facts_checked":9,"defects":0,"#),
+        "{stdout}"
+    );
+    assert!(
+        stdout.ends_with("\"class_token_jaccard\":1.0000}\n"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn score_usage_and_io_errors_exit_2() {
+    let reference = fixture("button_reference.rs");
+    let (bad_arm, _) = run_score("rust", &reference, &reference);
+    assert_eq!(bad_arm.status.code(), Some(2));
+    let (missing, stdout) = run_score("mzizi", Path::new("/nonexistent/x.mz"), &reference);
+    assert_eq!(missing.status.code(), Some(2));
+    assert!(stdout.is_empty(), "no JSON on an IO error: {stdout}");
 }
