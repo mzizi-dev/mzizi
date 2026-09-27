@@ -118,14 +118,14 @@ fn constructor_for(word: &str) -> Option<&'static str> {
 /// Handle `<` or `[` at `i` when it spells a type constructor. Returns how many characters
 /// to advance past, or `None` to let the ordinary bad-character diagnostic stand.
 ///
-/// Three shapes, each rewritten to the parenthesised form:
-///
-/// - `list<entry>` (and `vec<…>`, `option<…>`, `event<…>`): the angle brackets become
-///   parentheses in place, so lexing continues over the repaired line.
-/// - `entry[]`: the preceding identifier token is replaced by `list ( entry )`.
-/// - `[entry]`: a `list` token is emitted and the brackets become parentheses.
+/// The whole type expression — from the identifier before `i` (if adjacent), else from `i`
+/// — is read by [`symbolic_type`] and rewritten to its parenthesised, snake_case form in one
+/// diagnostic with one `exact` fix: `list<entry>`, `entry[]`, `[entry]`, and any nesting of
+/// them (`list<entry[]>` is `list(list(entry))`, `Option<Entry>` is `option(entry)`). The
+/// repaired tokens are emitted directly, so nothing inside the span is reported again and
+/// the parser sees a well-formed type (FM-5).
 fn repair_symbolic_type(
-    bytes: &mut [char],
+    bytes: &[char],
     i: usize,
     line_no: u32,
     file: &str,
@@ -133,165 +133,137 @@ fn repair_symbolic_type(
     diags: &mut Vec<Diagnostic>,
 ) -> Option<usize> {
     let col = (i + 1) as u32;
-    let adjacent_ident = match tokens.last() {
-        Some(Token {
-            kind: Tok::Ident(word),
-            span,
-        }) if span.start_line == line_no && span.end_col == col => Some((word.clone(), *span)),
-        Some(Token {
-            kind: Tok::Keyword("event"),
-            span,
-        }) if span.start_line == line_no && span.end_col == col => {
-            Some(("event".to_string(), *span))
+    let adjacent = tokens.last().and_then(|t| match &t.kind {
+        Tok::Ident(_) | Tok::Keyword("event")
+            if t.span.start_line == line_no && t.span.end_col == col =>
+        {
+            Some(t.span)
         }
         _ => None,
+    });
+    let start = match adjacent {
+        Some(span) => (span.start_col - 1) as usize,
+        None if bytes[i] == '[' => i,
+        None => return None,
     };
-    let close_of = |open: char, close: char| -> Option<usize> {
-        let mut depth = 0usize;
-        for (j, c) in bytes.iter().enumerate().skip(i) {
-            if *c == open {
-                depth += 1;
-            } else if *c == close {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(j);
-                }
-            } else if !(c.is_ascii_alphanumeric()
-                || matches!(c, '_' | '(' | ')' | ' ' | '<' | '>' | '[' | ']'))
-            {
-                return None;
-            }
-        }
-        None
+    let mut out = Vec::new();
+    let (fixed, end) = symbolic_type(bytes, start, line_no, &mut out)?;
+    if end <= i {
+        return None;
+    }
+    let span = Span {
+        start_line: line_no,
+        start_col: (start + 1) as u32,
+        end_line: line_no,
+        end_col: (end + 1) as u32,
     };
-    let text = |from: usize, to: usize, bytes: &[char]| -> String {
-        bytes[from..to]
-            .iter()
-            .map(|c| match c {
-                '<' | '[' => '(',
-                '>' | ']' => ')',
-                c => *c,
-            })
-            .collect::<String>()
-    };
-    // A camelCase constructor (`Option<text>`) already reported MZ0101 at the same token.
-    // Fold that into this one diagnostic, so `mz fix` never sees two overlapping repairs.
-    let fold_naming = |diags: &mut Vec<Diagnostic>, span: Span| {
+    if adjacent.is_some() {
+        tokens.pop();
+        // A camelCase word (`Option<text>`) already reported MZ0101 at this token. Fold it
+        // into this one diagnostic, so `mz fix` never sees two overlapping repairs.
         if diags
             .last()
-            .is_some_and(|d| d.code == "MZ0101" && d.span == span)
+            .is_some_and(|d| d.code == "MZ0101" && d.span.start_col == span.start_col)
         {
             diags.pop();
         }
+    }
+    let written: String = bytes[start..end].iter().collect();
+    let say = if written.contains('<') {
+        format!(
+            "`{written}` is not how Mzizi spells a type — type constructors take parentheses: `{fixed}`"
+        )
+    } else {
+        format!("`{written}` is not how Mzizi spells a list — write `{fixed}`")
     };
+    diags.push(Diagnostic::error("MZ0105", file, span, say).with_fix(
+        span,
+        fixed,
+        Confidence::Exact,
+    ));
+    tokens.extend(out);
+    Some(end - i)
+}
 
-    if bytes[i] == '<' {
-        let (word, word_span) = adjacent_ident?;
-        let ctor = constructor_for(&word)?;
-        let close = close_of('<', '>')?;
-        let inner = text(i + 1, close, bytes).trim().to_string();
-        if inner.is_empty() {
+/// Read one type expression at `at`, in any mix of Mzizi and symbolic spellings:
+/// `word`, `word(T)`, `word<T>`, `[T]`, each optionally followed by `[]`s. Returns the
+/// canonical spelling and the index just past it, and pushes its tokens onto `out`.
+/// `None` when the text is not a type expression (e.g. `list<>`, an unclosed `<`).
+fn symbolic_type(
+    bytes: &[char],
+    at: usize,
+    line_no: u32,
+    out: &mut Vec<Token>,
+) -> Option<(String, usize)> {
+    let tok = |kind: Tok, at: usize, len: usize| Token {
+        kind,
+        span: Span::single(line_no, (at + 1) as u32, len as u32),
+    };
+    let skip = |mut k: usize| {
+        while bytes.get(k) == Some(&' ') {
+            k += 1;
+        }
+        k
+    };
+    let first = out.len();
+    let k = skip(at);
+    let (mut fixed, mut k) = if bytes.get(k) == Some(&'[') {
+        out.push(tok(Tok::Ident("list".to_string()), k, 1));
+        out.push(tok(Tok::LParen, k, 1));
+        let (inner, after) = symbolic_type(bytes, k + 1, line_no, out)?;
+        let after = skip(after);
+        if bytes.get(after) != Some(&']') {
             return None;
         }
-        let span = Span {
-            start_line: line_no,
-            start_col: word_span.start_col,
-            end_line: line_no,
-            end_col: (close + 2) as u32,
-        };
-        fold_naming(diags, word_span);
-        let fixed = format!("{ctor}({inner})");
-        diags.push(
-            Diagnostic::error(
-                "MZ0105",
-                file,
-                span,
-                format!(
-                    "`{}` is not how Mzizi spells a type — type constructors take parentheses: `{fixed}`",
-                    bytes[(word_span.start_col - 1) as usize..=close]
-                        .iter()
-                        .collect::<String>()
-                ),
-            )
-            .with_fix(span, fixed, Confidence::Exact),
-        );
-        if let Some(last) = tokens.last_mut() {
-            last.kind = Tok::Ident(ctor.to_string());
+        out.push(tok(Tok::RParen, after, 1));
+        (format!("list({inner})"), after + 1)
+    } else {
+        let mut j = k;
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == '_') {
+            j += 1;
         }
-        for c in bytes[i..=close].iter_mut() {
-            *c = match *c {
-                '<' | '[' => '(',
-                '>' | ']' => ')',
-                other => other,
+        if j == k || bytes[k].is_ascii_digit() {
+            return None;
+        }
+        let word = to_snake_case(&bytes[k..j].iter().collect::<String>());
+        let open = bytes.get(j).copied();
+        if open == Some('<') || open == Some('(') {
+            let ctor = if open == Some('<') {
+                constructor_for(&word)?.to_string()
+            } else {
+                word
             };
+            out.push(tok(ident_or_keyword(ctor.clone()), k, j - k));
+            out.push(tok(Tok::LParen, j, 1));
+            let (inner, after) = symbolic_type(bytes, j + 1, line_no, out)?;
+            let after = skip(after);
+            let close = if open == Some('<') { '>' } else { ')' };
+            if bytes.get(after) != Some(&close) {
+                return None;
+            }
+            out.push(tok(Tok::RParen, after, 1));
+            (format!("{ctor}({inner})"), after + 1)
+        } else {
+            out.push(tok(ident_or_keyword(word.clone()), k, j - k));
+            (word, j)
         }
-        return Some(0);
+    };
+    // Postfix `[]`, any number of times: `entry[][]` is `list(list(entry))`.
+    while bytes.get(k) == Some(&'[') && bytes.get(k + 1) == Some(&']') {
+        out.insert(first, tok(Tok::LParen, k, 2));
+        out.insert(first, tok(Tok::Ident("list".to_string()), k, 2));
+        out.push(tok(Tok::RParen, k, 2));
+        fixed = format!("list({fixed})");
+        k += 2;
     }
+    Some((fixed, k))
+}
 
-    // `entry[]`
-    if bytes.get(i + 1) == Some(&']') {
-        let (word, word_span) = adjacent_ident?;
-        let span = Span {
-            start_line: line_no,
-            start_col: word_span.start_col,
-            end_line: line_no,
-            end_col: col + 2,
-        };
-        fold_naming(diags, word_span);
-        let fixed = format!("list({word})");
-        diags.push(
-            Diagnostic::error(
-                "MZ0105",
-                file,
-                span,
-                format!("`{word}[]` is not how Mzizi spells a list — write `{fixed}`"),
-            )
-            .with_fix(span, fixed, Confidence::Exact),
-        );
-        tokens.pop();
-        for kind in [
-            Tok::Ident("list".to_string()),
-            Tok::LParen,
-            Tok::Ident(word),
-            Tok::RParen,
-        ] {
-            tokens.push(Token { kind, span });
-        }
-        return Some(2);
+fn ident_or_keyword(word: String) -> Tok {
+    match KEYWORDS.iter().find(|k| **k == word) {
+        Some(kw) => Tok::Keyword(kw),
+        None => Tok::Ident(word),
     }
-
-    // `[entry]`
-    let close = close_of('[', ']')?;
-    let inner = text(i + 1, close, bytes).trim().to_string();
-    if inner.is_empty() {
-        return None;
-    }
-    let span = Span::single(line_no, col, (close - i + 1) as u32);
-    let fixed = format!("list({inner})");
-    diags.push(
-        Diagnostic::error(
-            "MZ0105",
-            file,
-            span,
-            format!(
-                "`{}` is not how Mzizi spells a list — write `{fixed}`",
-                bytes[i..=close].iter().collect::<String>()
-            ),
-        )
-        .with_fix(span, fixed, Confidence::Exact),
-    );
-    tokens.push(Token {
-        kind: Tok::Ident("list".to_string()),
-        span: Span::single(line_no, col, 1),
-    });
-    for c in bytes[i..=close].iter_mut() {
-        *c = match *c {
-            '<' | '[' => '(',
-            '>' | ']' => ')',
-            other => other,
-        };
-    }
-    Some(0)
 }
 
 /// Tokenize `src`. Never fails: bad input produces diagnostics and the lexer keeps going,
@@ -302,7 +274,7 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
 
     for (line_idx, line) in src.lines().enumerate() {
         let line_no = (line_idx + 1) as u32;
-        let mut bytes: Vec<char> = line.chars().collect();
+        let bytes: Vec<char> = line.chars().collect();
         let mut i = 0usize;
 
         while i < bytes.len() {
@@ -444,7 +416,7 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
             // the parser sees `list(entry)` and reports nothing further (FM-5).
             if (ch == '<' || ch == '[')
                 && let Some(consumed) =
-                    repair_symbolic_type(&mut bytes, i, line_no, file, &mut tokens, &mut diags)
+                    repair_symbolic_type(&bytes, i, line_no, file, &mut tokens, &mut diags)
             {
                 i += consumed;
                 continue;
