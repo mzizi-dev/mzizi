@@ -175,3 +175,11 @@ Canonical rewriting (RFC-0001 §3: `mz` rewrites every file it touches; no comma
 - That any Tier 2 item is approved for building. CHARTER.md §4's gate is unchanged.
 - That the pilot measured anything beyond itself: three tasks, one frontier model, one seed.
 - That the pilot's figures quoted here (3/3 first-iteration-clean, the `null` Jaccard, the two shared defects, the `has_added`/`added_label` candidate) were re-verified. They are quoted from the pilot's record on PR #17, which is not on `main` at `1e4f414`; the changelog Jaccard and defect figures are the pre-rescore ones, and the rescored ones are quoted as such in G0.10. Everything else was checked against the code.
+
+## 8. Open questions for the next RFC
+
+1. D1's open question: one enum construct for both static columns and run-time payloads, or two.
+2. D2–D7: accept, amend or reject each as stated in §4. RFC-0008 (branch `claude/lang-tier0-types`, PR #20, in flight) takes up D1 and D2 for Tier 0; the rest remain open.
+3. G0.6: child content — how a `.mz` component takes and places another component's output.
+4. G0.7: caller class and attribute passthrough — add it as one implicit rule on the view root, or declare it a documented divergence the harness excludes.
+5. D7's word: which common word means "depends on a module", given that `use` already means "needs a capability".
