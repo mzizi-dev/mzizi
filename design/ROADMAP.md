@@ -52,6 +52,19 @@ primitive, and 33 assertions across ten files are evaluated rather than counted.
 above is what is left of that gap, and it is a smaller and more specific thing than the one
 it replaces.
 
+**2026-09-27: a pilot was scored, and this section stands.** The first `mzbench` run with
+scores attached — 3 tasks, 2 arms (mzizi, dioxus), one seed, one frontier model, agent-driven
+— is recorded in
+[`benchmarks/results/2026-09-27-pilot/RUN.md`](../benchmarks/results/2026-09-27-pilot/RUN.md).
+It does not trigger rule 3 below ("a number from a benchmark run replaces the whole 'Status,
+stated plainly' section"), because it is not the number that rule means. It is a pilot, three
+data points per arm. It is frontier-only, and RFC-0002 §5.4 says the frontier arm alone cannot
+validate the thesis. And the Mzizi checker it ran against does not check type names or
+`{...}` interpolation names, so the Mzizi arm's first-iteration-clean result was measured
+against a checker that cannot fail on names or types. Tokens were not measured at all. What
+the pilot did produce is a harness fix (renamed variants were being scored as defects) and a
+reproducible baseline; what it did not produce is a measurement against the kill criterion.
+
 ## Phases
 
 Defined in [`CHARTER.md`](../CHARTER.md) §4. Reproduced here only as far as their _gates_,
