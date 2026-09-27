@@ -1,0 +1,23 @@
+[package]
+name = "mzizi-benchmark-runner"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Phase 0 run orchestration: drives the mz check/contract compile loop over successive candidates, then hands the first clean one to mzizi-benchmark-harness for the reference diff, and records one JSON result per run."
+
+# No dependencies, for the same reason the harness crate gives for having none: this is a
+# small amount of process orchestration and hand-rolled JSON, not enough to justify a
+# dependency tree. `mz` itself is invoked as a subprocess (via `cargo run`), exactly as an
+# agent driving the CLI would, rather than linked in as a library — the NDJSON protocol is
+# the actual interface this orchestrator exercises.
+[dependencies]
+mzizi-benchmark-harness = { path = "../harness" }
+
+[[bin]]
+name = "mzizi-benchmark-runner"
+path = "src/main.rs"
+
+[lib]
+name = "mzizi_benchmark_runner"
+path = "src/lib.rs"

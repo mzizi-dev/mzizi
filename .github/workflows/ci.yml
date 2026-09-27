@@ -82,6 +82,35 @@ jobs:
             cargo run --quiet --bin mz -- contract "$f"
           done
 
+  benchmarks:
+    name: benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      # Scoped to the two benchmark crates, not `--workspace`: `compiler` already has its own
+      # job above, and running it again here would just duplicate that job's result under a
+      # different name. `benchmarks/runner`'s own tests shell out to `mz` (via `cargo run
+      # --manifest-path compiler/Cargo.toml`), so `compiler` still gets built here, just not
+      # re-tested.
+      - name: cargo fmt --check
+        run: cargo fmt -p mzizi-benchmark-harness -p mzizi-benchmark-runner -- --check
+
+      - name: cargo clippy -D warnings
+        run: cargo clippy -p mzizi-benchmark-harness -p mzizi-benchmark-runner --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest

@@ -4,6 +4,9 @@
 # or how CI invokes it (every existing step runs with `working-directory:
 # compiler` and, per Cargo's own rule, a command run from inside a workspace
 # member defaults to that member unless `--workspace` is passed).
+#
+# `benchmarks/runner` was added alongside it the same way: the run-orchestration half of the
+# Phase 0 benchmark (design/ROADMAP.md's gap table), next to `benchmarks/harness`'s score half.
 [workspace]
 resolver = "2"
-members = ["compiler", "benchmarks/harness"]
+members = ["compiler", "benchmarks/harness", "benchmarks/runner"]

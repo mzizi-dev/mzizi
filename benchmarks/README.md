@@ -72,9 +72,67 @@ passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` var
 "satisfies its own contract, wrong against the reference" shape this harness exists to catch).
 
 **Still open**: this is a prototype proved against one component and one fixture, not a scored
-run over the corpus. How many components a real run covers, how agent runs are invoked and
-sandboxed, how tokens-consumed and iterations-to-clean-compile are measured and reported end to
-end, and the held-out task set itself (below) all remain unresolved.
+run over the corpus. How many components a real run covers and the held-out task set itself
+(below) remain unresolved. How agent runs are invoked and sandboxed, and how
+tokens-consumed and iterations-to-clean-compile are measured and reported end to end, are
+partly resolved — see the next section for exactly how much.
+
+## Run orchestration: what's real, and what's a stand-in
+
+`benchmarks/runner/` (`mzizi-benchmark-runner`, a workspace member alongside `compiler/` and
+`benchmarks/harness/`) is the other half of the two gaps `design/ROADMAP.md`'s table names:
+nothing before it actually invoked the compile loop and recorded an outcome — the harness
+above only scores a `.mz` file that already exists.
+
+**Run it yourself:**
+
+```sh
+cargo run -p mzizi-benchmark-runner --bin mzizi-benchmark-runner -- run \
+  --component button \
+  --reference benchmarks/harness/tests/fixtures/button_reference.rs \
+  --candidate benchmarks/runner/fixtures/button_syntax_error.mz \
+  --candidate benchmarks/harness/tests/fixtures/button_broken.mz
+```
+
+For each `--candidate`, in the order given, it runs `mz check --agent` (as a subprocess — the
+same NDJSON CLI surface an agent driving the toolchain would see, not a linked-in function
+call) until one comes back with zero errors; that candidate's 1-based position is
+`iterations_to_clean_compile`. It then runs `mz contract --agent` against that clean
+candidate — self-consistency must hold before anything else does — and, once it does, hands
+the clean candidate and `--reference` to `mzizi-benchmark-harness`'s own library functions for
+the reference diff described above. One JSON object is appended to `--results`
+(default `benchmarks/results/runs.jsonl`) either way, whichever stage the pipeline reached:
+
+```json
+{"component":"button","timestamp":"2026-09-27T04:26:37Z","iterations_to_clean_compile":2,"tokens_consumed":null,"contract_clauses":5,"contract_failures":0,"defect_count":1,"defects":["button_size: FAIL  sm         declared=44px  derived=48px  (h-12) — mismatch"],"elapsed_ms":68,"authoring_mode":"scripted-stand-in","clean_candidate":"benchmarks/harness/tests/fixtures/button_broken.mz","notes":null}
+```
+
+That is the actual first entry in `benchmarks/results/runs.jsonl` — a real run, not a
+worked example. `iterations_to_clean_compile: 2` because the first candidate
+(`button_syntax_error.mz`) doesn't close its `component` block and `mz check` rejects it
+(`MZ0204`); the second (`button_broken.mz`) compiles clean and passes its own (weakened)
+contract, but the harness's reference diff still catches its `sm` height disagreeing with the
+reference's `h-12` — exactly the "compiles cleanly but is behaviourally wrong" shape CHARTER.md
+§6 defines as the Phase 0 defect, caught by a real run of the real pipeline, not asserted in a
+unit test.
+
+**What's real here:** `mz check`, `mz contract`, and the harness diff are the actual toolchain,
+invoked exactly as `benchmarks/harness/src/main.rs` already did for the single-file case, now
+chained together and turned into a recorded result. The compile loop is real: it truly runs
+`mz check --agent` against each candidate in turn and truly stops at the first clean one.
+
+**What's a stand-in, and why:** the candidates are hand-authored files, not a live agent's
+successive attempts. This session tried the obvious alternative — shelling out to the `claude`
+CLI from inside its own container — and found that the invocation reused _this very session's_
+own model context and billing (a one-line `"pong"` reply alone showed a cache-creation charge
+in the tens of thousands of tokens and a nontrivial cost), rather than running as an isolated
+agent authoring a component from a blank slate. Wiring that up as "the" measurement would
+report this orchestrator's own recursive overhead as if it were a component author's token
+count — a worse error than reporting nothing. So `tokens_consumed` is `null` in every run this
+crate has produced, and `authoring_mode` is always `"scripted-stand-in"`; a `--tokens-consumed
+<n>` flag exists for a future run where a real, isolated agent measures its own usage and
+passes the number in, but nothing today computes that number itself. A live-agent run is
+still-open work, not a solved one being quietly assumed.
 
 ## Where the task set lives (RFC-0004)
 
