@@ -1,0 +1,8 @@
+name = "nyuchi-changelog-renderer"
+spec = "spec.tsx"
+reference = "reference.rs"
+[source]
+repo = "mzizi-dev/mzizi-registry"
+commit = "3afeb752253a86b5488867078c2238d2cf62b4f0"
+spec_path = "components/registry/n10-documentation/nyuchi-changelog-renderer.tsx"
+reference_path = "components/registry/n10-documentation/nyuchi-changelog-renderer.rs"
