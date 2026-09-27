@@ -157,13 +157,13 @@ fn repair_symbolic_type(
         end_line: line_no,
         end_col: (end + 1) as u32,
     };
-    if adjacent.is_some() {
+    if let Some(word_span) = adjacent {
         tokens.pop();
         // A camelCase word (`Option<text>`) already reported MZ0101 at this token. Fold it
         // into this one diagnostic, so `mz fix` never sees two overlapping repairs.
         if diags
             .last()
-            .is_some_and(|d| d.code == "MZ0101" && d.span.start_col == span.start_col)
+            .is_some_and(|d| d.code == "MZ0101" && d.span == word_span)
         {
             diags.pop();
         }
