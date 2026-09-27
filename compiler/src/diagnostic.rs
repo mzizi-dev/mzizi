@@ -32,6 +32,23 @@ impl Span {
     }
 }
 
+impl Span {
+    /// Whether two half-open spans share a character, or one is an insertion strictly
+    /// inside the other. Spans that only touch do not overlap, and nor do two insertions
+    /// at the same point (they apply in diagnostic order, as missing closers always have).
+    pub fn overlaps(&self, other: &Span) -> bool {
+        let (a0, a1) = (
+            (self.start_line, self.start_col),
+            (self.end_line, self.end_col),
+        );
+        let (b0, b1) = (
+            (other.start_line, other.start_col),
+            (other.end_line, other.end_col),
+        );
+        a0 < b1 && b0 < a1
+    }
+}
+
 /// How much an agent should trust a [`Fix`].
 ///
 /// `Exact` means applying it blind is safe — `mz fix` does exactly that. `Guess` means the
@@ -218,6 +235,39 @@ impl CheckReport {
                 d.code,
             )
         });
+    }
+
+    /// Keep `exact` fixes pairwise disjoint, so applying all of them blind in one pass is
+    /// well-defined. Where two overlap, the one that starts first (the longer on a tie —
+    /// the outer repair, e.g. `list<string>`'s MZ0105) stays `exact` and the other becomes
+    /// a `guess`: still reported, still correct once the outer fix is applied and the file
+    /// re-checked, but no longer promised safe alongside it.
+    pub fn disjoint_exact_fixes(&mut self) {
+        let mut exact: Vec<usize> = (0..self.diagnostics.len())
+            .filter(|&i| {
+                matches!(&self.diagnostics[i].fix, Some(f) if f.confidence == Confidence::Exact)
+            })
+            .collect();
+        let at = |d: &Diagnostic| d.fix.as_ref().map(|f| f.span).unwrap_or(d.span);
+        exact.sort_by_key(|&i| {
+            let s = at(&self.diagnostics[i]);
+            (
+                s.start_line,
+                s.start_col,
+                std::cmp::Reverse((s.end_line, s.end_col)),
+            )
+        });
+        let mut kept: Vec<Span> = Vec::new();
+        for i in exact {
+            let s = at(&self.diagnostics[i]);
+            if kept.iter().any(|k| k.overlaps(&s)) {
+                if let Some(f) = self.diagnostics[i].fix.as_mut() {
+                    f.confidence = Confidence::Guess;
+                }
+            } else {
+                kept.push(s);
+            }
+        }
     }
 
     /// Count of `Error`-severity diagnostics. Non-zero means the check failed.
