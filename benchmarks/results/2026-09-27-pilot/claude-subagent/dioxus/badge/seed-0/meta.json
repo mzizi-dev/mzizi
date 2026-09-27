@@ -1,0 +1,45 @@
+{
+  "arm": "dioxus",
+  "check": {
+    "argv": [
+      "benchmarks/arms/dioxus/check.sh",
+      "{file}"
+    ],
+    "cwd": "."
+  },
+  "endpoint": "http://127.0.0.1:8080",
+  "enums": [
+    "BadgeVariant"
+  ],
+  "guide_bytes": 10375,
+  "guide_fnv1a64": "d5b1e5f55d1d6044",
+  "guide_path": "benchmarks/prompts/dioxus-guide.md",
+  "iteration_count_enforced_by_runner": false,
+  "max_iters": 5,
+  "max_tokens": null,
+  "mode": "agent",
+  "model": "claude-subagent",
+  "reference_path": "benchmarks/tasks/badge/reference.rs",
+  "score": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "-p",
+      "mzizi-benchmark-harness",
+      "--",
+      "score",
+      "--arm",
+      "{arm}",
+      "--candidate",
+      "{candidate}",
+      "--reference",
+      "{reference}"
+    ],
+    "cwd": "."
+  },
+  "seed": 0,
+  "task": "badge",
+  "task_dir": "benchmarks/tasks/badge",
+  "temperature": null
+}
