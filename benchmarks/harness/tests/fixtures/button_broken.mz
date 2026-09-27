@@ -1,0 +1,58 @@
+## Deliberately-broken copy of ../../../../primitives/button.mz for the harness's own test
+## suite (RFC-0006 §10.1's kill-criterion case): `sm`'s declared height is dropped from 48 to
+## 44 px, and the contract is weakened to match — `button_size.sm height is 48` becomes
+## `is 44`, and the touch-floor assertion drops from `at_least 48` to `at_least 44` — so the
+## file still compiles cleanly and still passes its own `mz contract` (self-consistency).
+## The `sm` class string is untouched: `h-12` is still there, and `h-12` is 48px on the real
+## Tailwind scale. That gap — a component whose own contract it satisfies, silently wrong
+## against the reference `h-12` really means — is exactly the defect this harness exists to
+## catch, and it is caught only by the reference diff, not by `mz contract` on this file
+## alone.
+component button
+
+  enum button_variant
+    default      class "bg-primary text-primary-foreground hover:bg-primary/80"
+    outline      class "border-border bg-input/30 hover:bg-input/50 hover:text-foreground"
+    secondary    class "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+    ghost        class "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50"
+    destructive  class "bg-destructive/10 hover:bg-destructive/20 text-destructive"
+    link         class "text-primary underline-offset-4 hover:underline"
+  end
+
+  enum button_size
+    default   class "h-14 gap-2 px-5"     height 56
+    sm        class "h-12 gap-1.5 px-4"   height 44
+    lg        class "h-14 gap-2 px-6"     height 56
+    icon      class "size-14"             height 56
+    icon_sm   class "size-12"             height 48
+  end
+
+  prop variant: button_variant = default
+  prop size: button_size = default
+  prop label: text
+  prop disabled: bool = false
+  prop on_tap: event(none)
+
+  view
+    control
+      slot = "button"
+      portal = "https://mzizi.dev/components/button"
+      role = "button"
+      variant = variant
+      size = size
+      disabled = disabled
+      class = "inline-flex items-center justify-center whitespace-nowrap rounded-full border border-transparent text-sm font-medium transition-all outline-none select-none shrink-0 disabled:pointer-events-none disabled:opacity-50 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] {variant.class} {size.class}"
+      text = label
+      tap = on_tap
+    end
+  end
+
+  contract
+    every button_size height at_least 44
+    button_size.default height is 56
+    button_size.sm height is 44
+    button_variant.default class contains "bg-primary"
+    slot is "button"
+  end
+
+end component button
