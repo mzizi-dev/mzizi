@@ -104,6 +104,10 @@ Matching the four existing Mzizi-ecosystem repos:
 | Wiki                      | off                 | RFCs are the design record, in-repo and checkable                        |
 | Forking                   | allowed             | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
 
+> **Superseded for the merge rows.** This table is the original plan. The live settings are
+> the reverse for merges: rebase merging on, merge commits and squash off. See
+> [`CONTRIBUTING.md`](./CONTRIBUTING.md), "Rebase merges only, never squash".
+
 #### On the licence
 
 **Apache-2.0**, matching `nyuchi/mzizi`. The explicit patent grant matters more for a
