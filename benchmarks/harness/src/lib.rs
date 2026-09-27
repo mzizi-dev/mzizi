@@ -1519,15 +1519,21 @@ pub fn score(
         if let Some(rd) = &r.default {
             let cd = c.and_then(|c| c.default.clone());
             // The candidate's default under the reference's name for it.
-            let cd_ref = cd.as_ref().map(|d| {
-                paired
-                    .as_ref()
-                    .and_then(|m| m.iter().find(|(_, p)| &p.candidate == d))
-                    .map_or_else(|| d.clone(), |(rv, _)| rv.clone())
+            // Under a pairing — a bijection over every candidate variant — a default that
+            // pairs with nothing is not one of the candidate's own variants (a reference
+            // name the candidate never declared, say), so it has no reference name and is a
+            // defect. Without one, the default is compared by name as it stands.
+            let cd_ref = cd.as_ref().and_then(|d| match &paired {
+                Some(m) => m
+                    .iter()
+                    .find(|(_, p)| &p.candidate == d)
+                    .map(|(rv, _)| rv.clone()),
+                None => Some(d.clone()),
             });
             let actual = match (&cd, &cd_ref) {
                 (Some(d), Some(dr)) if d != dr => format!("{d} -> {dr}"),
-                (Some(d), _) => d.clone(),
+                (Some(d), Some(_)) => d.clone(),
+                (Some(d), None) => format!("{d} (not a candidate variant)"),
                 (None, _) => "none".to_string(),
             };
             facts.push(Fact {
@@ -2103,6 +2109,23 @@ prop accent: node_accent = horizontal
             (d.expected.as_str(), d.actual.as_str()),
             ("cobalt", "outlier -> gold")
         );
+    }
+
+    #[test]
+    fn a_paired_default_that_names_no_candidate_variant_is_a_defect() {
+        let r = parse_rust_enums(ACCENT_RS);
+        // `cobalt` is the reference's name; the candidate never declares it.
+        let c = parse_mzizi_enums(&ACCENT_MZ.replace("= horizontal", "= cobalt"));
+        let report = score(Arm::Mzizi, &r, &c, true);
+        assert_eq!(report.renames, 4);
+        let d = report
+            .facts
+            .iter()
+            .find(|f| f.kind == FactKind::Default)
+            .unwrap();
+        assert!(d.defect, "{d:#?}");
+        assert_eq!(d.actual, "cobalt (not a candidate variant)");
+        assert_eq!(report.defects(), 1);
     }
 
     #[test]
