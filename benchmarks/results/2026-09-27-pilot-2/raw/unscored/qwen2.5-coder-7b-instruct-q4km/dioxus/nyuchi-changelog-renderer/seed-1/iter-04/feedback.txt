@@ -1,0 +1,7 @@
+The compile check reported errors. Fix them and reply with exactly one fenced code block containing the complete corrected file and nothing else.
+
+error: expected identifier
+   --> candidate.rs:125:18
+    |
+125 |             props.entries.iter().map(|entry| {
+    |                  ^

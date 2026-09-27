@@ -1,0 +1,55 @@
+## Button: a pill-shaped tappable primitive with six tone variants and five
+## touch-target sizes. Never renders below the 48px touch floor.
+component button
+
+  enum button_variant
+    default     class "bg-primary text-primary-foreground hover:bg-primary/80"
+    outline     class "border-border bg-input/30 hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground"
+    secondary   class "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground"
+    ghost       class "hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground"
+    destructive class "bg-destructive/10 hover:bg-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/20 text-destructive focus-visible:border-destructive/40 dark:hover:bg-destructive/30"
+    link        class "text-primary underline-offset-4 hover:underline"
+  end
+
+  ## `height` is the pixel height of the `h-N`/`size-N` class (N * 4).
+  enum button_size
+    default class "h-14 gap-2 px-5"   height 56
+    sm      class "h-12 gap-1.5 px-4" height 48
+    lg      class "h-14 gap-2 px-6"   height 56
+    icon    class "size-14"           height 56
+    icon_sm class "size-12"           height 48
+  end
+
+  prop variant: button_variant = default
+  prop size: button_size = default
+  prop label: text = "Button"
+  prop disabled: bool = false
+  prop on_tap: event(none)
+
+  view
+    control
+      slot = "button"
+      role = "button"
+      class = "rounded-full border border-transparent bg-clip-padding text-sm font-medium inline-flex items-center justify-center whitespace-nowrap transition-all {variant.class} {size.class}"
+      text = label
+      disabled = disabled
+      tap = on_tap
+    end
+  end
+
+  contract
+    slot is "button"
+    disabled is false
+    every button_size height at_least 48
+    button_size.sm height is 48
+    button_size.icon_sm height is 48
+    button_size.default height is 56
+    button_size.lg height is 56
+    button_size.icon height is 56
+    every button_variant class not_empty
+    button_variant.default class contains "bg-primary"
+    button_variant.link class contains "underline"
+    button_variant.destructive class contains "bg-destructive"
+  end
+
+end component button

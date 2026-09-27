@@ -1,0 +1,46 @@
+{
+  "arm": "dioxus",
+  "check": {
+    "argv": [
+      "/workspace/mzizi/benchmarks/arms/dioxus/check.sh",
+      "{file}"
+    ],
+    "cwd": "/workspace/mzizi"
+  },
+  "endpoint": "http://127.0.0.1:8080",
+  "enums": [
+    "ButtonVariant",
+    "ButtonSize"
+  ],
+  "guide_bytes": 10375,
+  "guide_fnv1a64": "d5b1e5f55d1d6044",
+  "guide_path": "/workspace/mzizi/benchmarks/prompts/dioxus-guide.md",
+  "iteration_count_enforced_by_runner": false,
+  "max_iters": 5,
+  "max_tokens": null,
+  "mode": "agent",
+  "model": "claude-sonnet-5-subagent",
+  "reference_path": "/workspace/mzizi/benchmarks/tasks/button/reference.rs",
+  "score": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "-p",
+      "mzizi-benchmark-harness",
+      "--",
+      "score",
+      "--arm",
+      "{arm}",
+      "--candidate",
+      "{candidate}",
+      "--reference",
+      "{reference}"
+    ],
+    "cwd": "/workspace/mzizi"
+  },
+  "seed": 2,
+  "task": "button",
+  "task_dir": "/workspace/mzizi/benchmarks/tasks/button",
+  "temperature": null
+}

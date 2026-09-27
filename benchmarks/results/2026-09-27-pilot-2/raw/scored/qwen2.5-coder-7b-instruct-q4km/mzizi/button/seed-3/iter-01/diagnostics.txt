@@ -1,0 +1,3 @@
+{"code":"MZ0304","severity":"error","file":"/tmp/claude-0/-workspace-mzizi/d6ecf655-0263-5808-81b7-f535507e0029/scratchpad/results/scored/qwen2.5-coder-7b-instruct-q4km/mzizi/button/seed-3/iter-01/candidate.mz","span":[24,8,24,9],"say":"`prop` needs a name, found `.`"}
+{"code":"MZ0403","severity":"error","file":"/tmp/claude-0/-workspace-mzizi/d6ecf655-0263-5808-81b7-f535507e0029/scratchpad/results/scored/qwen2.5-coder-7b-instruct-q4km/mzizi/button/seed-3/iter-01/candidate.mz","span":[35,13,35,14],"say":"`tap =` needs a value"}
+{"summary":true,"errors":2,"warnings":0,"exact_fixable":0,"ms":0}

@@ -1,0 +1,15 @@
+arm	task	seed	subagent_tokens	tool_uses	duration_ms
+mzizi	button	1	104257	5	43291
+dioxus	button	1	105873	5	51151
+mzizi	badge	1	102170	5	34743
+dioxus	badge	1	103380	6	37121
+mzizi	button	2	106090	5	62005
+dioxus	button	2	104361	5	38586
+mzizi	badge	2	101472	5	23830
+dioxus	badge	2	102355	5	31469
+mzizi	button	3	106865	7	61727
+dioxus	button	3	105845	5	52784
+mzizi	badge	3	103442	5	49051
+dioxus	badge	3	103159	5	36805
+mzizi	changelog	1	111068	5	103458
+dioxus	changelog	1	114808	5	126601

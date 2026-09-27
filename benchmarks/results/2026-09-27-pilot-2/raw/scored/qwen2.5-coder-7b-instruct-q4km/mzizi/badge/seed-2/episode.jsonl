@@ -1,0 +1,4 @@
+{"check_exit":1,"check_ms":45,"compile_ok":false,"completion_tokens":485,"diagnostics_chars":6554,"extract_error":null,"gen_ms":151097,"iter":1,"kind":"iteration","prompt_tokens":3320}
+{"check_exit":1,"check_ms":37,"compile_ok":false,"completion_tokens":485,"diagnostics_chars":6554,"extract_error":null,"gen_ms":281293,"iter":2,"kind":"iteration","prompt_tokens":6632}
+{"check_exit":1,"check_ms":33,"compile_ok":false,"completion_tokens":485,"diagnostics_chars":6554,"extract_error":null,"gen_ms":351128,"iter":3,"kind":"iteration","prompt_tokens":9944}
+{"check_exit":1,"check_ms":32,"compile_ok":false,"completion_tokens":485,"diagnostics_chars":6554,"extract_error":null,"gen_ms":422126,"iter":4,"kind":"iteration","prompt_tokens":13256}
