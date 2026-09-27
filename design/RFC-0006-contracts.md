@@ -155,8 +155,9 @@ button "Retry"` is a claim about the _shape of the view tree_, not about what a 
 - **Anything against a reference implementation.** `mz contract` is a _self_-consistency
   check: it asks whether a component does what it says. Scoring a Mzizi port against the
   hand-written `.rs` in `mzizi-dev/mzizi-registry` is a second, separate comparison, and it
-  belongs to the benchmark harness that does not exist yet (§10.1). **The Phase 0 defect
-  metric needs both halves; this RFC delivers one of them.**
+  belongs to the benchmark harness (`benchmarks/harness/`), not to this evaluator — §10.1
+  resolves that split and the harness now exists. **The Phase 0 defect metric needs both
+  halves; this RFC delivers one of them.**
 - **Tailwind scale classes.** `h-12` is 48px in one Tailwind version and need not be in
   another. The evaluator reads only bracketed pixel values and reports `h-12` as
   _unevaluable_ rather than guessing, because a check that silently disagrees with what
@@ -340,11 +341,45 @@ reference implementations. See §10.1.
 
 ## 10. Open questions for the next RFC
 
-1. **The other half of the defect metric.** `mz contract` proves a component keeps its own
-   promises. CHARTER.md §6 requires comparing against a reference implementation read from
-   disk. Whether that is a `mz contract --against <ref>` mode, a harness-side comparison, or
-   contract _generation_ from a `.rs` reference is undecided, and it is the last thing
-   between here and a first benchmark run.
+1. ~~**The other half of the defect metric.**~~ **Resolved:** harness-side comparison,
+   decided over the other two candidates (a compiler `--against <ref>` mode, or contract
+   _generation_ from a `.rs` reference). The compiler stays a self-consistency checker only
+   — no cross-language semantics enter `mz contract`, which keeps Phase 0's "zero rendering
+   attached" charter (CHARTER.md §4) intact — and the reference comparison lives entirely in
+   the public benchmark harness (`benchmarks/harness/`).
+
+   The mechanism is bounded and regex-level by design, not a general Rust parser or a
+   general Tailwind resolver. A `.mz` file's size enum already declares both a class string
+   and a pixel `height` per variant — `button_size` in `primitives/button.mz` writes
+   `sm class "h-12 gap-1.5 px-4" height 48` — while the hand-written Rust reference in
+   `mzizi-dev/mzizi-registry` carries only the Tailwind class, in a
+   `<Enum>::<Variant> => "<classes>"` match arm (`button.rs`'s `ButtonSize::classes()`).
+   The harness reads both: it scans the `.mz` file's enum blocks for variant → {class,
+   declared height} pairs, scans the reference file's match arms for variant → class, and
+   derives each reference variant's pixel height from the one well-known linear Tailwind
+   spacing scale — `value-in-rem = N * 0.25rem`, and a browser's default `1rem = 16px`, so
+   `h-N` and `size-N` are both `N * 4` pixels. A declared height that disagrees with the
+   derived one is the Phase 0 defect: code that compiles cleanly, whose own contract can
+   even hold (an agent can write `button_size.sm height is 44` right alongside a class
+   string of `h-12`, and `mz contract` has no ground truth to refute it against), but which
+   is behaviourally wrong against the reference implementation.
+
+   Sequencing matters: the harness requires `mz contract --agent <file.mz>` to exit 0
+   _before_ it runs the reference diff at all. A file that fails its own declared contract
+   is reported as that failure, not diffed further — the two checks answer different
+   questions (self-consistency, then ground truth), and conflating them would repeat this
+   RFC's own §7 argument (FM-13) one level up.
+
+   Missing variants on either side — the `.mz` enum declares one the reference doesn't, or
+   the reference declares one the `.mz` enum doesn't — are reported as defects too, never
+   silently skipped, for the same reason FM-12 gives for treating an unevaluable assertion
+   as a failure rather than a pass.
+
+   Implemented in `benchmarks/harness/` (a `mzizi-benchmark-harness` crate, workspace member
+   alongside `compiler/`) and proved end to end against `primitives/button.mz` and a fixture
+   copy of the real `button.rs` reference — see `benchmarks/README.md` for what is measured
+   and `benchmarks/harness/tests/button_diff.rs` for the passing and failing cases.
+
 2. **Cross-file contracts.** `uses button` currently checks a tag in the view. With the
    manifest's name→hash namespace it could check that the composed component exists, that
    its contract holds, and that the props passed to it are ones it declares. That is the

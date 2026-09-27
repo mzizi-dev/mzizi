@@ -1,0 +1,9 @@
+# The workspace root. `compiler/` predates this file and is a fully standalone
+# crate in its own right (see compiler/Cargo.toml's own history) — this file
+# adds `benchmarks/harness` alongside it without changing how `compiler` builds
+# or how CI invokes it (every existing step runs with `working-directory:
+# compiler` and, per Cargo's own rule, a command run from inside a workspace
+# member defaults to that member unless `--workspace` is passed).
+[workspace]
+resolver = "2"
+members = ["compiler", "benchmarks/harness"]

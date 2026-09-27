@@ -1,0 +1,21 @@
+[package]
+name = "mzizi-benchmark-harness"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Phase 0 benchmark harness: diffs a Mzizi component's declared sizes against the Tailwind classes in its hand-written Rust reference (RFC-0006 §10.1)."
+
+# No dependencies, for the same reason compiler/Cargo.toml gives for having
+# none: the extraction this crate does is deliberately regex-level and small
+# enough to hand-roll, and a benchmark harness should not need to build a
+# dependency tree before it can run.
+[dependencies]
+
+[[bin]]
+name = "mzizi-benchmark-harness"
+path = "src/main.rs"
+
+[lib]
+name = "mzizi_benchmark_harness"
+path = "src/lib.rs"
