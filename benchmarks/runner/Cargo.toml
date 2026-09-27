@@ -1,0 +1,34 @@
+[package]
+name = "mzizi-benchmark-runner"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Phase 0 benchmark runner: drives model-authored and agent-authored porting episodes for the Mzizi and Dioxus arms, and summarises tokens, iterations to a clean compile, and defect rate."
+
+# Two dependencies, both pinned exactly, against a house style of zero. Why each is
+# allowed here when compiler/ and benchmarks/harness/ take none:
+#
+# - `ureq` — this crate is an HTTP client: the model arm talks to llama.cpp's
+#   `llama-server` (`/v1/chat/completions`, `/tokenize`). Hand-rolling HTTP/1.1 (chunked
+#   transfer, keep-alive, timeouts) is a correctness risk on the measurement path, not a
+#   small fully-specified thing. Default features are OFF: no TLS, no gzip, no cookies —
+#   the endpoint is a local plain-HTTP server, so the dependency tree stays tiny.
+# - `serde_json` — this crate *parses* JSON it does not control (endpoint responses, the
+#   scorer's output object) and writes JSONL results that other tools read. The house
+#   convention of hand-emitting JSON covers output only; a hand-rolled parser for
+#   untrusted input is exactly the kind of place a quiet mis-parse would skew a number.
+#
+# Neither is pulled into the compiler or the harness: the check loop being measured stays
+# dependency-free, and only the thing doing the measuring pays for these.
+[dependencies]
+ureq = { version = "=3.4.2", default-features = false }
+serde_json = "=1.0.151"
+
+[[bin]]
+name = "mzbench"
+path = "src/main.rs"
+
+[lib]
+name = "mzizi_benchmark_runner"
+path = "src/lib.rs"
