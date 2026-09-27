@@ -46,7 +46,16 @@ fn run_diff(mzizi: &Path, reference: &Path) -> Output {
 }
 
 fn run_score(arm: &str, candidate: &Path, reference: &Path) -> (Output, String) {
-    let out = harness(&[
+    run_score_with(arm, candidate, reference, &[])
+}
+
+fn run_score_with(
+    arm: &str,
+    candidate: &Path,
+    reference: &Path,
+    extra: &[&str],
+) -> (Output, String) {
+    let mut args: Vec<&std::ffi::OsStr> = vec![
         "score".as_ref(),
         "--arm".as_ref(),
         arm.as_ref(),
@@ -54,7 +63,9 @@ fn run_score(arm: &str, candidate: &Path, reference: &Path) -> (Output, String) 
         candidate.as_os_str(),
         "--reference".as_ref(),
         reference.as_os_str(),
-    ]);
+    ];
+    args.extend(extra.iter().map(|a| std::ffi::OsStr::new(*a)));
+    let out = harness(&args);
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     (out, stdout)
 }
@@ -229,9 +240,10 @@ fn score_dioxus_reference_against_itself_is_clean() {
 
 /// The 2026-09-27 pilot's changelog candidates, one per arm, scored against the real task
 /// reference. Both followed `spec.tsx`, which keys its four colour classes by axis
-/// (`horizontal`, …); the reference renamed the same four class strings by mineral
-/// (`cobalt`, …). Before rename-aware pairing both scored 2 defects (`variant_set`,
-/// `default`) and a null jaccard for the reference's rename, not for anything they did.
+/// (`horizontal`, …); the reference names the same four class strings by mineral
+/// (`cobalt`, …). Without `--allow-variant-renames` both score 2 defects (`variant_set`,
+/// `default`) and a null jaccard — the name-only result the pilot recorded. With it (the
+/// task's `task.toml` opts in, so `mzbench` passes it) the variants pair by class.
 #[test]
 fn score_pilot_changelog_candidates_pair_the_renamed_variants_by_class() {
     let reference = repo_root().join("benchmarks/tasks/nyuchi-changelog-renderer/reference.rs");
@@ -244,12 +256,25 @@ fn score_pilot_changelog_candidates_pair_the_renamed_variants_by_class() {
         let (output, stdout) = run_score(arm, &candidate, &reference);
         assert!(output.status.success(), "{arm}: {stdout}");
         assert!(
-            stdout.contains(r#""facts_checked":3,"defects":0,"renames":4,"#),
+            stdout.contains(r#""facts_checked":2,"defects":2,"renames":0,"#),
+            "{arm}, name-only: {stdout}"
+        );
+        assert!(
+            stdout.ends_with("\"class_token_jaccard\":null}\n"),
+            "{arm}, name-only: {stdout}"
+        );
+
+        let (output, stdout) =
+            run_score_with(arm, &candidate, &reference, &["--allow-variant-renames"]);
+        assert!(output.status.success(), "{arm}: {stdout}");
+        // variant_set and default are checked; variant_names is a detail, not a fact.
+        assert!(
+            stdout.contains(r#""facts_checked":2,"defects":0,"renames":4,"#),
             "{arm}: {stdout}"
         );
         assert!(
             stdout.contains(
-                r#""fact":"variant_names","expected":"{cobalt, tanzanite, malachite, gold}","actual":"renamed (candidate -> reference): horizontal -> cobalt, vertical -> tanzanite, depth -> malachite, outlier -> gold","defect":false"#
+                r#""fact":"variant_names","expected":"{cobalt, tanzanite, malachite, gold}","actual":"renamed (candidate -> reference): horizontal -> cobalt (jaccard 1.0000), vertical -> tanzanite (jaccard 1.0000), depth -> malachite (jaccard 1.0000), outlier -> gold (jaccard 1.0000)","defect":false"#
             ),
             "{arm}: {stdout}"
         );

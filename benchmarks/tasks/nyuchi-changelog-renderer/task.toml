@@ -2,6 +2,10 @@ name = "nyuchi-changelog-renderer"
 spec = "spec.tsx"
 reference = "reference.rs"
 enums = ["NodeAccent"]
+# Pair renamed variants by class string when scoring (mzizi-benchmark-harness score
+# --allow-variant-renames). Off for every other task: see benchmarks/tasks/README.md.
+allow_variant_renames = true
+rename_reason = "spec.tsx keys AXIS_COLOURS by horizontal/vertical/depth/outlier; reference.rs names the same four class strings Cobalt/Tanzanite/Malachite/Gold, a deliberate renaming its module docs record. The spec and the reference disagree on the names, and the prompt says to keep the spec's variants, so a candidate that follows the spec must not be penalised for it."
 [source]
 repo = "mzizi-dev/mzizi-registry"
 commit = "3afeb752253a86b5488867078c2238d2cf62b4f0"

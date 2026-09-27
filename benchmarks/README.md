@@ -54,16 +54,22 @@ contract`'s job (RFC-0006 §5), not this harness's. Missing variants on either s
 as defects too, never silently skipped, for the same reason RFC-0006's FM-12 treats an
 unevaluable assertion as a failure rather than a pass.
 
-Variants are matched by name, with one exception for a renamed enum. When the candidate's and
-the reference's variant-name sets differ, the scorer pairs variants by class string instead —
-but only if every variant on both sides has a class, each class's token set is unique on its
-side, the pairing is a complete bijection, and any name the two sides share pairs with itself.
-Then the variant set is not a defect, a `variant_names` fact lists the pairing
-(`candidate -> reference`), the score JSON's `renames` counts it, and the default, heights and
-jaccard are read through it. Otherwise matching is by name, as before. This exists because a
-reference can drift from its own spec: see `nyuchi-changelog-renderer` in
-[`tasks/README.md`](tasks/README.md), and the pilot that found it in
-[`results/2026-09-27-pilot/RUN.md`](results/2026-09-27-pilot/RUN.md).
+Variants are matched by name. The one exception is opt-in, per task: a task whose
+`task.toml` sets `allow_variant_renames = true` (with a required `rename_reason`) is scored
+with `score --allow-variant-renames`, and then, when the candidate's and the reference's
+variant-name sets differ, the scorer pairs variants by class-token Jaccard instead. It pairs
+each reference variant with its best candidate, and accepts the pairing only if it is a
+complete bijection, every pair is mutual-best with no ties, every pair's similarity is at
+least 0.5, and any name the two sides share pairs with itself. Then the variant set is not a
+defect, a `variant_names` detail lists each renamed pair (`candidate -> reference`, with its
+similarity), the score JSON's `renames` counts them, and the default, heights and jaccard are
+read through the pairing — so a class difference inside a pair lowers the jaccard and is never
+a defect. `variant_names` is not a checked fact: it is in `details` but not `facts_checked`.
+Otherwise, and for every task that does not opt in, matching is by name only — a candidate
+that renames `destructive` to `danger` against its spec scores that as a defect. The opt-in
+exists because a spec and its reference can disagree on names: only
+`nyuchi-changelog-renderer` sets it (see [`tasks/README.md`](tasks/README.md), and the pilot
+that found it in [`results/2026-09-27-pilot/RUN.md`](results/2026-09-27-pilot/RUN.md)).
 
 Sequencing: the harness requires `mz contract --agent <file.mz>` to exit 0 _before_ it runs the
 reference diff. A component that fails its own contract is reported as that failure and the
