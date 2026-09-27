@@ -389,11 +389,16 @@ fn another_components_variant_is_an_unchecked_warning_not_an_error() {
 #[test]
 fn an_external_head_near_a_local_name_is_a_warning_with_a_guess_not_an_error() {
     for src in [
-        component("  prop tones: text\n  view\n    button\n      variant = tone.loud\n    end\n  end\n"),
+        component(
+            "  prop tones: text\n  view\n    button\n      variant = tone.loud\n    end\n  end\n",
+        ),
         component("  prop label: text\n  view\n    row\n      text = lable.x\n    end\n  end\n"),
     ] {
         clean(&src);
-        let warn: Vec<_> = diags(&src).into_iter().filter(|d| d.code == "MZ0502").collect();
+        let warn: Vec<_> = diags(&src)
+            .into_iter()
+            .filter(|d| d.code == "MZ0502")
+            .collect();
         assert_eq!(warn.len(), 1, "{warn:#?}");
         assert_eq!(warn[0].severity, Severity::Warning);
         assert_eq!(warn[0].fix.as_ref().unwrap().confidence, Confidence::Guess);
@@ -455,6 +460,34 @@ fn a_symbolic_type_constructor_is_one_diagnostic_with_the_mzizi_spelling() {
         ("list<option<text>>", "list(option(text))"),
     ] {
         let src = component(&format!("  prop x: {bad}\n"));
+        let d = one(&src, "MZ0105");
+        assert_eq!(d.fix.as_ref().unwrap().replace, good, "{bad}");
+        exact_fix_repairs(&src, "MZ0105");
+    }
+}
+
+/// Review findings 5 and 6: `list<entry[]>` fixed to `list(entry())` and then failed
+/// MZ0309; `Option<Entry>` gave an MZ0105 and an MZ0101 whose exact fixes overlapped. The
+/// whole type expression is now one diagnostic with one exact fix, nesting and case
+/// included, and nothing inside its span is reported again.
+#[test]
+fn a_nested_or_camel_case_symbolic_type_is_one_diagnostic_and_one_fix() {
+    for (bad, good) in [
+        ("list<entry[]>", "list(list(entry))"),
+        ("Option<Entry>", "option(entry)"),
+        ("list<Entry>", "list(entry)"),
+        ("[Entry]", "list(entry)"),
+        ("Entry[]", "list(entry)"),
+        ("entry[][]", "list(list(entry))"),
+        ("[[entry]]", "list(list(entry))"),
+        ("Vec<Option<Entry>>", "list(option(entry))"),
+        ("list<option(entry)>", "list(option(entry))"),
+    ] {
+        let src = component(&format!(
+            "  record entry\n    field a: text\n  end\n  prop x: {bad}\n"
+        ));
+        let all = diags(&src);
+        assert_eq!(all.len(), 1, "{bad}: {all:#?}");
         let d = one(&src, "MZ0105");
         assert_eq!(d.fix.as_ref().unwrap().replace, good, "{bad}");
         exact_fix_repairs(&src, "MZ0105");
