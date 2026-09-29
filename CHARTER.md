@@ -88,6 +88,8 @@ A standalone compiler/syntax prototype with zero UI story. Success criterion: a 
 
 _Amended (owner-directed 2026-09-29):_ **the comparison is Mzizi against the best existing language for each kind of task**, not Dioxus and Leptos alone. The kinds of task are the gating families of [RFC-0009](./design/RFC-0009-comparison-benchmark.md): UI components (against Dioxus, Leptos and React/TypeScript) and backend handlers and services (against TypeScript, Python, Go, C++ and Rust). A family passes when Mzizi beats the best incumbent value on at least two of the three metrics, on the ~7B open-weight model (RFC-0002 §1), on held-out tasks. Downstream work is gated per family: Phase 1 UI work on the UI family, the backend build-out (§1) on the backend family. The measurement itself is unchanged in kind, and so is the rule that nothing downstream starts, and nothing is claimed, before it is measured. **Every run is published**, whichever way it falls (RFC-0009 §7). Two pilots ran on 2026-09-27; neither is the gating run, and neither showed an advantage.
 
+_Status, 2026-09-29:_ the gating run has not happened. [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) records what it still waits on, and the pilots are in [`benchmarks/results/`](./benchmarks/results/).
+
 **Phase 1 — Full-stack: `mzizi-ui` + Cloudflare Workers and Containers, together.**
 Merges what an earlier version of this charter called Phase 1 and Phase 2 — §2's own table already called edge deployment "first-class... from day one," and phasing it separately, behind a generic rendering artifact, didn't honor that. The real Phase 1 deliverable: a Mzizi-authored full-stack application — UI via `mzizi-ui`, Mzizi's own component registry, rendered through a compatible third-party engine (Dioxus today); server/API from the same Mzizi source, lowered per target — actually deployed to Cloudflare, as a Worker or a Container depending on the workload. The **Workers** target lowers to `workers-rs` (wasm32); the **Containers** target lowers to a native Rust HTTP server (axum-class, e.g. axum) packaged as a container image and reached from a Worker through the Container binding. `workers-rs` targets only the Workers runtime — Containers run ordinary container images — so handler code reaches target-specific facilities only through declared capabilities, which is what keeps "the same Mzizi source" true across both. Phase 1's UI output must also ship as a **self-contained artifact** usable without the Phase 1 Worker: an ES module / custom element (and its WASM bundle) loadable from a plain `<script type="module">`, a WebView, or a WASM host. That is what "standing alone" means wherever this charter uses it. Not a WASM bundle sitting unshipped; a real edge deployment, both because that's the fastest path to a genuine full-stack proof point given existing team experience with `workers-rs`, and because Workers/Containers together are where agentic software is actually heading. Treat any temptation to build a native renderer or a bespoke edge runtime here as scope creep — `mzizi-ui`'s own contract plus Dioxus, `workers-rs`, and a native Rust HTTP server for Containers are the integrations, not projects to out-build.
 
@@ -164,11 +166,15 @@ The charter originally flagged this as the one decision that had to be made befo
   component's assertions against that component, so the metric can be expressed and run in
   the language rather than as a hand-written Rust test. §6 defines a defect as failing a
   contract test _against the reference implementation_, and nothing yet reads the `.rs`
-  reference off disk and compares. RFC-0006 §10.1.
+  reference off disk and compares. RFC-0006 §10.1. _Status, 2026-09-29:_ the benchmark
+  harness (`benchmarks/harness/`) now reads the reference and scores against it, as
+  RFC-0006 §10.1 resolved.
 - **Benchmark harness mechanics.** How agent runs are invoked, sandboxed, and scored
   end-to-end (which components from the 571+ corpus, how many per run, how "tokens consumed"
   and "iterations to clean compile" are actually measured and reported) is unspecified past the
-  task-set/defect-rate decisions above.
+  task-set/defect-rate decisions above. _Status, 2026-09-29:_ specified and implemented in
+  `benchmarks/runner/` (`mzbench`) and `benchmarks/kill-criterion/`. The held-out task set
+  is still open.
 - **~~The backend measurement slice.~~** Settled 2026-09-29: the backend family cannot pass
   without a Mzizi backend arm, and Mzizi cannot yet declare, lower or run a handler, so the
   minimum needed to author, check, lower and run the backend tasks locally is **Phase 0

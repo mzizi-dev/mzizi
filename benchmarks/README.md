@@ -135,6 +135,11 @@ frontier model (`benchmarks/openweight/`). It is not the Phase 0 number either. 
 small-model data there is, and on it Mzizi did worse than Dioxus on all three metrics; the
 write-up traces why.
 
+**Before the next run:** [`READINESS.md`](READINESS.md) audits pilot 2's list of fixes against
+`main`, records which are done, and gives the command for the kill-criterion run.
+[`kill-criterion/`](kill-criterion/README.md) holds its driver, the task checker and the
+held-out plan. Every run is published here, whichever way it falls.
+
 ## Where the task set lives (RFC-0004)
 
 Everything in this directory is and stays **public**: the runner, the metric definitions, the
