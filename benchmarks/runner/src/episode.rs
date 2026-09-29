@@ -538,6 +538,23 @@ fn sum_field(lines: &[Value], key: &str) -> Option<u64> {
 /// Close an episode: score the clean candidate (if any) and append the final line.
 /// A candidate that never compiled cleanly is never scored, so it is never defect-free.
 pub fn finish(dir: &Path, tok: &dyn Tokenizer) -> Result<Value, String> {
+    finish_ended(dir, tok, None)
+}
+
+/// Whether a chat error says the conversation no longer fits the model's context: the
+/// error type llama.cpp's server reports (`exceed_context_size_error`), or the code an
+/// OpenAI-compatible server uses (`context_length_exceeded`).
+pub fn is_context_overflow(error: &str) -> bool {
+    error.contains("exceed_context_size") || error.contains("context_length_exceeded")
+}
+
+/// [`finish`], recording why the episode stopped early when it did. `ended_by` is written
+/// to the final line (`null` for an episode that ran its course).
+pub fn finish_ended(
+    dir: &Path,
+    tok: &dyn Tokenizer,
+    ended_by: Option<&str>,
+) -> Result<Value, String> {
     let st = load_state(dir)?;
     if st.final_line.is_some() {
         return Err("episode already finished".into());
@@ -582,6 +599,7 @@ pub fn finish(dir: &Path, tok: &dyn Tokenizer) -> Result<Value, String> {
         "facts_checked": sc.as_ref().and_then(|s| s.facts_checked),
         "class_token_jaccard": sc.as_ref().and_then(|s| s.class_token_jaccard),
         "renames": sc.as_ref().and_then(|s| s.renames),
+        "ended_by": ended_by,
     });
     append_line(&st.dir, &v)?;
     Ok(v)
@@ -605,10 +623,23 @@ pub fn run_model_episode(
     ];
     for iter in 1..=st.meta.max_iters {
         let started = Instant::now();
-        let reply = model.chat(&messages, params).map_err(|e| {
-            let _ = write(&st.dir.join("error.txt"), &e);
-            format!("iteration {iter}: model call failed: {e}")
-        })?;
+        let reply = match model.chat(&messages, params) {
+            Ok(r) => r,
+            // The conversation outgrew the model's context after the model's own attempts
+            // and the arm's feedback: that is the edit loop failing, so the episode finishes
+            // as not clean. Pilot 2's 7B Mzizi badge (seed 2) stopped this way, was left
+            // unfinished by the runner, and had to be counted as not clean by hand in
+            // RUN.md. On the first request the prompt alone is too big for the server,
+            // which is a setup problem, and still aborts.
+            Err(e) if iter > 1 && is_context_overflow(&e) => {
+                let _ = write(&st.dir.join("error.txt"), &e);
+                return finish_ended(&st.dir, tok, Some("context_exceeded"));
+            }
+            Err(e) => {
+                let _ = write(&st.dir.join("error.txt"), &e);
+                return Err(format!("iteration {iter}: model call failed: {e}"));
+            }
+        };
         let gen_ms = started.elapsed().as_millis() as u64;
         let extracted = extract_code_block(&reply.content);
         let outcome = record_iteration(
@@ -920,6 +951,71 @@ mod tests {
                 completion_tokens: Some(10),
             })
         }
+    }
+
+    /// Replies from a script, then the error llama.cpp's server returns once the history
+    /// no longer fits its context.
+    struct OverflowingModel {
+        replies: RefCell<Vec<&'static str>>,
+        error: &'static str,
+    }
+    impl ChatModel for OverflowingModel {
+        fn chat(&self, messages: &[Message], _: &GenParams) -> Result<ChatReply, String> {
+            match self.replies.borrow_mut().pop() {
+                Some(r) => Ok(ChatReply {
+                    content: r.into(),
+                    prompt_tokens: Some(100 * messages.len() as u64),
+                    completion_tokens: Some(10),
+                }),
+                None => Err(self.error.to_string()),
+            }
+        }
+    }
+
+    const LLAMA_OVERFLOW: &str = r#"POST http://127.0.0.1:8080/v1/chat/completions: HTTP 400: {"error":{"code":400,"message":"request (16568 tokens) exceeds the available context size (16384 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":16568,"n_ctx":16384}}"#;
+
+    fn params() -> GenParams {
+        GenParams {
+            model: "test-model".into(),
+            temperature: 0.0,
+            seed: 1,
+            max_tokens: 64,
+        }
+    }
+
+    #[test]
+    fn a_context_overflow_after_the_first_reply_finishes_the_episode_not_clean() {
+        let t = TempDir::new("overflow");
+        let dir = start(&t.0, Mode::Model, fake_score(SCORE_OK));
+        let model = OverflowingModel {
+            replies: RefCell::new(vec!["```mz\nbroken\n```"]),
+            error: LLAMA_OVERFLOW,
+        };
+        let p = build_prompt(Arm::Mzizi, "g", "s", &[]);
+        let fin = run_model_episode(&dir, &p, &model, &FakeTok, &params()).unwrap();
+        assert_eq!(fin["clean"], false);
+        assert_eq!(fin["iterations"], 1);
+        assert_eq!(fin["ended_by"], "context_exceeded");
+        assert!(dir.join("error.txt").is_file());
+        // A finished episode, so `summarize` counts it in the clean-compile denominator.
+        assert_eq!(jsonl(&dir).last().unwrap()["kind"], "final");
+    }
+
+    #[test]
+    fn a_first_request_that_does_not_fit_is_a_setup_error() {
+        let t = TempDir::new("overflow1");
+        let dir = start(&t.0, Mode::Model, fake_score(SCORE_OK));
+        let model = OverflowingModel {
+            replies: RefCell::new(vec![]),
+            error: LLAMA_OVERFLOW,
+        };
+        let p = build_prompt(Arm::Mzizi, "g", "s", &[]);
+        let e = run_model_episode(&dir, &p, &model, &FakeTok, &params()).unwrap_err();
+        assert!(e.contains("iteration 1"), "{e}");
+        assert!(jsonl(&dir).is_empty(), "no final line: the episode aborted");
+        // Any other endpoint error, at any iteration, still aborts.
+        assert!(!is_context_overflow("POST …: connection refused"));
+        assert!(is_context_overflow(r#"{"code":"context_length_exceeded"}"#));
     }
 
     #[test]
