@@ -1713,6 +1713,22 @@ impl Parser {
             }
         } else if let Tok::Str(text) = self.peek().clone() {
             self.bump();
+            // `control "Button"` alone (pilot 2, frontier button seed 3): there is no
+            // operand, so `is` cannot be the repair, and the generic MZ0602 listed eight
+            // predicates of which exactly one applies to an element. Say which one. The
+            // number is the author's, so there is no fix.
+            if matches!(self.peek(), Tok::Newline | Tok::Eof) {
+                let span = self.peek_span();
+                self.diags.push(Diagnostic::error(
+                    "MZ0602",
+                    &self.file,
+                    span,
+                    format!(
+                        "`{head} \"{text}\"` names an element and asserts nothing about it — an element takes `min_height <n>`; to assert it renders, write `when <name> shows {head} \"{text}\"`"
+                    ),
+                ));
+                return None;
+            }
             Subject::Element { tag: head, text }
         } else {
             Subject::Named(head)

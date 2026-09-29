@@ -344,3 +344,26 @@ fn the_agent_summary_carries_the_contract_counts() {
     );
     assert!(summary.contains(r#""contract_failures":0"#), "{summary}");
 }
+
+#[test]
+fn an_element_subject_with_nothing_after_it_names_the_predicate_it_takes() {
+    // Pilot 2, frontier button seed 3: `control "Button"` alone got the generic MZ0602 and
+    // no fix, which RUN.md read as RFC-0006 §8.2 broken. There is no operand for `is`, so
+    // there is no fix; the diagnostic says which predicate applies instead.
+    let src = "component b\n  view\n    control\n      slot = \"b\"\n      text = \"Button\"\n    end\n  end\n  contract\n    control \"Button\"\n  end\nend component b\n";
+    let report = mzizi_lang_compiler::check(src, "b.mz");
+    let d: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "MZ0602")
+        .collect();
+    assert_eq!(d.len(), 1, "{:#?}", report.diagnostics);
+    assert!(d[0].say.contains("`min_height <n>`"), "{}", d[0].say);
+    assert!(
+        d[0].say.contains("shows control \"Button\""),
+        "{}",
+        d[0].say
+    );
+    assert!(d[0].fix.is_none());
+    assert_eq!(report.error_count(), 1);
+}
