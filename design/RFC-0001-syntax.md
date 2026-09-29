@@ -31,6 +31,14 @@ the type system's internals, and the compiler architecture are later RFCs.
 > §4.2 example's code `MZ0412` was illustrative; the diagnostic it shows now exists as
 > `MZ0708`, with the `exact` fix to `syncing` exactly as drawn (RFC-0008 §5, §6).
 
+<!-- A fourth amendment note; the separator keeps it distinct. -->
+
+> **Amended by RFC-0009.** §6's baseline and pass rule are replaced by an owner decision of
+> 2026-09-29: Mzizi is measured against **the best existing language for each kind of task**,
+> not against Dioxus and Leptos alone. The two-of-three form is kept, now against the best
+> incumbent value on each metric, per task family (RFC-0009 §6). The §6 text is left as it
+> was written.
+
 ---
 
 ## 0. Method: design against named failure modes
