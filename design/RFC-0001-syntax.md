@@ -309,6 +309,19 @@ language itself.
    records it per iteration. A slow compiler fails Phase 0 no matter how
    good its errors are.
 
+7. **The idioms an agent brings with it** _(amended 2026-09-29)_. Pilot 2
+   (`benchmarks/results/2026-09-27-pilot-2/RUN.md`) found the ~7B model stalling on React
+   idioms that have no Mzizi form, under diagnostics that did not name them. Each now has
+   one diagnostic that names the idiom and, where the repair is mechanical, carries it:
+
+   | Code     | Written                                          | Diagnostic and fix                                                              |
+   | -------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+   | `MZ0106` | `...props`, `{...props}`, `..attributes`         | a spread has no form; `exact` fix deletes it (the whole line when it is alone)  |
+   | `MZ0312` | `prop as_child: bool` (React `asChild`, `Slot`)  | a warning: elements are not polymorphic; `exact` fix deletes the prop when unread |
+
+   `mz fix` (§4.3) exists as of the same date: it applies every `exact` fix in one pass and
+   re-checks the file.
+
 ## 5. What lowers to what
 
 | Mzizi                     | Lowers to                                                                       |
