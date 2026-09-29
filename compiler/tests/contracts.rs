@@ -138,10 +138,12 @@ fn every_corpus_clause_is_actually_evaluated() {
 fn a_size_below_the_touch_floor_compiles_clean_and_fails_its_contract() {
     // The corpus defect this feature exists for: the 48px floor, violated five separate
     // times in the TypeScript because the height lived only in a class string.
+    // The class and the height move together: a height that disagreed with its own class
+    // would now be MZ0313 at compile time (FM-11), and a compile error is not a defect.
     let mutated = mutate(
         "button.mz",
         "sm        class \"h-12 gap-1.5 px-4\"   height 48",
-        "sm        class \"h-12 gap-1.5 px-4\"   height 40",
+        "sm        class \"h-10 gap-1.5 px-4\"   height 40",
     );
     let said = failures("button.mz", &mutated);
     assert_eq!(
@@ -302,7 +304,7 @@ fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one()
         mutate(
             "button.mz",
             "sm        class \"h-12 gap-1.5 px-4\"   height 48",
-            "sm        class \"h-12 gap-1.5 px-4\"   height 40",
+            "sm        class \"h-10 gap-1.5 px-4\"   height 40",
         ),
     )
     .expect("writable temp file");
@@ -366,4 +368,100 @@ fn an_element_subject_with_nothing_after_it_names_the_predicate_it_takes() {
     );
     assert!(d[0].fix.is_none());
     assert_eq!(report.error_count(), 1);
+}
+
+// ---------------------------------------------------------------------------------------
+// FM-11 in the variant table (pilot 2): the height is written once, in the class.
+// ---------------------------------------------------------------------------------------
+
+fn sizes(rows: &str, clauses: &str) -> String {
+    format!(
+        "component b\n  enum b_size\n{rows}\n  end\n  prop size: b_size = default\n  view\n    control\n      slot = \"b\"\n      class = \"{{size.class}}\"\n    end\n  end\n  contract\n{clauses}\n  end\nend component b\n"
+    )
+}
+
+#[test]
+fn a_height_that_disagrees_with_its_class_is_a_compile_error_with_the_rendered_number() {
+    // Both clean 7B buttons in pilot 2: `size-14` renders 56px and the row said 48, and
+    // `mz contract` passed, because it treated `size-14` as unevaluable.
+    let src = sizes(
+        "    default class \"h-14\" height 56\n    icon class \"size-14\" height 48",
+        "    every b_size height at_least 48",
+    );
+    let report = check(&src, "b.mz");
+    let d: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "MZ0313")
+        .collect();
+    assert_eq!(d.len(), 1, "{:#?}", report.diagnostics);
+    assert!(d[0].say.contains("`size-14` renders 56px"), "{}", d[0].say);
+    let fix = d[0].fix.as_ref().unwrap();
+    assert_eq!(fix.replace, "56");
+    let fixed = mzizi_lang_compiler::apply_exact_fixes(&src, &report);
+    assert!(
+        fixed.contains("icon class \"size-14\" height 56"),
+        "{fixed}"
+    );
+    assert_eq!(check(&fixed, "b.mz").error_count(), 0);
+}
+
+#[test]
+fn a_size_table_without_a_height_column_is_checked_on_the_height_its_class_renders() {
+    let src = sizes(
+        "    default class \"h-14 px-5\"\n    sm class \"h-12 px-4\"\n    icon class \"size-14\"",
+        "    every b_size height at_least 48\n    b_size.sm height is 48\n    b_size.icon height is 56",
+    );
+    let (report, tally) = check_contract(&src, "b.mz");
+    assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
+    assert_eq!((tally.clauses, tally.failed), (3, 0));
+
+    let low = sizes(
+        "    default class \"h-14 px-5\"\n    sm class \"h-11 px-4\"",
+        "    every b_size height at_least 48",
+    );
+    let (report, tally) = check_contract(&low, "b.mz");
+    assert_eq!(tally.failed, 1, "{:#?}", report.diagnostics);
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| d.say.contains("`sm` is 44, below 48")),
+        "{:#?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn a_row_whose_class_has_no_scale_height_has_no_derived_height() {
+    let src = sizes(
+        "    default class \"min-h-[48px] px-5\"",
+        "    every b_size height at_least 48",
+    );
+    let (report, tally) = check_contract(&src, "b.mz");
+    assert_eq!(
+        tally.failed, 1,
+        "unevaluable is a failure: {:#?}",
+        report.diagnostics
+    );
+    assert!(report.diagnostics.iter().any(|d| d.code == "MZ0605"));
+}
+
+#[test]
+fn the_scale_rule_matches_the_harness_on_the_same_examples() {
+    // The same table is in `benchmarks/harness/src/lib.rs`'s tests: the compiler and the
+    // scorer must read a class the same way, or FM-11 comes back between them.
+    use mzizi_lang_compiler::contract::scale_height;
+    for (class, want) in [
+        ("h-14 gap-2 px-5", Some(56)),
+        ("size-12", Some(48)),
+        ("gap-2 h-9", Some(36)),
+        ("h-1.5", None),
+        ("h-[56px]", None),
+        ("md:h-10", None),
+        ("[&>svg]:size-3!", None),
+        ("min-h-12", None),
+    ] {
+        assert_eq!(scale_height(class).map(|(_, px)| px), want, "{class}");
+    }
 }
