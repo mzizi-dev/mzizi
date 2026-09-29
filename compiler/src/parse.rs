@@ -517,6 +517,8 @@ impl Parser {
             );
         }
 
+        self.as_child(&component);
+
         if component.contract.is_none() {
             self.diags.push(Diagnostic::warning(
                 "MZ0501",
@@ -530,6 +532,67 @@ impl Parser {
         }
 
         Some(component)
+    }
+
+    /// `prop as_child` — React's `asChild`, which renders the component *as* its child by
+    /// merging props into it through Radix's `Slot`. Mzizi elements are not polymorphic,
+    /// so the flag promises something the port cannot do. Every shadcn/Radix spec carries
+    /// it, and pilot 2's 7B model built each badge around it (`Comp = Slot.Root`).
+    ///
+    /// It is a warning, not an error: a declared, unused `as_child` compiles to a
+    /// component that renders its default element, which is what the reference does with
+    /// the flag off, and two of pilot 2's clean 7B buttons declared one. Failing them would
+    /// cost an iteration for nothing. When the view never reads it, deleting the line is
+    /// the whole repair, so the fix is `exact`. When a `when` tests it, the branch has to
+    /// go too, which is the author's edit, so there is no fix.
+    fn as_child(&mut self, component: &Component) {
+        fn reads(els: &[Element]) -> Option<u32> {
+            els.iter().find_map(|e| {
+                let here = e.attrs.iter().any(|a| {
+                    a.value == "as_child"
+                        || a.value.starts_with("as_child.")
+                        || a.value.contains("{as_child")
+                });
+                if here {
+                    Some(e.span.start_line)
+                } else {
+                    reads(&e.children).or_else(|| e.else_children.as_deref().and_then(reads))
+                }
+            })
+        }
+        let Some(prop) = component.props.iter().find(|p| p.name == "as_child") else {
+            return;
+        };
+        let line = prop.span.start_line;
+        let used = component.view.as_deref().and_then(reads);
+        let base = "`as_child` is React's `asChild` (render as the child via `Slot`), and Mzizi elements are not polymorphic";
+        let d = match used {
+            None => Diagnostic::warning(
+                "MZ0312",
+                &self.file,
+                prop.span,
+                format!("{base}: delete this prop"),
+            )
+            .with_fix(
+                Span {
+                    start_line: line,
+                    start_col: 1,
+                    end_line: line + 1,
+                    end_col: 1,
+                },
+                "",
+                Confidence::Exact,
+            ),
+            Some(at) => Diagnostic::warning(
+                "MZ0312",
+                &self.file,
+                prop.span,
+                format!(
+                    "{base}: delete this prop, and the branch on line {at} that reads it, keeping what `as_child = false` renders"
+                ),
+            ),
+        };
+        self.diags.push(d);
     }
 
     /// `end`, with the cross-check that makes a mismatch one diagnostic instead of a cascade.

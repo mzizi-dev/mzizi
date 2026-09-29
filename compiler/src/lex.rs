@@ -266,6 +266,51 @@ fn ident_or_keyword(word: String) -> Tok {
     }
 }
 
+/// A spread at `i` — `...props`, `..attributes` or `{...props}` — as the half-open char
+/// range it covers and the name it spreads. Two or three dots, then a name, and a closing
+/// `}` when it opened with one. A dotted path (`state.color`) has one dot and is not this.
+fn spread_at(bytes: &[char], i: usize) -> Option<(usize, usize, String)> {
+    let braced = bytes.get(i) == Some(&'{');
+    let mut k = if braced { i + 1 } else { i };
+    let dots = bytes[k.min(bytes.len())..]
+        .iter()
+        .take_while(|c| **c == '.')
+        .count();
+    if !(2..=3).contains(&dots) {
+        return None;
+    }
+    k += dots;
+    let name_start = k;
+    while k < bytes.len() && (bytes[k].is_ascii_alphanumeric() || bytes[k] == '_') {
+        k += 1;
+    }
+    if k == name_start || bytes[name_start].is_ascii_digit() {
+        return None;
+    }
+    let name: String = bytes[name_start..k].iter().collect();
+    if braced {
+        if bytes.get(k) != Some(&'}') {
+            return None;
+        }
+        k += 1;
+    }
+    Some((i, k, name))
+}
+
+/// Whether a line holds nothing but a spread: `...props`, `{...props}`, or the prop
+/// declaration an agent writes for one, `prop ...props: <type>`. Then the whole line is
+/// the mistake, and deleting it is the repair.
+fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
+    let rest: String = bytes[..start].iter().chain(&bytes[end..]).collect();
+    let mut r = rest.trim();
+    if let Some(after) = r.strip_prefix("prop")
+        && (after.is_empty() || after.starts_with(char::is_whitespace) || after.starts_with(':'))
+    {
+        r = after.trim_start();
+    }
+    r.is_empty() || r.starts_with(':')
+}
+
 /// Tokenize `src`. Never fails: bad input produces diagnostics and the lexer keeps going,
 /// so the parser always receives a full token stream to recover against.
 pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
@@ -276,10 +321,58 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
         let line_no = (line_idx + 1) as u32;
         let bytes: Vec<char> = line.chars().collect();
         let mut i = 0usize;
+        let line_first_token = tokens.len();
+        let line_first_diag = diags.len();
 
         while i < bytes.len() {
             let col = (i + 1) as u32;
             let ch = bytes[i];
+
+            // A spread is the React (`{...props}`) and Dioxus (`..attributes`) way to pass
+            // on every attribute a component does not name. Mzizi has no form for it, so
+            // the one repair is to delete it — pilot 2's 7B model wrote `prop ...props`
+            // in every badge episode and got `MZ0304 prop needs a name, found .`, which
+            // told it nothing it could act on. One diagnostic, and the parser sees
+            // nothing of the spread, so it cannot cascade.
+            if (ch == '.' || ch == '{')
+                && let Some((start, end, name)) = spread_at(&bytes, i)
+            {
+                let written: String = bytes[start..end].iter().collect();
+                let span = Span::single(line_no, col, (end - start) as u32);
+                let whole = spread_is_whole_line(&bytes, start, end);
+                if whole {
+                    // The line goes, so nothing reported earlier on it still applies.
+                    diags.truncate(line_first_diag);
+                }
+                let (fix_span, what) = if whole {
+                    let fix = Span {
+                        start_line: line_no,
+                        start_col: 1,
+                        end_line: line_no + 1,
+                        end_col: 1,
+                    };
+                    (fix, "delete the line")
+                } else {
+                    (span, "delete it")
+                };
+                diags.push(
+                    Diagnostic::error(
+                        "MZ0106",
+                        file,
+                        span,
+                        format!(
+                            "`{written}` is a spread, and Mzizi has none: a component names each prop it reads and each attribute it sets. `{name}` has no equivalent — {what}"
+                        ),
+                    )
+                    .with_fix(fix_span, "", Confidence::Exact),
+                );
+                if whole {
+                    tokens.truncate(line_first_token);
+                    break;
+                }
+                i = end;
+                continue;
+            }
 
             if ch.is_whitespace() {
                 i += 1;

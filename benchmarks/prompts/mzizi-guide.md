@@ -187,7 +187,9 @@ end component releases
 | `{x && x.length > 0 && <X/>}`      | `when x is none`, `nothing`, `else` ... `end` |
 | `return null`                      | `nothing`                                     |
 
-Drop `...props` spreading and `className` pass-through: there is no equivalent.
+Drop `...props` spreading, `asChild` and `className` pass-through: none has an equivalent.
+A spread is an error (`MZ0106`) and an `as_child` prop a warning (`MZ0312`); delete the
+line, and keep only what the `as_child = false` branch renders.
 
 ### The contract
 
