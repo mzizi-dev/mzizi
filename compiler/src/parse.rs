@@ -506,7 +506,12 @@ impl Parser {
                 )
                 .with_fix(
                     Span::single(eof.start_line, eof.start_col, 0),
-                    format!("{closer}\n"),
+                    // A last line with no newline needs one before the closer.
+                    if eof.start_col > 1 {
+                        format!("\n{closer}")
+                    } else {
+                        format!("{closer}\n")
+                    },
                     Confidence::Exact,
                 ),
             );
