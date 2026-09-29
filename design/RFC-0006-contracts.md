@@ -18,6 +18,14 @@ subcommand rather than part of `mz check`. Lowering contracts to Rust `#[test]`s
 > language for assertions like `every button_size height at_least 48`" as an open question
 > addressed to a later RFC. This is that RFC.
 
+<!-- A third note; the separator keeps it distinct. -->
+
+> **Amended by RFC-0010**, which extends contracts to functions, handlers, services, records
+> and the standard library. This RFC's grammar is the component case of RFC-0010 §3, and
+> every clause here keeps its meaning. §10.5 (lowering) is answered by RFC-0010 §5. RFC-0010's
+> rule C-1 (a subject must be an observed value) narrows §4: after pilot 2 (FM-14), a declared
+> `height` column that no class renders can no longer carry a contract on its own.
+
 ---
 
 ## 0. Method: four more named failure modes
@@ -419,4 +427,6 @@ reference implementations. See §10.1.
    subjects"; RFC-0003 §4's example shows `contract 5`. Today it emits an empty `contract`
    block, because the outline must itself be valid Mzizi and `contract 5` is not. Whether a
    dependency's assertions are interface is a real question and is not settled here.
-5. **Lowering.** RFC-0001 §5 maps `contract` to Rust `#[test]`s. Phase 1.
+5. **~~Lowering.~~** RFC-0001 §5 maps `contract` to Rust `#[test]`s. Phase 1.
+   _Answered by RFC-0010 §5:_ examples lower to `#[test]`s, `ensure` and `always` to
+   seeded property tests and debug-build assertions, and nothing remains in release builds.
