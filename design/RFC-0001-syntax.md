@@ -39,6 +39,13 @@ the type system's internals, and the compiler architecture are later RFCs.
 > incumbent value on each metric, per task family (RFC-0009 §6). The §6 text is left as it
 > was written.
 
+<!-- A fifth amendment note; the separator keeps it distinct. -->
+
+> **Amended by RFC-0010.** §1.6's "a component without a `contract` block compiles with a
+> warning; corpus ports require one" becomes one lint, `MZ0613`, for every top-level
+> declaration, at `warn` or `required` per package (RFC-0010 §8). The warning had never been
+> implemented. §5's `contract` row is specified in RFC-0010 §5.
+
 ---
 
 ## 0. Method: design against named failure modes
