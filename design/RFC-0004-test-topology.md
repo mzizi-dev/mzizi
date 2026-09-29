@@ -220,7 +220,9 @@ whole run rather than one check.
    needs a refresh policy — probably a fraction rotated per reported run.
    _Partly answered by RFC-0009 §7:_ a retired set is published in full (§4.2), so
    retirement is the rotation's other half. The fraction rotated per reported run is still
-   open.
+   open, and is RFC-0009 §11's question 5. How the held-out tasks are checked and run
+   without printing them, and the settings a gating run registers before any held-out score
+   is seen, are in `benchmarks/kill-criterion/README.md`.
 3. **Third-party verification.** If an outside party needs to reproduce a benchmark claim,
    there has to be a path: most likely a time-limited grant to the private set under an
    agreement not to publish it. Unsolved, and worth solving before any number is published.
