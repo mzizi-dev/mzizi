@@ -167,9 +167,15 @@ button "Retry"` is a claim about the _shape of the view tree_, not about what a 
   belongs to the benchmark harness (`benchmarks/harness/`), not to this evaluator — §10.1
   resolves that split and the harness now exists. **The Phase 0 defect metric needs both
   halves; this RFC delivers one of them.**
-- ~~**Tailwind scale classes.**~~ _Amended 2026-09-29; see below._ This bullet used to say
+- ~~**Tailwind scale classes.**~~ _Amended 2026-09-29._ This bullet used to say
   that `h-12` is 48px in one Tailwind version and need not be in another, so the evaluator
-  read only bracketed pixel values and reported `h-12` as _unevaluable_.
+  read only bracketed pixel values and reported `h-12` as _unevaluable_. See the
+  amendment after this list.
+- **Cross-file anything.** `uses button` checks that the view has a `button` element. It
+  does not load `button.mz` or check that the props passed to it exist. That needs the
+  manifest and the name→hash namespace (RFC-0003 §3), and it is §10.2.
+- **Prop values.** A prop with no default has no value this component controls, so a clause
+  about one is unevaluable and says so.
 
 _Amendment, 2026-09-29: the evaluator reads the spacing scale (FM-11)._ The bullet above was
 right about the risk and wrong about where it led. The benchmark harness has scored every
@@ -195,11 +201,6 @@ The version risk is real, and it is pinned rather than guessed at: the spacing s
 Tailwind v4's default (`--spacing: 0.25rem`), which the registry's references use. A
 project that changes `--spacing` changes what these numbers mean for the harness and the
 compiler together, which is the point.
-- **Cross-file anything.** `uses button` checks that the view has a `button` element. It
-  does not load `button.mz` or check that the props passed to it exist. That needs the
-  manifest and the name→hash namespace (RFC-0003 §3), and it is §10.2.
-- **Prop values.** A prop with no default has no value this component controls, so a clause
-  about one is unevaluable and says so.
 
 **Unevaluable is a failure.** `MZ0605` is an error, exits 1, and fails CI. A contract that
 quietly does nothing is worse than no contract, because a reader takes it for verification.

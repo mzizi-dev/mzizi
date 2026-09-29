@@ -314,15 +314,15 @@ language itself.
    idioms that have no Mzizi form, under diagnostics that did not name them. Each now has
    one diagnostic that names the idiom and, where the repair is mechanical, carries it:
 
-   | Code     | Written                                          | Diagnostic and fix                                                              |
-   | -------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
-   | `MZ0106` | `...props`, `{...props}`, `..attributes`         | a spread has no form; `exact` fix deletes it (the whole line when it is alone)  |
-   | `MZ0312` | `prop as_child: bool` (React `asChild`, `Slot`)  | a warning: elements are not polymorphic; `exact` fix deletes the prop when unread |
-   | `MZ0406` | `class "flex"` (attribute without `=`)           | read as the attribute, not as a block; fix inserts `=`, `exact` for known words |
-   | `MZ0407` | `if open`                                        | there is no `if`; `exact` fix is `when`, and the block parses as a `when`       |
-   | `MZ0408` | `slot = "x"` directly under `view`               | one diagnostic per run of such lines; attributes belong on an element           |
-   | `MZ0409` | `span class = "x"`                               | an element word stands alone on its line; the tail was silently kept before     |
-   | `MZ0313` | `icon class "size-14" height 48`                 | a `height` that disagrees with its class (FM-11); `exact` fix is the rendered px |
+   | Code     | Written                                         | Diagnostic and fix                                                                |
+   | -------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
+   | `MZ0106` | `...props`, `{...props}`, `..attributes`        | a spread has no form; `exact` fix deletes it (the whole line when it is alone)    |
+   | `MZ0312` | `prop as_child: bool` (React `asChild`, `Slot`) | a warning: elements are not polymorphic; `exact` fix deletes the prop when unread |
+   | `MZ0406` | `class "flex"` (attribute without `=`)          | read as the attribute, not as a block; fix inserts `=`, `exact` for known words   |
+   | `MZ0407` | `if open`                                       | there is no `if`; `exact` fix is `when`, and the block parses as a `when`         |
+   | `MZ0408` | `slot = "x"` directly under `view`              | one diagnostic per run of such lines; attributes belong on an element             |
+   | `MZ0409` | `span class = "x"`                              | an element word stands alone on its line; the tail was silently kept before       |
+   | `MZ0313` | `icon class "size-14" height 48`                | a `height` that disagrees with its class (FM-11); `exact` fix is the rendered px  |
 
    The same pilot found §4.1's "never a cascade" broken in three places, now each one
    diagnostic. A declaration word (`contract`, `prop`, …) inside an unclosed view, and
