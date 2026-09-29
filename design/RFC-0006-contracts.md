@@ -152,7 +152,8 @@ the ROADMAP have all now been corrected to match it.
 - the presence and text of elements in the view tree, including inside a `when` branch;
 - composition — that a named component appears in the view;
 - design-token references inside class strings;
-- declared heights, from a `height` attribute or a `min-h-[Npx]` / `h-[Npx]` class.
+- declared heights, from a `height` attribute, a `min-h-[Npx]` / `h-[Npx]` class, or a
+  spacing-scale `min-h-N` / `h-N` / `size-N` class (amended 2026-09-29, below).
 
 **It does not check:**
 
@@ -166,10 +167,34 @@ button "Retry"` is a claim about the _shape of the view tree_, not about what a 
   belongs to the benchmark harness (`benchmarks/harness/`), not to this evaluator — §10.1
   resolves that split and the harness now exists. **The Phase 0 defect metric needs both
   halves; this RFC delivers one of them.**
-- **Tailwind scale classes.** `h-12` is 48px in one Tailwind version and need not be in
-  another. The evaluator reads only bracketed pixel values and reports `h-12` as
-  _unevaluable_ rather than guessing, because a check that silently disagrees with what
-  renders is FM-12 wearing a different hat.
+- ~~**Tailwind scale classes.**~~ _Amended 2026-09-29; see below._ This bullet used to say
+  that `h-12` is 48px in one Tailwind version and need not be in another, so the evaluator
+  read only bracketed pixel values and reported `h-12` as _unevaluable_.
+
+_Amendment, 2026-09-29: the evaluator reads the spacing scale (FM-11)._ The bullet above was
+right about the risk and wrong about where it led. The benchmark harness has scored every
+reference height by the one linear scale since §10.1 (`h-N` and `size-N` are `N × 4` px).
+The compiler refused the same rule. That split one fact across two tools, which is FM-11,
+the failure this RFC names. Pilot 2 (`benchmarks/results/2026-09-27-pilot-2/RUN.md`) caught
+it in both clean 7B buttons: `icon class "size-14" height 48`. The class renders 56px, the
+contract checked 48, and `mz contract` passed, because `size-14` was unevaluable. The
+evaluator now reads the scale by exactly the harness's rule (`contract::scale_height`, with
+the same examples tested in both crates): the first `h-N` or `size-N` token with a whole `N`
+and no variant prefix. Three things follow:
+
+- A variant row with no `height` column has the height its class renders, so a size table
+  states the height once. `every button_size height at_least 48` holds or fails on the
+  rendered number.
+- A row that writes both, and disagrees, is `MZ0313`: a compile error, because it is a
+  declaration that contradicts itself, not a behaviour. Its `exact` fix writes the rendered
+  number, because the class is what renders.
+- An element's height (`min_height <n>`) also reads `min-h-N`, `h-N` and `size-N`, after
+  the bracketed forms. `h-auto` and `h-1.5` stay unevaluable.
+
+The version risk is real, and it is pinned rather than guessed at: the spacing scale is
+Tailwind v4's default (`--spacing: 0.25rem`), which the registry's references use. A
+project that changes `--spacing` changes what these numbers mean for the harness and the
+compiler together, which is the point.
 - **Cross-file anything.** `uses button` checks that the view has a `button` element. It
   does not load `button.mz` or check that the props passed to it exist. That needs the
   manifest and the name→hash namespace (RFC-0003 §3), and it is §10.2.
@@ -377,9 +402,10 @@ reference implementations. See §10.1.
    spacing scale — `value-in-rem = N * 0.25rem`, and a browser's default `1rem = 16px`, so
    `h-N` and `size-N` are both `N * 4` pixels. A declared height that disagrees with the
    derived one is the Phase 0 defect: code that compiles cleanly, whose own contract can
-   even hold (an agent can write `button_size.sm height is 44` right alongside a class
-   string of `h-12`, and `mz contract` has no ground truth to refute it against), but which
-   is behaviourally wrong against the reference implementation.
+   even hold, but which is behaviourally wrong against the reference implementation. (This
+   sentence's original example, `height is 44` beside a class of `h-12`, is `MZ0313` since
+   §5's 2026-09-29 amendment; the defect left for the harness is a consistent, wrong
+   height.)
 
    Sequencing matters: the harness requires `mz contract --agent <file.mz>` to exit 0
    _before_ it runs the reference diff at all. A file that fails its own declared contract

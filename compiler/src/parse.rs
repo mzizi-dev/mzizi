@@ -819,9 +819,15 @@ impl Parser {
                 continue;
             };
             let mut columns = Vec::new();
+            let mut height_at = None;
             while let Some((col, _)) = self.ident() {
-                match self.value() {
-                    Some(v) => columns.push((col, v)),
+                match self.value_spanned() {
+                    Some((v, vspan, _)) => {
+                        if col == "height" {
+                            height_at = Some(vspan);
+                        }
+                        columns.push((col, v));
+                    }
                     None => {
                         let span = self.peek_span();
                         self.diags.push(Diagnostic::error(
@@ -833,6 +839,9 @@ impl Parser {
                         break;
                     }
                 }
+            }
+            if let Some(at) = height_at {
+                self.height_agrees_with_class(&vname, &columns, at);
             }
             variants.push(Variant {
                 name: vname,
@@ -864,6 +873,47 @@ impl Parser {
         }
 
         Some(EnumDecl { name, variants })
+    }
+
+    /// FM-11 in the variant table: a row that writes `height` beside a `class` whose
+    /// spacing-scale token renders a different height states one fact twice, and the two
+    /// copies disagree. Both of pilot 2's clean 7B buttons wrote `icon class "size-14"
+    /// height 48`: the class renders 56px, the contract checked 48, and `mz contract`
+    /// passed. The class is what renders, so the repair rewrites the number, and it is
+    /// `exact`. A row may omit `height` altogether; the evaluator then reads it from the
+    /// class (`contract::scale_height`), so the fact is written once.
+    fn height_agrees_with_class(&mut self, variant: &str, columns: &[(String, String)], at: Span) {
+        let get = |c: &str| {
+            columns
+                .iter()
+                .find(|(k, _)| k == c)
+                .map(|(_, v)| v.as_str())
+        };
+        let (Some(height), Some(class)) = (get("height"), get("class")) else {
+            return;
+        };
+        let (Ok(declared), Some(inner)) = (
+            height.parse::<i64>(),
+            class.strip_prefix('"').and_then(|c| c.strip_suffix('"')),
+        ) else {
+            return;
+        };
+        let Some((token, rendered)) = crate::contract::scale_height(inner) else {
+            return;
+        };
+        if declared != rendered {
+            self.diags.push(
+                Diagnostic::error(
+                    "MZ0313",
+                    &self.file,
+                    at,
+                    format!(
+                        "`{variant}` declares `height {declared}` but its class `{token}` renders {rendered}px (N × 4) — write `height {rendered}`, or drop the column and let the class say it once"
+                    ),
+                )
+                .with_fix(at, rendered.to_string(), Confidence::Exact),
+            );
+        }
     }
 
     /// `prop <name>: <type> [= <default>]`.

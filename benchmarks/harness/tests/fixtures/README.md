@@ -24,7 +24,9 @@ and update the commit above. Do not edit this copy by hand.
 
 ## `button_broken.mz`
 
-Written for this harness, not copied from anywhere. It is `primitives/button.mz` with `sm`'s
-declared height dropped from 48 to 44 and its own contract weakened to match, so it passes
-`mz contract` while disagreeing with the reference's `h-12` (48px). Its header comment
-describes the change; `button.mz`'s own explanatory `##` comments are also not carried over.
+Written for this harness, not copied from anywhere. It is `primitives/button.mz` with `sm`
+made 44px (class `h-11`, declared height 44) and its own contract weakened to match, so it
+passes `mz check` and `mz contract` while disagreeing with the reference's `h-12` (48px). Its
+header comment describes the change; `button.mz`'s own explanatory `##` comments are also not
+carried over. Before 2026-09-29 it kept `h-12` beside `height 44`, a shape `mz check` now
+rejects (MZ0313, FM-11).

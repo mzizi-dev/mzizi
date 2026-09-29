@@ -17,10 +17,10 @@ component chip
     warn     class "bg-amber-100 text-amber-900"
   end
 
-  ## `height` is the pixel height of the `h-N` class (N * 4).
+  ## `height` is read from the `h-N` class: N * 4 pixels.
   enum chip_size
-    snug   class "h-13 px-3 text-xs"  height 52
-    roomy  class "h-15 px-4 text-sm"  height 60
+    snug   class "h-13 px-3 text-xs"
+    roomy  class "h-15 px-4 text-sm"
   end
 
   prop tone: chip_tone = neutral
@@ -79,9 +79,10 @@ Write them in this order: doc lines, `use`, `enum` and `record`, `prop`, `view`,
 Each variant is one line: its name, then `column value` pairs. This replaces `cva`,
 `Record<Variant, string>` maps and variant `switch`es; one row holds everything about a
 variant. Every variant must have every column (`MZ0303` otherwise). Values are strings
-`"..."` or integers. In a size table, `height` is the pixels the class renders: `h-N` or
-`size-N` is `N * 4`, so `h-10` pairs with `height 40`. A column may hold another enum's
-variant (`accent gold`); `{node.accent.class}` then reads through both tables.
+`"..."` or integers. Do not write a `height` column: a variant's `height` is the pixels its
+class renders, `h-N` or `size-N` is `N * 4`, and contracts read it from there (`h-10` is
+height 40). A written `height` that disagrees with the class is `MZ0313`. A column may hold
+another enum's variant (`accent gold`); `{node.accent.class}` then reads through both tables.
 
 ### Records
 
@@ -247,7 +248,7 @@ on purpose.
 component tag
 
   enum tag_size
-    snug  class "h-13 px-3"  height 52
+    snug  class "h-13 px-3"
   end
 
   prop onPick: event(none)

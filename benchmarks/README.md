@@ -43,10 +43,18 @@ in a `<Enum>::<Variant> => "<classes>"` match arm (`button.rs`'s `ButtonSize::cl
 pixel height anywhere. The harness derives one, from the one well-known linear Tailwind spacing
 scale: `value-in-rem = N * 0.25rem`, and a browser's default `1rem = 16px`, so `h-N` and
 `size-N` are both `N * 4` pixels. `h-14` → 56px, `h-12` → 48px, `size-14` → 56px, `size-12` →
-48px — and it diffs that derived number against the `.mz` file's own declared `height` for the
-matching variant. A mismatch is the Phase 0 defect: code whose own contract can even hold (an
-agent can write `button_size.sm height is 44` right next to a class of `h-12`, and `mz
-contract` has no ground truth to refute it against) but which is wrong against the reference.
+48px — and it diffs that derived number against the `.mz` file's height for the matching
+variant: its declared `height` column, or, for a row with none, the same derivation from its
+own class. A mismatch is the Phase 0 defect: code whose own contract can hold but which is
+wrong against the reference.
+
+_Amended 2026-09-29 (FM-11)._ This paragraph used to say an agent could write `height 44` right
+next to a class of `h-12`, and `mz contract` had no ground truth to refute it against. Pilot 2
+showed that exact shape in both clean 7B buttons (`size-14` with `height 48`). The compiler now
+reads the same spacing scale: a declared `height` that disagrees with its class is `MZ0313`, a
+compile error with the rendered number as its `exact` fix, and a row may leave `height` out, so
+the fact is written once. What remains for the reference diff is a height that is consistent
+and wrong, like `sm class "h-11"` where the reference says `h-12`.
 
 This is deliberately bounded — a regex-level scan of enum blocks and match arms, not a general
 Rust parser, and not a general Tailwind resolver. Arbitrary-value classes (`h-[56px]`) are `mz
@@ -94,9 +102,9 @@ as class strings, missed the block-bodied `classes()` arms, and merged `ButtonVa
 block's `classes()` method only, and the fixture is `cmp`-identical to the real file. This
 is the FM-10 failure — a check that reads as verification without being one — in the harness
 that exists to catch it. `benchmarks/harness/tests/button_diff.rs` asserts both the
-passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` variant declares
-`height 44` while its class stays `h-12`, with its own contract weakened to match — the exact
-"satisfies its own contract, wrong against the reference" shape this harness exists to catch).
+passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` variant is
+`h-11` / `height 44`, with its own contract weakened to match — the exact "satisfies its own
+contract, wrong against the reference" shape this harness exists to catch).
 
 **Still open**: this is a prototype proved against one component and one fixture, not a scored
 run over the corpus. How many components a real run covers, how agent runs are invoked and

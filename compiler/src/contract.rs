@@ -304,7 +304,7 @@ fn judge(component: &Component, clause: &Clause) -> Verdict {
                         variant.name
                     ));
                 };
-                match check(predicate, value) {
+                match check(predicate, &value) {
                     Verdict::Pass => {}
                     Verdict::Fail(why) => {
                         return Verdict::Fail(format!("`{}` {why}", variant.name));
@@ -340,7 +340,6 @@ fn resolve(component: &Component, subject: &Subject) -> Result<String, Verdict> 
                 .find(|v| &v.name == member)
                 .ok_or_else(|| Verdict::Fail(format!("`{qualifier}` has no variant `{member}`")))?;
             cell(variant, column)
-                .map(str::to_string)
                 .ok_or_else(|| Verdict::Fail(format!("`{member}` has no `{column}` column")))
         }
 
@@ -362,7 +361,7 @@ fn resolve(component: &Component, subject: &Subject) -> Result<String, Verdict> 
             match matches.as_slice() {
                 [one] => {
                     let variant = one.variants.iter().find(|v| &v.name == qualifier).unwrap();
-                    Ok(cell(variant, member).unwrap().to_string())
+                    Ok(cell(variant, member).unwrap())
                 }
                 [] if find_enum(component, qualifier).is_some() => {
                     Err(Verdict::Unevaluable(format!(
@@ -457,12 +456,47 @@ fn find_enum<'a>(component: &'a Component, name: &str) -> Option<&'a EnumDecl> {
     component.enums.iter().find(|e| e.name == name)
 }
 
-fn cell<'a>(variant: &'a Variant, column: &str) -> Option<&'a str> {
-    variant
-        .columns
-        .iter()
-        .find(|(c, _)| c == column)
-        .map(|(_, v)| v.as_str())
+/// A variant's cell, as written — or, for a `height` the row does not write, the height
+/// its `class` renders (see [`scale_height`]). The derived value is what lets a size table
+/// state the height once, in the class that renders it (FM-11): `every button_size height
+/// at_least 48` holds or fails on the rendered number, with no second column to drift.
+fn cell(variant: &Variant, column: &str) -> Option<String> {
+    let written = |col: &str| {
+        variant
+            .columns
+            .iter()
+            .find(|(c, _)| c == col)
+            .map(|(_, v)| v.clone())
+    };
+    match written(column) {
+        Some(v) => Some(v),
+        None if column == "height" => {
+            let class = written("class")?;
+            scale_height(text_of(&class)?).map(|(_, px)| px.to_string())
+        }
+        None => None,
+    }
+}
+
+/// The height, in CSS pixels, that a class string's first `h-N` or `size-N` token renders
+/// on Tailwind's spacing scale: `N × 0.25rem`, at the browser's default `1rem = 16px`, so
+/// `N × 4`. `N` is a whole number and the token carries no variant prefix, so `h-1.5`,
+/// `h-[56px]`, `md:h-10` and `[&>svg]:size-3!` are not read.
+///
+/// This is the rule the benchmark harness has scored every reference against since
+/// RFC-0006 §10.1 (`tailwind_height` in `benchmarks/harness/src/lib.rs`, kept identical
+/// by the same examples in both test suites). The evaluator used to refuse it as "a
+/// framework version's business", which left the compiler unable to see the one fact the
+/// scorer checks. Pilot 2's 7B buttons wrote `class "size-14" height 48` and `mz contract`
+/// passed them (RFC-0006 §5, amended 2026-09-29).
+pub fn scale_height(class: &str) -> Option<(String, i64)> {
+    class.split_whitespace().find_map(|token| {
+        let n = token
+            .strip_prefix("h-")
+            .or_else(|| token.strip_prefix("size-"))?;
+        let n: i64 = n.parse().ok()?;
+        Some((token.to_string(), n * 4))
+    })
 }
 
 /// The inside of a string literal, or `None` when the value is not one.
@@ -558,11 +592,11 @@ fn find_guard<'a>(view: &'a [Element], variant: &str) -> Option<&'a Element> {
 
 /// An element's height in CSS pixels, if it declares one.
 ///
-/// Two sources, in order: an explicit `height` or `min_height` attribute, then a
-/// `min-h-[Npx]` or `h-[Npx]` class. Tailwind's *scale* classes (`h-12`) are deliberately
-/// not read — that mapping is a framework version's business, and guessing it would let
-/// this check silently disagree with what actually renders. An element whose only height
-/// is `h-12` reports unevaluable, which is the honest answer.
+/// Three sources, in order: an explicit `height` or `min_height` attribute, a
+/// `min-h-[Npx]` or `h-[Npx]` class, then a spacing-scale `min-h-N`, `h-N` or `size-N`
+/// class ([`scale_height`]). Until 2026-09-29 the scale was not read, and an element whose
+/// only height was `h-12` was unevaluable; RFC-0006 §5's amendment gives the reason it now
+/// is. A height nothing here can read (`h-auto`, `h-1.5`) is still unevaluable.
 fn element_height(el: &Element) -> Option<i64> {
     for key in ["height", "min_height"] {
         if let Some(attr) = el.attrs.iter().find(|a| a.name == key)
@@ -581,7 +615,16 @@ fn element_height(el: &Element) -> Option<i64> {
             return Some(px);
         }
     }
-    None
+    // The spacing scale, by the same rule as a variant table's derived `height`; a
+    // `min-h-N` floor first, since it is what a touch target is held to.
+    class
+        .split_whitespace()
+        .find_map(|t| {
+            t.strip_prefix("min-h-")
+                .and_then(|n| n.parse::<i64>().ok())
+                .map(|n| n * 4)
+        })
+        .or_else(|| scale_height(class).map(|(_, px)| px))
 }
 
 fn bracketed_pixels(class: &str, prefix: &str) -> Option<i64> {
@@ -793,14 +836,14 @@ end component a
 
     #[test]
     fn a_height_the_compiler_cannot_read_is_unevaluable_not_a_pass() {
-        // `h-12` is 48px in one Tailwind version and could be something else in another.
-        // Guessing would let the check silently disagree with what renders.
+        // `h-auto` has no number to read. (Until 2026-09-29 this test used `h-12`, which
+        // the evaluator now reads as 48px on the spacing scale: see `scale_height`.)
         let src = "\
 component a
   view
     button
       text = \"Retry\"
-      class = \"h-12\"
+      class = \"h-auto\"
     end
   end
   contract

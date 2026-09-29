@@ -322,6 +322,7 @@ language itself.
    | `MZ0407` | `if open`                                        | there is no `if`; `exact` fix is `when`, and the block parses as a `when`       |
    | `MZ0408` | `slot = "x"` directly under `view`               | one diagnostic per run of such lines; attributes belong on an element           |
    | `MZ0409` | `span class = "x"`                               | an element word stands alone on its line; the tail was silently kept before     |
+   | `MZ0313` | `icon class "size-14" height 48`                 | a `height` that disagrees with its class (FM-11); `exact` fix is the rendered px |
 
    The same pilot found §4.1's "never a cascade" broken in three places, now each one
    diagnostic. A declaration word (`contract`, `prop`, …) inside an unclosed view, and
