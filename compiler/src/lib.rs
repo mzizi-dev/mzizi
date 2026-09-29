@@ -93,6 +93,72 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
     (report, tally)
 }
 
+/// Apply every `exact` fix in `report` to `src` in one pass (RFC-0001 §4.3), and return
+/// the new text.
+///
+/// [`CheckReport::disjoint_exact_fixes`] has already made the `exact` fixes pairwise
+/// disjoint, so the result does not depend on the order they are applied in. Two insertions
+/// at the same point land in diagnostic order, which is how missing closers have always
+/// been reported. `guess` fixes are never applied. A span is 1-indexed lines and columns in
+/// characters, the way the lexer counts; a position past the end of a line or of the file
+/// is clamped to it, so a fix that deletes the file's last line needs no trailing newline.
+///
+/// [`CheckReport::disjoint_exact_fixes`]: diagnostic::CheckReport::disjoint_exact_fixes
+pub fn apply_exact_fixes(src: &str, report: &CheckReport) -> String {
+    let chars: Vec<char> = src.chars().collect();
+    // Char offset of the start of each line, and the offset just past each line's text
+    // (before its `\r\n` or `\n`), so a column never reaches into a line ending.
+    let mut starts = vec![0usize];
+    for (i, c) in chars.iter().enumerate() {
+        if *c == '\n' {
+            starts.push(i + 1);
+        }
+    }
+    let line_text_end = |l: usize| -> usize {
+        let end = starts.get(l + 1).map_or(chars.len(), |&s| s - 1);
+        if end > starts[l] && chars.get(end - 1) == Some(&'\r') {
+            end - 1
+        } else {
+            end
+        }
+    };
+    let offset = |line: u32, col: u32| -> usize {
+        let l = (line as usize).saturating_sub(1);
+        if l >= starts.len() {
+            return chars.len();
+        }
+        (starts[l] + (col as usize).saturating_sub(1)).min(line_text_end(l).max(starts[l]))
+    };
+    let mut edits: Vec<(usize, usize, usize, &str)> = report
+        .diagnostics
+        .iter()
+        .enumerate()
+        .filter_map(|(i, d)| {
+            let f = d.fix.as_ref()?;
+            if f.confidence != diagnostic::Confidence::Exact {
+                return None;
+            }
+            let start = offset(f.span.start_line, f.span.start_col);
+            // An end on the line after the last is the end of the file.
+            let end = if f.span.end_col == 1 && f.span.end_line > f.span.start_line {
+                let l = f.span.end_line as usize - 1;
+                starts.get(l).copied().unwrap_or(chars.len())
+            } else {
+                offset(f.span.end_line, f.span.end_col)
+            };
+            Some((start, end.max(start), i, f.replace.as_str()))
+        })
+        .collect();
+    // Last edit first, so earlier offsets stay valid; at one point, the later diagnostic
+    // first, so the earlier one's text ends up in front.
+    edits.sort_by(|a, b| b.0.cmp(&a.0).then(b.2.cmp(&a.2)));
+    let mut out = chars;
+    for (start, end, _, replace) in edits {
+        out.splice(start..end, replace.chars());
+    }
+    out.into_iter().collect()
+}
+
 /// Check a file and also return the parsed component, for callers that need the tree.
 pub fn check_with_ast(src: &str, file: &str) -> (Option<ast::Component>, CheckReport) {
     let (component, diagnostics) = front_end(src, file);
