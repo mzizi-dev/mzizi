@@ -293,6 +293,15 @@ So the bare operand is `MZ0602`, and it carries an `exact` fix that inserts `is`
 mechanical repair `mz fix` can apply with no model in the loop. Three lines across two
 primitives were corrected in this PR.
 
+_Clarified 2026-09-29._ The `exact` fix exists only when there is an operand to put `is`
+in front of. Pilot 2 (`benchmarks/results/2026-09-27-pilot-2/RUN.md`, divergence 6) saw
+`MZ0602` arrive without a fix and read that as the compiler breaking this section's
+promise. The clause was `control "Button"` with nothing after it. No mechanical repair
+exists for that clause, because the missing number is the author's. The text above
+promised too much by not saying so. That clause now gets its own `MZ0602` wording. It
+names the one predicate an element subject takes (`min_height <n>`) and the `shows` form
+that asserts the element renders, and it carries no fix.
+
 ### 8.3 `card_radius` named nothing — _FM-12 caught in the act_
 
 `card.mz` asserted `card_radius uses "--radius-lg"`. There is no `card_radius` in that file:
