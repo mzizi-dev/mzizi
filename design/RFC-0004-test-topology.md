@@ -6,6 +6,10 @@
 one, the dependency-direction rule that keeps the project forkable, and the reporting
 mechanism between them.
 
+> **Amended by RFC-0009**, which records the owner's rule of 2026-09-29 that every benchmark
+> run is published. §4.2 is new and says what a held-out run publishes immediately and what
+> waits for the task set to retire. §6.2 is partly answered.
+
 ---
 
 ## 1. Correcting the premise first
@@ -155,6 +159,24 @@ not leak the test — a hash reveals nothing about the assertion attached to it.
 a private suite can state precisely which version of a component it verified, which a
 branch name or a line number cannot.
 
+### 4.2 What a held-out run publishes, and when
+
+The owner's rule (2026-09-29, RFC-0009 §7) is that every run is published, whichever way it
+falls. A held-out run cannot publish its task texts without contaminating them (§1.1), so
+publication is split in time, not in scope:
+
+- **On the day of the run:** the `PLAN.md` registered before it, the `RUN.md`, the
+  aggregates, each episode's numeric final line with its task named by content hash (§4.1),
+  the scorer version, and a SHA-256 of the complete raw bundle.
+- **Kept in the private repository until the task set is retired:** the task texts and
+  everything that quotes them, which means the prompts, the candidates and the diagnostics.
+- **When the set is retired:** the whole raw bundle is published into the same results
+  directory. Anyone can check it against the hash published on the day, so nothing can be
+  swapped or dropped in between.
+
+This is §3's third rule ("report the shape of the failure, not the task input") applied to a
+whole run rather than one check.
+
 ## 5. What this deliberately does not claim
 
 - It does not make Mzizi harder to attack. Security comes from the public suite, the
@@ -196,6 +218,9 @@ branch name or a line number cannot.
 
 2. **Held-out set rotation.** A held-out set leaks slowly through published results. It
    needs a refresh policy — probably a fraction rotated per reported run.
+   _Partly answered by RFC-0009 §7:_ a retired set is published in full (§4.2), so
+   retirement is the rotation's other half. The fraction rotated per reported run is still
+   open.
 3. **Third-party verification.** If an outside party needs to reproduce a benchmark claim,
    there has to be a path: most likely a time-limited grant to the private set under an
    agreement not to publish it. Unsolved, and worth solving before any number is published.
