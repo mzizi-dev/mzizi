@@ -6,8 +6,8 @@ is measured on tokens consumed, iterations to a clean compile, and defect rate. 
 code that compiles cleanly but disagrees with the hand-written Rust reference
 ([`CHARTER.md`](../../CHARTER.md) §6, [`RFC-0006`](../../design/RFC-0006-contracts.md) §10.1).
 
-It is a pilot, and it is small: three tasks. Results on it are reported whichever way they
-come out.
+It is a pilot, and it is small: four tasks (`card` was added on 2026-09-29, with the `slot_set`
+fact). Results on it are reported whichever way they come out.
 
 ## Fixture format
 
@@ -37,6 +37,11 @@ reference_path = "components/registry/n2-primitives/button.rs"
 - `reference` is never shown to the authoring agent. It is read only by the scorer.
 - `spec` and `reference` are paths relative to the task directory. `[source]` records where
   both files came from, so anyone can re-derive them with `git show <commit>:<path>`.
+- Optional keys: `enums = [...]` (the enum-naming sentence), `allow_variant_renames` with its
+  `rename_reason` (below), and `score_slots = true`, which adds the `slot_set` fact: the set
+  of `data-slot` values the port renders against the reference's
+  (`mzizi-benchmark-harness score --slots`). Each key is off unless a task sets it, so a
+  task keeps the facts it was scored on.
 
 Neither file is edited, reformatted or annotated. That is why neither carries a provenance
 header: `task.toml` carries it instead, and a copy that is not byte-identical is not a
@@ -53,7 +58,7 @@ being present.
 
 ## Provenance and licence
 
-All six copied files come from
+All eight copied files come from
 [`mzizi-dev/mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry) at commit
 `3afeb752253a86b5488867078c2238d2cf62b4f0`, copied unmodified. The registry is licensed under
 the Apache License, Version 2.0. Its `LICENSE` is byte-identical to this repository's
@@ -74,14 +79,48 @@ governance of The Bundu Foundation.
 ## Selection criterion
 
 A component is in the _scored_ set if and only if its `.rs` has at least one fact the
-reference extractor scores. The extractor looks at every Rust `enum` with an `impl` block
-containing a `fn classes(` method whose match arms return string literals. From each one it
-reads:
+reference extractor scores. The extractor reads, from every Rust `enum`:
 
 - the variant set;
-- the `#[default]` variant;
-- the touch height of each variant, derived from an `h-N` or `size-N` class token in that
-  variant's arm as N×4 px.
+- the `#[default]` variant, when there is one;
+- and, for an enum with an `impl` block containing a `fn classes(` method whose match arms
+  return string literals, the touch height of each variant, derived from an `h-N` or
+  `size-N` class token in that variant's arm as N×4 px.
+
+With `score_slots = true` it also reads the set of literal `"data-slot": "…"` values the
+component renders.
+
+_Corrected 2026-09-29._ This section used to say that the extractor looks only at enums with
+a `classes()` method. The scorer never worked that way. It reads every enum's variant set and
+`#[default]`, and the survey below was written from the wrong rule. Scoring each reference
+against itself at the pinned commit (`score --arm dioxus --slots`) gives these facts for the
+components the survey marked "out: 0 facts":
+
+| Component                   | Enum facts | `data-slot` set                                                                      |
+| --------------------------- | ---------: | ------------------------------------------------------------------------------------ |
+| `card`                      |          2 | 7: `card`, `card-header`, `-title`, `-description`, `-action`, `-content`, `-footer` |
+| `mzizi-connectivity-bar`    |          2 | 1                                                                                    |
+| `mzizi-deep-link-handler`   |          2 | 1                                                                                    |
+| `mzizi-mini-app-runtime`    |          2 | 1                                                                                    |
+| `mzizi-toast-provider`      |          2 | 1                                                                                    |
+| `mzizi-notification-center` |          1 | 1                                                                                    |
+| `mzizi-persistent-player`   |          1 | 1                                                                                    |
+| `mzizi-docs-engine`         |          0 | 1                                                                                    |
+| `mzizi-bottom-nav`          |          0 | 1                                                                                    |
+| `mzizi-command-palette`     |          0 | 1                                                                                    |
+| `mzizi-footer`              |          0 | 1                                                                                    |
+| `mzizi-update-prompt`       |          0 | 1                                                                                    |
+| `mzizi-route-guard`         |          1 | none (no `rsx!`)                                                                     |
+| `mzizi-theme-provider`      |          1 | none                                                                                 |
+| `mzizi-chaos`               |          2 | none (no `rsx!`)                                                                     |
+| `mzizi-platform-health`     |          2 | none (no `rsx!`)                                                                     |
+| `rtl-conformity-check`      |          4 | none (no `rsx!`)                                                                     |
+| `mzizi-fundi`               |          8 | none (no `rsx!`)                                                                     |
+
+Only `card` was added to this set, because it is the one with more than a single slot. The
+others would add one or two facts each, and the pilot tasks are public, so they could not
+serve as the kill-criterion set anyway (see "Contamination"). They are listed here as the
+public pool to draw on for development runs.
 
 Class-token Jaccard similarity is reported too, but it is a secondary metric and never
 counts as a defect.
@@ -108,9 +147,22 @@ every `nyuchi-*` component to `mzizi-*`. At the pinned commit, and in the copied
 |                            | `ButtonSize` (5, `Default`)    | `Default` 56, `Sm` 48, `Lg` 56, `Icon` 56, `IconSm` 48 | 7               |
 | `badge`                    | `BadgeVariant` (6, `Default`)  | none: the badge's `h-5` is in `BASE`, not in an arm    | 2               |
 | `mzizi-changelog-renderer` | `NodeAccent` (4, `Cobalt`)     | none                                                   | 2               |
+| `card`                     | `CardSize` (2, `Default`)      | none: no `classes()`                                   | 2 + 1 slot set  |
 
-Facts are counted as one for each enum's variant set, one for each `#[default]`, and one
-for each derived height, for a total of 13. Only `ButtonSize` exercises the height check.
+Facts are counted as one for each enum's variant set, one for each `#[default]`, one for each
+derived height, and one `slot_set` for a task that sets `score_slots`, for a total of 16. Only
+`ButtonSize` exercises the height check, and only `card` the slot set; the three pilot tasks
+do not set `score_slots`, so they score the 13 facts they were scored on in both pilots.
+
+### Caveat: `card` is seven components in one `.tsx`
+
+`card.tsx` exports `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardAction`,
+`CardContent` and `CardFooter`. A Dioxus port writes seven components. A Mzizi file holds one
+component (RFC-0001 §7.4), so a Mzizi port has to render the seven slots as regions of one
+view. That is a real property of the language, not an artefact of the task, and the slot set
+is the fact that measures whether the port kept them. The corpus's own `primitives/card.mz` is
+a three-slot simplification (`card`, `card-header`, `card-body`) and scores 3 defects against
+this reference, which is expected: it was never a port of `card.tsx`.
 
 ### Caveat: `mzizi-changelog-renderer` is scoreable, but its variant names diverge on purpose
 
@@ -167,7 +219,7 @@ component's logic only and renders no markup.
 | `button` (N2)                    | `ButtonVariant` 6/`Default`; `ButtonSize` 5/`Default`, 5 heights | `data-slot="button"`, `data-variant`/`data-size` slugs (`icon-sm`), `data-portal`; `variant`/`size`/`class` default       | react, cva, radix-ui `Slot`, `cn`                | in              |
 | `badge` (N2)                     | `BadgeVariant` 6/`Default`                                       | `data-slot="badge"`, `data-variant`, `data-portal`; `h-5` base height                                                     | react, cva, radix-ui `Slot`, `cn`                | in              |
 | `mzizi-changelog-renderer` (N10) | `NodeAccent` 4/`Cobalt`                                          | `role="feed"`, `aria-label`s, `aria-posinset`/`setsize`/`labelledby` (Rust additions), `data-slot`; `+c`/`~c`/`N{n}` text | react, `cn`                                      | in (see caveat) |
-| `card` (N2)                      | none: `CardSize` 2/`Default` has only `slug()`                   | 7 `data-slot`s, `data-size`, `data-loading`, `loading = false`, 3-bar skeleton                                            | react, `cn`                                      | out: 0 facts    |
+| `card` (N2)                      | `CardSize` 2/`Default` (variant set, default); 7 `data-slot`s    | 7 `data-slot`s, `data-size`, `data-loading`, `loading = false`, 3-bar skeleton                                            | react, `cn`                                      | in (2026-09-29) |
 | `mzizi-docs-engine` (N10)        | none: no enum                                                    | `data-slot`, `aria-current`, 3 `aria-label`s, 7 prop defaults, search and filter functions                                | react, `cn`                                      | out: 0 facts    |
 | `mzizi-bottom-nav` (N7)          | none: no enum                                                    | `aria-label`, `data-slot`, `is_active` path matching                                                                      | react, `next/navigation`, `cn`, `@/lib/icons`    | out: 0 facts    |
 | `mzizi-command-palette` (N7)     | none: no enum                                                    | `role` dialog/listbox/option, `aria-modal`, `aria-hidden`, `node_mineral_class`, Ctrl/Meta+K                              | react, `cn`, `@/lib/harness`                     | out: 0 facts    |

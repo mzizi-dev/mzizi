@@ -1,6 +1,6 @@
 //! `mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>`
 //! `mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs>
-//!  [--allow-variant-renames]`
+//!  [--allow-variant-renames] [--slots]`
 //!
 //! **`diff`** — prerequisite: `mz contract --agent <file.mz>` must exit 0. `mz contract` is
 //! a self-consistency check (RFC-0006), so if a component fails its own declared contract
@@ -17,12 +17,16 @@
 //! `--allow-variant-renames` turns on class-token pairing of renamed variants
 //! (`mzizi_benchmark_harness::rename_map`); `mzbench` passes it only for a task whose
 //! `task.toml` sets `allow_variant_renames = true`. Without it, variants match by name.
+//! `--slots` adds one `slot_set` fact, the component's `data-slot` values against the
+//! reference's (`mzizi_benchmark_harness::slot_fact`); `mzbench` passes it for a task whose
+//! `task.toml` sets `score_slots = true`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use mzizi_benchmark_harness::{
     Arm, diff_size_enum, parse_mzizi_size_enums, parse_rust_enums, reference_class_arms, score,
+    slot_fact,
 };
 
 enum Cmd {
@@ -35,6 +39,7 @@ enum Cmd {
         candidate: PathBuf,
         reference: PathBuf,
         allow_variant_renames: bool,
+        slots: bool,
     },
 }
 
@@ -47,9 +52,14 @@ fn parse_args() -> Result<Cmd, String> {
 
     let mut flags: Vec<(String, String)> = Vec::new();
     let mut allow_variant_renames = false;
+    let mut slots = false;
     while let Some(flag) = args.next() {
         if subcommand == "score" && flag == "--allow-variant-renames" {
             allow_variant_renames = true;
+            continue;
+        }
+        if subcommand == "score" && flag == "--slots" {
+            slots = true;
             continue;
         }
         let allowed: &[&str] = if subcommand == "diff" {
@@ -90,6 +100,7 @@ fn parse_args() -> Result<Cmd, String> {
             candidate: PathBuf::from(get("--candidate")?),
             reference: PathBuf::from(get("--reference")?),
             allow_variant_renames,
+            slots,
         })
     }
 }
@@ -97,7 +108,7 @@ fn parse_args() -> Result<Cmd, String> {
 fn usage() -> String {
     "usage: mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>\n       \
      mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs> \
-     [--allow-variant-renames]"
+     [--allow-variant-renames] [--slots]"
         .to_string()
 }
 
@@ -126,7 +137,8 @@ fn main() -> ExitCode {
             candidate,
             reference,
             allow_variant_renames,
-        } => run_score(arm, &candidate, &reference, allow_variant_renames),
+            slots,
+        } => run_score(arm, &candidate, &reference, allow_variant_renames, slots),
     };
     result.unwrap_or_else(|code| code)
 }
@@ -136,15 +148,19 @@ fn run_score(
     candidate: &Path,
     reference: &Path,
     allow_variant_renames: bool,
+    slots: bool,
 ) -> Result<ExitCode, ExitCode> {
     let candidate_src = read(candidate)?;
     let reference_src = read(reference)?;
-    let report = score(
+    let mut report = score(
         arm,
         &parse_rust_enums(&reference_src),
         &arm.extract(&candidate_src),
         allow_variant_renames,
     );
+    if slots && let Some(fact) = slot_fact(arm, &reference_src, &candidate_src) {
+        report.facts.push(fact);
+    }
     println!("{}", report.to_json());
     Ok(ExitCode::SUCCESS)
 }
