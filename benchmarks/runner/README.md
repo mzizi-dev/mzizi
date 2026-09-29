@@ -16,6 +16,7 @@ Options shared by `run` and `episode start`:
 - `--guide <file>` — the system message. Defaults to `benchmarks/prompts/<arm>-guide.md`.
 - `--check-cmd '<json argv>'` — replaces the compile check. Placeholder: `{file}`.
 - `--score-cmd '<json argv>'` — replaces the scorer. Placeholders: `{arm}`, `{candidate}`, `{reference}`.
+- `--normalise <file-name|none>` — what is done to the check's stdout before it is recorded and fed back. The default, `file-name`, replaces the candidate's path, as the check was passed it, with its bare file name. It applies to every arm. `none` feeds the output back exactly as printed. Recorded in `meta.json` as `diagnostics_normaliser`.
 
 ### Mode 1 — model-driven (llama.cpp)
 
@@ -66,11 +67,12 @@ This prints markdown tables per (model, arm) and per (model, arm, task). Every r
 ```text
 <out>/<model>/<arm>/<task>/seed-<n>/
   meta.json          task, arm, model, seed, temperature, max_iters, endpoint,
-                     guide path/bytes/FNV-1a hash, enums, check+score argv
+                     guide path/bytes/FNV-1a hash, enums, check+score argv,
+                     diagnostics_normaliser
   system.txt user.txt prompt.md
   iter-NN/reply.md          raw model reply (Mode 1 only)
   iter-NN/candidate.mz|rs   the candidate as checked
-  iter-NN/diagnostics.txt   the check's stdout (or the extraction error)
+  iter-NN/diagnostics.txt   the check's stdout after the normaliser (or the extraction error)
   iter-NN/stderr.txt        the check's stderr (never fed back)
   iter-NN/feedback.txt      the user message sent next (only if one was sent)
   score.json score.stderr.txt   the scorer's output, if a clean candidate was scored
@@ -134,7 +136,7 @@ A clean episode whose scorer failed is neither defective nor defect-free. It is 
 - One prompt builder (`src/prompt.rs`) serves both arms and both modes. The two user messages differ only in the language name and file kind, and a unit test proves it.
 - If the task's `task.toml` has `enums = ["ButtonVariant", …]`, the builder adds exactly one sentence naming them. It uses PascalCase for Dioxus and snake_case for Mzizi, plus that arm's class accessor: "`classes()` method" or "`class` column". The scorer keys facts by enum name, so without this sentence a model that named an enum `Size` would be scored on naming, not behaviour. The sentence deliberately says nothing about heights or any other scored fact. A test proves the two sentences are equal once naming is taken out.
 - If the task's `task.toml` sets `allow_variant_renames = true` (it must then also give a `rename_reason`), the runner appends `--allow-variant-renames` to the scorer argv — the default one or a `--score-cmd` override — and records `allow_variant_renames` and `rename_reason` in `meta.json`. It is a property of the task, so it applies to every arm alike. Only `mzizi-changelog-renderer` sets it; see [`../tasks/README.md`](../tasks/README.md).
-- The feedback text is arm-independent, and the diagnostics are appended verbatim.
+- The feedback text is arm-independent, and the diagnostics are appended verbatim after one arm-independent normalisation: the candidate's path becomes its file name. Before 2026-09-29 there was no normaliser, and `mz check --agent` echoed the absolute path on every diagnostic while the Dioxus `check.sh` printed the bare name. Pilot 2 measured that at about 13,500 tokens across the 7B model's five finished Mzizi episodes ([`../results/2026-09-27-pilot-2/RUN.md`](../results/2026-09-27-pilot-2/RUN.md)).
 - Both arms use the same extraction rule, the same `max_iters` and the same scorer invocation.
 
 ## Known asymmetries (recorded, not hidden)
@@ -145,6 +147,16 @@ A clean episode whose scorer failed is neither defective nor defect-free. It is 
 4. **Mode 2 has no sampling controls.** `temperature` is `null`, and `seed` is only a label.
 5. **The two arms use different compile checks.** `mz check` is a single-file front end; `check.sh` is a cargo build. `check_ms` is each arm's real loop latency, including process and cargo overhead, so it is not a like-for-like compiler comparison.
 6. **The enum sentence's accessor phrase is arm-specific**, as described in the fairness section.
+
+## Adding an arm
+
+An arm is three things, and nothing else in the runner is arm-specific:
+
+1. **A guide**, `benchmarks/prompts/<arm>-guide.md`. It is the system message, verbatim, and its size is part of the arm's token cost.
+2. **A check command** (`default_check` in `src/exec.rs`, or `--check-cmd`). It takes the candidate's path as `{file}` and must exit 0 for a clean candidate, 1 for a candidate with errors, and anything else for a setup problem.
+3. **A diagnostic normaliser** (`Normaliser` in `src/exec.rs`, or `--normalise`). It rewrites the check's stdout before the author sees it. The default already applies to every arm.
+
+The arm's name, file extension, language name and file-kind phrase live in `Arm` in `src/prompt.rs`. A new variant must be added to the prompt-parity tests in that file. Scoring is separate: the scorer reads enum facts from Rust and Mzizi only. An arm in another language needs its own extractor in `benchmarks/harness/` before its episodes can be scored. Until then they are recorded as clean but unscored, which is never counted as defect-free.
 
 ## Dependencies
 
