@@ -16,9 +16,13 @@ crates (see "Build, test, run"). See "Repo boundaries" below before adding any d
 
 ## The one rule that overrides the others
 
-**Nothing in this repository has been measured against the charter's kill criterion.** The
-Phase 0 benchmark has not run. Do not write or accept a commit message, PR description, or
-comment that implies otherwise — "compiles to Rust", "the benchmark shows", "production
+**Nothing in this repository has been measured against the charter's kill criterion.** Two
+Phase 0 pilots ran on 2026-09-27, and neither showed an advantage for Mzizi: the frontier model
+tied the arms, and the ~7B open-weight model did worse in Mzizi on all three metrics
+([`benchmarks/results/`](./benchmarks/results/)). Neither is the kill-criterion run, and that
+run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
+waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
+Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust", "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -39,9 +43,10 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 183 tests
+cargo test                                                              # 213 tests (308 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
+cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
 cargo run --bin mz -- outline        ../primitives/alert.mz
 cargo run --bin mz -- ir              ../primitives/card.mz
@@ -88,7 +93,13 @@ an interactive shell, because the first failure closes it.
 test harness parses the corpus, `mz check`/`mz contract` prove the binary this project ships
 does — that second claim is the one the charter makes. `mz check --agent` is the interface
 an agent consuming this compiler should target: whole-program NDJSON, deterministic order,
-one diagnostic per real error, fixes tagged `exact` or `guess` — see RFC-0001 §4.
+one diagnostic per real error, fixes tagged `exact` or `guess` — see RFC-0001 §4. `mz fix`
+applies every `exact` fix in one pass. The `file` key is the path `mz` was given; the benchmark
+runner normalises it to the bare file name before a model sees it.
+
+The benchmark's kill-criterion driver (`benchmarks/kill-criterion/run.sh`) needs a model
+endpoint, and CI does not run it. `benchmarks/kill-criterion/check-task.sh <task dir>` is
+the offline check a task author runs.
 
 ## Commit and merge conventions
 
@@ -124,12 +135,24 @@ Do not wire a build step, test, or script here that reaches out to `mzizi-regist
 
 ## Naming and ownership
 
-- The language repo is plain `mzizi`; every other repo in the org is `mzizi-`-prefixed.
-- Mzizi (this repo) is 100% Mzizi IP, as are the framework, the component registry and
-  everything else non-revenue. Revenue-generating work (the Mzizi console "Fundi", paid
-  plans, billing) is Nyuchi-owned. Keep that line — CHARTER.md draws it deliberately.
-- Brand wordmarks are lowercase in prose: `mzizi`, `bundu`, `nyuchi`, `fundi`. Not
-  "Mzizi™", not title case in running text.
+- The language repo is plain `mzizi`. The org's other product repositories are
+  `mzizi-`-prefixed, with `agent-tools` the one exception.
+- Mzizi owns and operates the framework, the language, the registry, the design system, the
+  docs and the API. Nyuchi operates the console (`app.mzizi.dev`) and the revenue products.
+  Copyright notices name the Bundu Foundation as the parent copyright holder; Mzizi is not a
+  separate legal entity. Keep that line — CHARTER.md draws it deliberately.
+- Write the wordmark as `Mzizi`, capitalised, never "Mzizi™". The other wordmarks stay
+  lowercase in prose: `nyuchi`, `mukoko`, `shamwari`, `bundu`, `nhimbe`. Code identifiers,
+  such as this repo's name, stay as they are.
+- **Mzizi Roots** is the name for Mzizi's own components in Rust: UI and server components
+  for the agentic web. React/TSX components keep working but are deprioritised; where a
+  Rust implementation exists, present it first.
+- The rest of the ecosystem, for reference: `api.mzizi.dev` is `mzizi-api-gateway`, a Hono
+  Worker in TypeScript that serves the registry's files bundled at a pinned commit (no
+  database, no origin). `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds
+  no database; its files are the data layer. Only the console uses Supabase.
+- Security reports: `security@bundu.org` for this repo (see [`SECURITY.md`](./SECURITY.md));
+  the console's is `security@nyuchi.com`.
 
 ## Further reading
 
