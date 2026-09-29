@@ -1,13 +1,15 @@
 ## Deliberately-broken copy of ../../../../primitives/button.mz for the harness's own test
-## suite (RFC-0006 §10.1's kill-criterion case): `sm`'s declared height is dropped from 48 to
-## 44 px, and the contract is weakened to match — `button_size.sm height is 48` becomes
-## `is 44`, and the touch-floor assertion drops from `at_least 48` to `at_least 44` — so the
-## file still compiles cleanly and still passes its own `mz contract` (self-consistency).
-## The `sm` class string is untouched: `h-12` is still there, and `h-12` is 48px on the real
-## Tailwind scale. That gap — a component whose own contract it satisfies, silently wrong
-## against the reference `h-12` really means — is exactly the defect this harness exists to
-## catch, and it is caught only by the reference diff, not by `mz contract` on this file
-## alone.
+## suite (RFC-0006 §10.1's kill-criterion case): `sm` is made 44px — its class `h-12` becomes
+## `h-11` and its declared height 48 becomes 44, so the two still agree — and the contract is
+## weakened to match: `button_size.sm height is 48` becomes `is 44`, and the touch-floor
+## assertion drops from `at_least 48` to `at_least 44`. The file compiles cleanly and passes
+## its own `mz contract` (self-consistency), and is wrong against the reference, whose `sm`
+## is `h-12` (48px). That gap is exactly the defect this harness exists to catch, and only
+## the reference diff catches it.
+##
+## Until 2026-09-29 this copy kept `h-12` and declared `height 44`. That is FM-11 (one fact
+## written twice, disagreeing), which `mz check` now rejects as MZ0313, so the copy changes
+## the class and the height together.
 component button
 
   enum button_variant
@@ -21,7 +23,7 @@ component button
 
   enum button_size
     default   class "h-14 gap-2 px-5"     height 56
-    sm        class "h-12 gap-1.5 px-4"   height 44
+    sm        class "h-11 gap-1.5 px-4"   height 44
     lg        class "h-14 gap-2 px-6"     height 56
     icon      class "size-14"             height 56
     icon_sm   class "size-12"             height 48

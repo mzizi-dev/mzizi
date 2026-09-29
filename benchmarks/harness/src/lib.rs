@@ -53,8 +53,9 @@ pub struct EnumModel {
     /// body is a single string literal; for Mzizi, the variant row's `class` column.
     pub classes: BTreeMap<String, String>,
     /// Variant → pixel height. For Rust, derived from the class string's first `h-N` /
-    /// `size-N` token; for Mzizi, the row's declared `height` column. The scorer compares
-    /// the reference's derived heights against whichever of these the candidate carries.
+    /// `size-N` token; for Mzizi, the row's declared `height` column, or, for a row that
+    /// declares none, the same derivation from its `class`. The scorer compares the
+    /// reference's derived heights against whichever of these the candidate carries.
     pub heights: BTreeMap<String, u32>,
 }
 
@@ -706,10 +707,21 @@ pub fn parse_mzizi_enums(src: &str) -> Vec<EnumModel> {
                 break;
             }
             if let Some(row) = parse_variant_row(body_line) {
+                // A row that writes no `height` renders the one its class does. The
+                // compiler reads it the same way (`scale_height` in
+                // `compiler/src/contract.rs`), so a size table can state the height once
+                // (RFC-0006 §5, amended 2026-09-29). This is the rule the Dioxus arm's
+                // heights have always been read by, from its own `classes()` strings.
+                let height = row.height.or_else(|| {
+                    row.class
+                        .as_deref()
+                        .and_then(tailwind_height)
+                        .map(|(_, px)| px)
+                });
                 if let Some(c) = row.class {
                     e.classes.insert(row.name.clone(), c);
                 }
-                if let Some(h) = row.height {
+                if let Some(h) = height {
                     e.heights.insert(row.name.clone(), h);
                 }
                 e.variants.push(row.name);
@@ -1719,6 +1731,34 @@ impl ButtonSize {
             .iter()
             .find(|e| e.name == name)
             .unwrap_or_else(|| panic!("no enum {name} in {enums:#?}"))
+    }
+
+    #[test]
+    fn the_scale_rule_matches_the_compiler_on_the_same_examples() {
+        // The same table is in `compiler/tests/contracts.rs`: the scorer and `mz contract`
+        // must read a class the same way, or FM-11 comes back between them.
+        for (class, want) in [
+            ("h-14 gap-2 px-5", Some(56)),
+            ("size-12", Some(48)),
+            ("gap-2 h-9", Some(36)),
+            ("h-1.5", None),
+            ("h-[56px]", None),
+            ("md:h-10", None),
+            ("[&>svg]:size-3!", None),
+            ("min-h-12", None),
+        ] {
+            assert_eq!(tailwind_height(class).map(|(_, px)| px), want, "{class}");
+        }
+    }
+
+    #[test]
+    fn a_mzizi_row_without_a_height_is_scored_on_its_class() {
+        let mz = "enum button_size\n  default class \"h-14 gap-2\"\n  sm class \"h-11\"\n  icon class \"size-14\" height 48\nend\n";
+        let e = &parse_mzizi_enums(mz)[0];
+        assert_eq!(e.heights["default"], 56);
+        assert_eq!(e.heights["sm"], 44);
+        // A declared height is what the candidate claims, and is scored as written.
+        assert_eq!(e.heights["icon"], 48);
     }
 
     #[test]
