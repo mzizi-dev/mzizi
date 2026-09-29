@@ -79,6 +79,12 @@ exists because a spec and its reference can disagree on names: only
 `mzizi-changelog-renderer` sets it (see [`tasks/README.md`](tasks/README.md), and the pilot
 that found it in [`results/2026-09-27-pilot/RUN.md`](results/2026-09-27-pilot/RUN.md)).
 
+A task may also opt in to one fact that is not about enums: with `score_slots = true` in its
+`task.toml`, `score --slots` compares the set of literal `data-slot` values the port renders
+(`"data-slot": "…"` in Rust, `slot = "…"` in Mzizi) with the reference's. The registry's
+`data-slot` names are its styling contract, and the fact makes a component with no enum
+scoreable. Only `card` sets it; the pilot tasks keep the facts they were scored on.
+
 Sequencing: the harness requires `mz contract --agent <file.mz>` to exit 0 _before_ it runs the
 reference diff. A component that fails its own contract is reported as that failure and the
 reference diff does not run — the two checks answer different questions, and conflating them

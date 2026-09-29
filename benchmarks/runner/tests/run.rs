@@ -227,3 +227,24 @@ fn the_changelog_task_opt_in_reaches_the_real_scorer() {
         "button does not opt in"
     );
 }
+
+/// The card task opts in to slot scoring, so the scorer runs with `--slots` and a port that
+/// renders all seven of the reference's `data-slot`s scores 3 facts with no defect.
+#[test]
+fn the_card_task_scores_its_slot_set() {
+    let out = Scratch::new("slots");
+    let ep = start_task(&out.0, "card");
+    assert!(score_argv(&ep).iter().any(|a| a == "--slots"));
+    let candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/card_all_slots.mz");
+    let o = submit(&ep, &candidate);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let fin = finish(&ep);
+    assert_eq!(fin["scored"], true, "{fin}");
+    assert_eq!(fin["facts_checked"], 3, "{fin}");
+    assert_eq!(fin["defects"], 0, "{fin}");
+    let score = std::fs::read_to_string(ep.join("score.json")).unwrap();
+    assert!(score.contains(r#""fact":"slot_set""#), "{score}");
+
+    let button = start(&out.0);
+    assert!(!score_argv(&button).iter().any(|a| a == "--slots"));
+}

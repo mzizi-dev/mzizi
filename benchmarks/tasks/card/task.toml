@@ -1,0 +1,13 @@
+name = "card"
+spec = "spec.tsx"
+reference = "reference.rs"
+enums = ["CardSize"]
+# Score the component's data-slot set too (mzizi-benchmark-harness score --slots). The
+# card's seven data-slot names are its styling contract, and its one enum has no classes(),
+# so without this the task would check 2 facts. See benchmarks/tasks/README.md.
+score_slots = true
+[source]
+repo = "mzizi-dev/mzizi-registry"
+commit = "3afeb752253a86b5488867078c2238d2cf62b4f0"
+spec_path = "components/registry/n2-primitives/card.tsx"
+reference_path = "components/registry/n2-primitives/card.rs"

@@ -14,6 +14,10 @@
 //! default — a candidate that renames against its spec must score the rename — and a task
 //! that sets it must also give a non-empty `rename_reason` saying why its spec and
 //! reference disagree on names, or the task does not load.
+//!
+//! `score_slots = true` adds the `slot_set` fact: the component's `data-slot` values
+//! against the reference's (`mzizi-benchmark-harness score --slots`). Off by default, so a
+//! task scored before the fact existed scores the same facts when it is run again.
 
 use std::path::{Path, PathBuf};
 
@@ -29,6 +33,8 @@ pub struct Task {
     pub allow_variant_renames: bool,
     /// Why the task allows renames. `Some` exactly when `allow_variant_renames` is set.
     pub rename_reason: Option<String>,
+    /// `score_slots = true`: score the `data-slot` set too. `false` when absent.
+    pub score_slots: bool,
 }
 
 pub fn load_task(dir: &Path) -> Result<Task, String> {
@@ -58,6 +64,9 @@ pub fn load_task(dir: &Path) -> Result<Task, String> {
     let allow_variant_renames = top_level_bool(&toml, "allow_variant_renames")
         .map_err(|e| format!("{}: {e}", toml_path.display()))?
         .unwrap_or(false);
+    let score_slots = top_level_bool(&toml, "score_slots")
+        .map_err(|e| format!("{}: {e}", toml_path.display()))?
+        .unwrap_or(false);
     let rename_reason = top_level_string(&toml, "rename_reason").filter(|r| !r.trim().is_empty());
     match (allow_variant_renames, &rename_reason) {
         (true, None) => {
@@ -82,6 +91,7 @@ pub fn load_task(dir: &Path) -> Result<Task, String> {
         enums,
         allow_variant_renames,
         rename_reason,
+        score_slots,
     })
 }
 
@@ -281,10 +291,36 @@ mod tests {
         for (name, allowed) in [
             ("button", false),
             ("badge", false),
+            ("card", false),
             ("mzizi-changelog-renderer", true),
         ] {
             let t = load_task(&tasks.join(name)).unwrap();
             assert_eq!(t.allow_variant_renames, allowed, "{name}");
+        }
+    }
+
+    #[test]
+    fn slot_scoring_is_off_by_default_and_on_only_for_card() {
+        assert!(!load_task(&task_dir("name = \"a\"\n")).unwrap().score_slots);
+        assert!(
+            load_task(&task_dir("name = \"b\"\nscore_slots = true\n"))
+                .unwrap()
+                .score_slots
+        );
+        assert!(load_task(&task_dir("name = \"c\"\nscore_slots = yes\n")).is_err());
+        // The pilot tasks keep the facts they were scored on, so a re-run is comparable.
+        let tasks = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tasks");
+        for (name, on) in [
+            ("button", false),
+            ("badge", false),
+            ("mzizi-changelog-renderer", false),
+            ("card", true),
+        ] {
+            assert_eq!(
+                load_task(&tasks.join(name)).unwrap().score_slots,
+                on,
+                "{name}"
+            );
         }
     }
 

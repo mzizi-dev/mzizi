@@ -153,6 +153,9 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
     if task.allow_variant_renames {
         score.argv.push("--allow-variant-renames".into());
     }
+    if task.score_slots {
+        score.argv.push("--slots".into());
+    }
 
     let prompt = build_prompt(arm, &guide, &spec, &task.enums);
     let meta = EpisodeMeta {

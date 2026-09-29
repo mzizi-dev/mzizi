@@ -1,0 +1,48 @@
+## A card port that renders all seven of the reference's data-slots, for the runner's
+## end-to-end test of the `slot_set` fact. Written for the test; not a corpus component.
+component card
+
+  enum card_size
+    default  class "gap-6 py-6"
+    sm       class "gap-4 py-4"
+  end
+
+  prop size: card_size = default
+  prop title: text
+  prop description: text
+  prop body: text
+
+  view
+    surface
+      slot = "card"
+      class = "flex flex-col rounded-[var(--radius-lg,14px)] {size.class}"
+      row
+        slot = "card-header"
+        row
+          slot = "card-title"
+          text = title
+        end
+        row
+          slot = "card-description"
+          text = description
+        end
+        row
+          slot = "card-action"
+        end
+      end
+      row
+        slot = "card-content"
+        text = body
+      end
+      row
+        slot = "card-footer"
+      end
+    end
+  end
+
+  contract
+    slot is "card"
+    class uses "--radius-lg"
+  end
+
+end component card

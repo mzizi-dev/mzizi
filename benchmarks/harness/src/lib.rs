@@ -1143,6 +1143,10 @@ pub enum FactKind {
     /// A variant's height equals the one derived from the reference's `classes()` string.
     /// One per reference variant whose class string carries an `h-N` / `size-N` token.
     Height,
+    /// The set of `data-slot` values the component renders equals the reference's. One per
+    /// task that opts in (`score --slots`, from `score_slots = true` in `task.toml`) and
+    /// whose reference renders at least one literal `data-slot`. See [`slot_fact`].
+    SlotSet,
     /// The candidate named the enum's variants differently from the reference, and, because
     /// the task opted in, they were paired by class-token similarity instead (see
     /// [`rename_map`]). Never a defect, and so **not a checked fact**: it is in `details` so
@@ -1161,6 +1165,7 @@ impl FactKind {
             FactKind::Default => "default",
             FactKind::Height => "height",
             FactKind::VariantNames => "variant_names",
+            FactKind::SlotSet => "slot_set",
         }
     }
 }
@@ -1230,7 +1235,12 @@ impl ScoreReport {
                 s.push(',');
             }
             s.push_str("{\"enum\":");
-            push_json_str(&mut s, &f.enum_name);
+            // A fact about the whole component (`slot_set`) belongs to no enum.
+            if f.enum_name.is_empty() {
+                s.push_str("null");
+            } else {
+                push_json_str(&mut s, &f.enum_name);
+            }
             s.push_str(",\"variant\":");
             match &f.variant {
                 Some(v) => push_json_str(&mut s, v),
@@ -1581,6 +1591,87 @@ pub fn score(
     }
 }
 
+/// Every literal `data-slot` value a Rust file renders: each `"data-slot": "<value>"`
+/// attribute pair in an `rsx!` body, as the registry's references and a Dioxus candidate
+/// write it. A computed value (`"data-slot": slot_name`) is not a literal and is not read.
+pub fn parse_rust_slots(src: &str) -> BTreeSet<String> {
+    let lx = lex(src);
+    let mut out = BTreeSet::new();
+    for (i, lit) in lx.lits.iter().enumerate() {
+        if lit.value != "data-slot" {
+            continue;
+        }
+        let colon = skip_ws(&lx.mask, lit.end);
+        if lx.mask.get(colon) != Some(&b':') {
+            continue;
+        }
+        let at = skip_ws(&lx.mask, colon + 1);
+        if let Some(next) = lx.lits.get(i + 1)
+            && next.start == at
+        {
+            out.insert(next.value.clone());
+        }
+    }
+    out
+}
+
+/// Every literal `slot = "<value>"` a `.mz` view sets — Mzizi's spelling of `data-slot`
+/// (RFC-0001 §1.5; the guide maps `data-slot="x"` to `slot = "x"`). An interpolated value
+/// is not a literal and is not read; `data_slot = …` is not Mzizi's `slot` and is not read.
+pub fn parse_mzizi_slots(src: &str) -> BTreeSet<String> {
+    src.lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("slot")?;
+            let value = rest.trim_start().strip_prefix('=')?.trim();
+            let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+            (!inner.contains('"') && !inner.contains('{')).then(|| inner.to_string())
+        })
+        .collect()
+}
+
+/// The `slot_set` fact: the set of `data-slot` values the candidate renders against the
+/// reference's. `None` when the reference renders none, since a component with nothing to
+/// disagree about checks no fact (the rule `default` already follows). A defect when the
+/// sets differ in either direction: a missing slot breaks the CSS and the tests that target
+/// it, and an extra one claims a part the component does not have.
+///
+/// The survey in `benchmarks/tasks/README.md` proposed this fact because the registry's
+/// `data-slot` names are its styling contract (the card reference's module docs: "the
+/// `data-slot` names are the contract"), and because it makes components with no enum
+/// scoreable at all.
+pub fn slot_fact(arm: Arm, reference_src: &str, candidate_src: &str) -> Option<Fact> {
+    let want = parse_rust_slots(reference_src);
+    if want.is_empty() {
+        return None;
+    }
+    let got = match arm {
+        Arm::Mzizi => parse_mzizi_slots(candidate_src),
+        Arm::Dioxus => parse_rust_slots(candidate_src),
+    };
+    let show = |s: &BTreeSet<String>| {
+        let v: Vec<String> = s.iter().cloned().collect();
+        set_text(&v)
+    };
+    let missing: Vec<String> = want.difference(&got).cloned().collect();
+    let extra: Vec<String> = got.difference(&want).cloned().collect();
+    let mut expected = show(&want);
+    let mut actual = show(&got);
+    if !missing.is_empty() {
+        expected.push_str(&format!("; missing from candidate: {}", set_text(&missing)));
+    }
+    if !extra.is_empty() {
+        actual.push_str(&format!("; extra in candidate: {}", set_text(&extra)));
+    }
+    Some(Fact {
+        enum_name: String::new(),
+        variant: None,
+        kind: FactKind::SlotSet,
+        expected,
+        actual,
+        defect: want != got,
+    })
+}
+
 /// The mean, over every variant that has a class string on both sides, of the Jaccard
 /// similarity `|A ∩ B| / |A ∪ B|` of the two strings' whitespace-split token sets. Variants
 /// are matched by enum and variant name, or — when `allow_variant_renames` is set — through
@@ -1731,6 +1822,46 @@ impl ButtonSize {
             .iter()
             .find(|e| e.name == name)
             .unwrap_or_else(|| panic!("no enum {name} in {enums:#?}"))
+    }
+
+    #[test]
+    fn slot_sets_are_read_from_both_arms_and_compared_as_sets() {
+        let reference = r#"rsx! { div { "data-slot": "card", div { "data-slot": "card-header", class: "x" } } }
+            rsx! { div { "data-slot": "card", "data-loading": "true" } }
+            let s = "data-slot"; // a literal on its own is not an attribute pair
+            rsx! { div { "data-slot": computed } }"#;
+        assert_eq!(
+            parse_rust_slots(reference).into_iter().collect::<Vec<_>>(),
+            ["card", "card-header"]
+        );
+        let mz = "  view\n    row\n      slot = \"card\"\n      row\n        slot = \"card-header\"\n        data_slot = \"ignored\"\n        slot = \"x-{v}\"\n      end\n    end\n  end\n  contract\n    slot is \"card\"\n  end\n";
+        assert_eq!(
+            parse_mzizi_slots(mz).into_iter().collect::<Vec<_>>(),
+            ["card", "card-header"]
+        );
+        let f = slot_fact(Arm::Mzizi, reference, mz).unwrap();
+        assert!(!f.defect, "{f:?}");
+        let short = "view\n  row\n    slot = \"card\"\n  end\nend\n";
+        let f = slot_fact(Arm::Mzizi, reference, short).unwrap();
+        assert!(f.defect);
+        assert!(
+            f.expected.contains("missing from candidate: {card-header}"),
+            "{f:?}"
+        );
+        assert_eq!(slot_fact(Arm::Mzizi, "fn f() {}", mz), None);
+    }
+
+    #[test]
+    fn a_slot_fact_has_no_enum_in_the_json() {
+        let mut r = score(Arm::Dioxus, &[], &[], false);
+        r.facts
+            .push(slot_fact(Arm::Dioxus, r#""data-slot": "b""#, r#""data-slot": "b""#).unwrap());
+        let j = r.to_json();
+        assert!(
+            j.contains(r#"{"enum":null,"variant":null,"fact":"slot_set""#),
+            "{j}"
+        );
+        assert_eq!(r.facts_checked(), 1);
     }
 
     #[test]
