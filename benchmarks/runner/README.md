@@ -151,15 +151,93 @@ A clean episode whose scorer failed is neither defective nor defect-free. It is 
 5. **The two arms use different compile checks.** `mz check` is a single-file front end; `check.sh` is a cargo build. `check_ms` is each arm's real loop latency, including process and cargo overhead, so it is not a like-for-like compiler comparison.
 6. **The enum sentence's accessor phrase is arm-specific**, as described in the fairness section.
 
-## Adding an arm
+## Arms: `arm.toml`
 
-An arm is three things, and nothing else in the runner is arm-specific:
+_Specified 2026-09-29 (RFC-0009 §1, §9 step 1). This section is the format's contract. Other
+work, such as RFC-0009 §6.4's `mzizi-be` arm, reads it. Change it only in a commit that says
+so._
 
-1. **A guide**, `benchmarks/prompts/<arm>-guide.md`. It is the system message, verbatim, and its size is part of the arm's token cost.
-2. **A check command** (`default_check` in `src/exec.rs`, or `--check-cmd`). It takes the candidate's path as `{file}` and must exit 0 for a clean candidate, 1 for a candidate with errors, and anything else for a setup problem.
-3. **A diagnostic normaliser** (`Normaliser` in `src/exec.rs`, or `--normalise`). It rewrites the check's stdout before the author sees it. The default already applies to every arm.
+An arm is one language with one framework. The runner knows arms only as data: each is one
+file, `benchmarks/arms/<id>/arm.toml`, and `--arm <id>` loads it from the repo given by
+`--repo`. Nothing else in the runner is arm-specific. An arm is these things and nothing
+else:
 
-The arm's name, file extension, language name and file-kind phrase live in `Arm` in `src/prompt.rs`. A new variant must be added to the prompt-parity tests in that file. Scoring is separate: the scorer reads enum facts from Rust and Mzizi only. An arm in another language needs its own extractor in `benchmarks/harness/` before its episodes can be scored. Until then they are recorded as clean but unscored, which is never counted as defect-free.
+1. **A guide**, the system message, verbatim. Its size is part of the arm's token cost
+   (RFC-0009 §4.2 rebalances every guide in a family to one budget).
+2. **A check command.** It takes the candidate's path as `{file}`. It exits 0 for a clean
+   candidate, 1 for one with errors, and anything else for a setup problem, which is never
+   counted as an iteration.
+3. **A diagnostic normaliser**, applied to the check's stdout before the author sees it.
+4. **A file layout**: the candidate's file name, and the prompt phrases that name it.
+5. **A scorer extractor**: the `--arm` value passed to `mzizi-benchmark-harness score`.
+
+### The file
+
+TOML, read by the runner's own small reader (`src/toml_lite.rs`): top-level keys only,
+before any `[table]` header. Values are basic (`"…"`) or literal (`'…'`) strings,
+`true`/`false`, or arrays of strings, which may span lines and end with a trailing comma.
+`#` starts a comment outside a string. **An unknown key is an error**, so a misspelt key
+cannot be silently ignored. Tables after the top-level keys (`[source]`, `[pins]` notes and
+so on) are not read and may hold anything.
+
+| Key              | Required             | Value                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | yes                  | Must equal the directory name. `[a-z0-9-]+`. It names the arm everywhere: `--arm`, episode directories, `meta.json`, the final line.                                                                                                                                                                                                                             |
+| `family`         | yes                  | `"ui"` or `"backend"`: which kind of task the arm writes (RFC-0009 §1's table).                                                                                                                                                                                                                                                                                  |
+| `task_families`  | yes                  | The task families (RFC-0009 §2) the arm runs, from `"ui-port"`, `"ui-spec"` and `"backend"`. The runner refuses an episode in a family the arm does not list, so a React arm cannot be handed `spec.tsx` (BM-1).                                                                                                                                                 |
+| `language_name`  | yes                  | The language as the user message names it (`"Mzizi"`, `"Dioxus"`, `"TypeScript with React"`).                                                                                                                                                                                                                                                                    |
+| `file_kind`      | yes                  | What the one reply file is: `"a single Mzizi source file (.mz)"`. It should contain `language_name`, or name the language some other way.                                                                                                                                                                                                                        |
+| `extension`      | yes                  | The candidate's extension, without the dot. **File layout:** each iteration's candidate is written to `iter-NN/candidate.<extension>` and the check is passed that path. One file per reply. A checker that needs another name or a project around it (`main.go`, `src/component.rs`) copies the candidate into its own sandbox, as `arms/dioxus/check.sh` does. |
+| `guide`          | yes                  | The guide's path, relative to the repo root (`"benchmarks/prompts/mzizi-guide.md"`). `--guide` overrides it for one run.                                                                                                                                                                                                                                         |
+| `check`          | yes                  | The check argv. `{repo}` is replaced with the repo root when the arm loads, and `{file}` with the candidate's path per iteration. It runs with the repo root as its working directory. `--check-cmd` overrides it for one run.                                                                                                                                   |
+| `normaliser`     | no                   | `"file-name"` (the default: the candidate's path, as the check was passed it, becomes its bare file name) or `"none"`. `--normalise` overrides it.                                                                                                                                                                                                               |
+| `extractor`      | yes                  | The scorer's `--arm` value: `"mzizi"`, `"dioxus"` (any Rust `enum` / `classes()` file, which is why Leptos uses it) or `"react"` (a `cva(…)` call). `"none"` records every clean episode as clean but unscored, which is never counted as defect-free.                                                                                                           |
+| `enum_case`      | when `family = "ui"` | How a task's `enums = [...]` (Rust PascalCase) are written in this arm's naming sentence: `"pascal"` (`ButtonSize`), `"snake"` (`button_size`) or `"cva"` (`buttonVariants.size`: the enum name's last word is the `cva` variant key, and the words before it name the `cva` call).                                                                              |
+| `class_accessor` | when `family = "ui"` | The phrase after the enum names in that sentence, saying how the arm exposes each variant's Tailwind classes (for Mzizi, each with a `class` column).                                                                                                                                                                                                            |
+| `pins`           | no                   | Files, relative to the arm directory, whose SHA-256 identifies the arm's toolchain pin (`["sandbox/Cargo.toml", "sandbox/Cargo.lock"]`). `mzbench plan` records each hash, so a run's plan names the exact pin it ran against (RFC-0009 §7.2).                                                                                                                   |
+
+A worked example, the Dioxus arm as migrated:
+
+```toml
+id = "dioxus"
+family = "ui"
+task_families = ["ui-port", "ui-spec"]
+language_name = "Dioxus"
+file_kind = "a single Rust source file (.rs) using Dioxus"
+extension = "rs"
+guide = "benchmarks/prompts/dioxus-guide.md"
+check = ["{repo}/benchmarks/arms/dioxus/check.sh", "{file}"]
+normaliser = "file-name"
+extractor = "dioxus"
+enum_case = "pascal"
+class_accessor = "each with a `classes()` method returning its Tailwind classes"
+pins = ["sandbox/Cargo.toml", "sandbox/Cargo.lock"]
+```
+
+### What the runner does with it
+
+- **The user message** is built by one function for every arm and family. The arms'
+  messages differ only in `language_name`, `file_kind`, and the naming sentence's enum names
+  and `class_accessor`. A test loads every `arms/*/arm.toml`, builds each family's message for
+  every pair of arms, and checks they are equal once those phrases are replaced by
+  placeholders (RFC-0009 §4.1).
+- **`meta.json`** records the arm id as `arm` and the whole resolved file as `arm_config`, so
+  `episode submit` and `finish` never re-read `arm.toml`, and an episode says exactly what it
+  ran with. A `meta.json` written before `arm.toml` existed has no `arm_config`. Its arm is
+  then read from the three arms that existed then, with the values they had.
+- **The checker runs only in benchmark runs.** The runner's tests inject fakes through the
+  same `check` mechanism. No arm's toolchain is a CI requirement (RFC-0009 §9).
+
+### Adding an arm
+
+1. Write `benchmarks/arms/<id>/arm.toml`, the guide, and a checker that keeps the 0/1/2 exit
+   contract. Pin its toolchain in files the arm lists under `pins`, with their provenance in
+   the arm's README, as `arms/dioxus/README.md` does.
+2. Run `cargo test -p mzizi-benchmark-runner`. The parity test picks the new arm up with no
+   code change, and fails if its message differs from the others by more than its naming.
+3. Scoring is separate. A UI arm needs an extractor in `benchmarks/harness/` that reads the
+   same facts (RFC-0009 §2.2). A backend arm is scored by probes (RFC-0009 §2.3), which do
+   not exist yet. Until then its episodes are clean but unscored.
 
 ## Dependencies
 
