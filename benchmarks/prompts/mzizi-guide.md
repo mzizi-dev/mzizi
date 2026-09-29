@@ -222,15 +222,14 @@ Assert what the source guarantees: every interactive size clears 48
 
 ## One form per intent: the traps
 
-- **`=` in attributes.** `class "flex"` without `=` is read as a child element. The errors
-  then appear later, at `contract` ("cannot start a view line") and at the file's last line
-  (unclosed blocks). When you see those, look for a missing `=` first.
+- **`=` in attributes.** `class "flex"` without `=` is `MZ0406`; its fix inserts the `=`.
+- **Attributes go on an element.** Nothing but one element tree sits directly inside
+  `view`; `slot = "x"` there is `MZ0408`. Put it inside the root element.
 - **`is` in contracts.** `chip_size.snug height 52` is `MZ0602`; write `height is 52`.
 - **`is` compares as written.** `height is "52"` fails against `height 52`.
 - **No `match`/`case`.** An error in a view. Write `when v is x` blocks.
 - **No `some`, no `when x` on an option.** Presence is `when x is none` / `else`.
-- **No `if`.** `if open` is not an error: it silently becomes an element named `if`. Use
-  `when`.
+- **No `if`.** `if open` is `MZ0407`, and its `exact` fix is `when open`.
 - **Event attribute names.** Use `tap` and `change`. `on_click = on_tap` also compiles,
   so the compiler will not catch the wrong name.
 - **No assertion on a prop without a default.** `label is "x"` is `MZ0605` (unevaluable),
