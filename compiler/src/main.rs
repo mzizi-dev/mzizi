@@ -3,6 +3,7 @@
 //! ```text
 //! mz check <file.mz>            human-readable diagnostics
 //! mz check --agent <file.mz>    NDJSON, one diagnostic per line + a summary line
+//! mz fix <file.mz>              apply every `exact` fix in place, then check again
 //! mz contract <file.mz>         evaluate the `contract` block (RFC-0006)
 //! mz outline <file.mz>          the interface only, as valid Mzizi (RFC-0003 §4)
 //! mz hash <file.mz>             the root hash and the stored node count
@@ -27,7 +28,7 @@ use std::time::Instant;
 use mzizi_lang_compiler::diagnostic::Severity;
 use mzizi_lang_compiler::ir::{Store, lower, paths};
 use mzizi_lang_compiler::outline::outline;
-use mzizi_lang_compiler::{check, check_contract, check_with_ast};
+use mzizi_lang_compiler::{apply_exact_fixes, check, check_contract, check_with_ast};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -38,14 +39,14 @@ fn main() -> ExitCode {
         [cmd, path]
             if matches!(
                 cmd.as_str(),
-                "check" | "contract" | "outline" | "hash" | "ir"
+                "check" | "fix" | "contract" | "outline" | "hash" | "ir"
             ) =>
         {
             (cmd.as_str(), *path)
         }
         [path] => ("check", *path),
         _ => {
-            eprintln!("usage: mz <check|contract|outline|hash|ir> [--agent] <file.mz>");
+            eprintln!("usage: mz <check|fix|contract|outline|hash|ir> [--agent] <file.mz>");
             return ExitCode::from(2);
         }
     };
@@ -57,6 +58,48 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    // `mz fix`: one pass of every `exact` fix (RFC-0001 §4.3), written back in place, then
+    // the ordinary check of the result — so the output and the exit status describe the
+    // file as it now is. `guess` fixes are never applied. A fix that was demoted to
+    // `guess` because it overlapped another may be `exact` on the next check; `mz fix`
+    // does one pass, as promised, and the re-check says what is left.
+    if command == "fix" {
+        let before = check(&src, path);
+        let applied = before.exact_fixable();
+        if applied > 0 {
+            let fixed = apply_exact_fixes(&src, &before);
+            if let Err(e) = std::fs::write(path, fixed) {
+                eprintln!("mz: cannot write {path}: {e}");
+                return ExitCode::from(2);
+            }
+        }
+        let src = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("mz: cannot read {path}: {e}");
+                return ExitCode::from(2);
+            }
+        };
+        let started = Instant::now();
+        let report = check(&src, path);
+        let elapsed = started.elapsed().as_millis();
+        if agent {
+            print!("{}", report.to_ndjson(elapsed));
+        } else {
+            print_human(&report);
+            println!(
+                "mz: applied {applied} exact fixes; {} errors ({} exact-fixable) remain, {elapsed}ms",
+                report.error_count(),
+                report.exact_fixable(),
+            );
+        }
+        return if report.error_count() > 0 {
+            ExitCode::from(1)
+        } else {
+            ExitCode::SUCCESS
+        };
+    }
 
     if command == "contract" {
         let started = Instant::now();

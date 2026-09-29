@@ -461,10 +461,20 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
         });
     }
 
-    let last = src.lines().count().max(1) as u32;
+    // End of file is the point just past the last character: the start of the line after
+    // a trailing newline, or the end of an unterminated last line. It used to be column 1
+    // of the last line, which put every `MZ0204` insertion *before* that line's text, so
+    // the `exact` fix for an unclosed block broke the line it was meant to follow.
+    let lines = src.lines().count() as u32;
+    let eof = match src.lines().last() {
+        Some(last) if !src.ends_with('\n') => {
+            Span::single(lines, last.chars().count() as u32 + 1, 0)
+        }
+        _ => Span::single(lines + 1, 1, 0),
+    };
     tokens.push(Token {
         kind: Tok::Eof,
-        span: Span::single(last, 1, 0),
+        span: eof,
     });
     (tokens, diags)
 }
