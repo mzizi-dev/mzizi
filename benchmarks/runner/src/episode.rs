@@ -24,7 +24,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::endpoint::{ChatModel, GenParams, Message, Tokenizer};
-use crate::exec::{CheckStatus, CommandTemplate, classify};
+use crate::exec::{CheckStatus, CommandTemplate, Normaliser, classify};
 use crate::extract::{ExtractError, extract_code_block};
 use crate::prompt::{Arm, Prompt, compile_error_feedback, extraction_feedback};
 use crate::task::safe_component;
@@ -84,6 +84,10 @@ pub struct EpisodeMeta {
     pub guide_bytes: u64,
     pub guide_fnv1a64: String,
     pub check: CommandTemplate,
+    /// What is done to the check's stdout before it is recorded and fed back (see
+    /// [`Normaliser`]). An episode whose `meta.json` predates the field ran without one, so
+    /// it reads back as `none`.
+    pub normaliser: Normaliser,
     pub score: CommandTemplate,
 }
 
@@ -108,6 +112,7 @@ impl EpisodeMeta {
             "guide_bytes": self.guide_bytes,
             "guide_fnv1a64": self.guide_fnv1a64,
             "check": self.check.to_json(),
+            "diagnostics_normaliser": self.normaliser.as_str(),
             "score": self.score.to_json(),
             // Recorded, not hidden: in agent mode the runner cannot stop the agent from
             // compiling outside `submit`, or from reading files outside the episode dir.
@@ -156,6 +161,10 @@ impl EpisodeMeta {
             guide_bytes: un("guide_bytes")?,
             guide_fnv1a64: st("guide_fnv1a64")?,
             check: CommandTemplate::from_json(v.get("check").ok_or("meta.json: no check")?)?,
+            normaliser: match v.get("diagnostics_normaliser").and_then(Value::as_str) {
+                Some(n) => Normaliser::parse(n)?,
+                None => Normaliser::None,
+            },
             score: CommandTemplate::from_json(v.get("score").ok_or("meta.json: no score")?)?,
         })
     }
@@ -335,7 +344,10 @@ pub fn record_iteration(
             Ok(code) => {
                 let cand = idir.join(format!("candidate.{}", meta.arm.extension()));
                 write(&cand, code)?;
-                let out = meta.check.run(&[("file", &cand.to_string_lossy())])?;
+                let mut out = meta.check.run(&[("file", &cand.to_string_lossy())])?;
+                // What the author sees, and what is recorded as what they saw, is the
+                // normalised text; stderr is never fed back and is kept as printed.
+                out.stdout = meta.normaliser.apply(&out.stdout, &cand);
                 write(&idir.join("diagnostics.txt"), &out.stdout)?;
                 write(&idir.join("stderr.txt"), &out.stderr)?;
                 match classify(out.code) {
@@ -722,6 +734,7 @@ mod tests {
             guide_bytes: 5,
             guide_fnv1a64: fnv1a64(b"guide"),
             check: fake_check(),
+            normaliser: Normaliser::FileName,
             score,
         }
     }

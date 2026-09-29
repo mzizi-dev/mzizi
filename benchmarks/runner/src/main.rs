@@ -11,6 +11,7 @@
 //! mzbench summarize <results dir>
 //!
 //! common options: --repo <dir> --guide <file> --check-cmd <json argv> --score-cmd <json argv>
+//!                 --normalise <file-name|none>
 //! ```
 //!
 //! Exit status: 0 success (`submit`: CLEAN), 1 `submit` recorded ERRORS, 2 refused / usage /
@@ -27,7 +28,7 @@ use mzizi_benchmark_runner::episode::{
     submit, submit_output,
 };
 use mzizi_benchmark_runner::exec::{
-    CommandTemplate, default_check, default_score, parse_argv_json,
+    CommandTemplate, Normaliser, default_check, default_score, parse_argv_json,
 };
 use mzizi_benchmark_runner::prompt::{Arm, Prompt, build_prompt};
 use mzizi_benchmark_runner::summary::{collect, render};
@@ -44,7 +45,8 @@ const USAGE: &str = "usage:
   mzbench episode submit <episode dir> <candidate file>
   mzbench episode finish <episode dir> [--endpoint <url>]
   mzbench summarize <results dir>
-common: --repo <dir> --guide <file> --check-cmd '<json argv>' --score-cmd '<json argv>'";
+common: --repo <dir> --guide <file> --check-cmd '<json argv>' --score-cmd '<json argv>'
+        --normalise <file-name|none>";
 
 struct Flags {
     named: HashMap<String, String>,
@@ -141,6 +143,10 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
             })
         };
     let check = template(f.take("check-cmd"), default_check(arm, &repo))?;
+    let normaliser = match f.take("normalise") {
+        Some(n) => Normaliser::parse(&n)?,
+        None => Normaliser::FileName,
+    };
     let mut score = template(f.take("score-cmd"), default_score(&repo))?;
     // Appended to a custom `--score-cmd` too, so the task's opt-in cannot be lost by
     // overriding the scorer; the argv as written to meta.json is what ran.
@@ -167,6 +173,7 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
         guide_bytes: guide.len() as u64,
         guide_fnv1a64: fnv1a64(guide.as_bytes()),
         check,
+        normaliser,
         score,
     };
     let dir = episode_dir(&out, &model, arm, &task.name, seed)?;

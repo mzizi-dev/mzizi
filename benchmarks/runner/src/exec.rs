@@ -106,6 +106,61 @@ impl CommandTemplate {
     }
 }
 
+/// How a check's stdout is rewritten before it is recorded and fed back to the author.
+///
+/// An arm is three things: a guide (the system message), a check command, and this. The
+/// check command's output is the arm's own; the normaliser is where anything in it that
+/// describes the harness rather than the candidate comes out, so that no arm pays tokens for
+/// the machine it ran on. Pilot 2 (`benchmarks/results/2026-09-27-pilot-2/RUN.md`, "Threats
+/// to validity") measured the cost of not doing this: `mz check --agent` echoed the
+/// candidate's absolute path on every diagnostic line, about 89 tokens each, while the Dioxus
+/// arm's `check.sh` already printed the bare file name. The default applies to every arm, so
+/// a new arm's checker gets the same treatment without arm-specific code.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Normaliser {
+    /// Leave the output exactly as the checker printed it.
+    None,
+    /// Replace the candidate's path, as passed to the checker, with its file name
+    /// (`/…/iter-01/candidate.mz` → `candidate.mz`). The default.
+    FileName,
+}
+
+impl Normaliser {
+    pub fn parse(s: &str) -> Result<Normaliser, String> {
+        match s {
+            "none" => Ok(Normaliser::None),
+            "file-name" => Ok(Normaliser::FileName),
+            other => Err(format!(
+                "unknown normaliser `{other}` (expected file-name or none)"
+            )),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Normaliser::None => "none",
+            Normaliser::FileName => "file-name",
+        }
+    }
+
+    /// Rewrite `stdout` from a check that was passed `candidate`.
+    pub fn apply(self, stdout: &str, candidate: &Path) -> String {
+        match self {
+            Normaliser::None => stdout.to_string(),
+            Normaliser::FileName => {
+                let Some(name) = candidate.file_name().map(|n| n.to_string_lossy()) else {
+                    return stdout.to_string();
+                };
+                let full = candidate.to_string_lossy();
+                if full.is_empty() || full == name {
+                    return stdout.to_string();
+                }
+                stdout.replace(full.as_ref(), &name)
+            }
+        }
+    }
+}
+
 /// Parse a `--check-cmd` / `--score-cmd` value: a JSON array of strings.
 pub fn parse_argv_json(s: &str) -> Result<Vec<String>, String> {
     let v: Value = serde_json::from_str(s).map_err(|e| format!("not a JSON array: {e}"))?;
@@ -202,6 +257,34 @@ mod tests {
         assert_eq!(classify(Some(1)), CheckStatus::Errors);
         assert_eq!(classify(Some(2)), CheckStatus::Setup);
         assert_eq!(classify(None), CheckStatus::Setup);
+    }
+
+    #[test]
+    fn the_file_name_normaliser_strips_only_the_candidate_path() {
+        let cand = Path::new("/tmp/results/m/mzizi/badge/seed-1/iter-01/candidate.mz");
+        let out = concat!(
+            r#"{"code":"MZ0304","file":"/tmp/results/m/mzizi/badge/seed-1/iter-01/candidate.mz","span":[1,1,1,2]}"#,
+            "\n",
+            r#"{"summary":true,"errors":1}"#,
+            "\n"
+        );
+        let n = Normaliser::FileName.apply(out, cand);
+        assert!(n.contains(r#""file":"candidate.mz""#), "{n}");
+        assert!(!n.contains("/tmp/results"));
+        assert_eq!(Normaliser::None.apply(out, cand), out);
+        // Output that never mentions the path (check.sh already prints the bare name) and
+        // a candidate passed without a directory are both left alone.
+        let bare = "error: candidate.rs:3:1\n";
+        assert_eq!(Normaliser::FileName.apply(bare, cand), bare);
+        assert_eq!(
+            Normaliser::FileName.apply(out, Path::new("candidate.mz")),
+            out
+        );
+        assert_eq!(
+            Normaliser::parse("file-name").unwrap(),
+            Normaliser::FileName
+        );
+        assert!(Normaliser::parse("basename").is_err());
     }
 
     #[test]
