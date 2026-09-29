@@ -158,3 +158,11 @@ fn a_camel_case_as_child_is_still_a_naming_error() {
         "{fixed}"
     );
 }
+
+#[test]
+fn a_spread_as_a_value_takes_its_line_with_it() {
+    // `tap = ...props` (7B button, seed 2): deleting only the spread would leave `tap =`,
+    // a second error for the same mistake.
+    let d = one_exact_repair(&badge("", "      tap = ...props"), "MZ0106");
+    assert!(d.say.contains("delete the line"), "{}", d.say);
+}

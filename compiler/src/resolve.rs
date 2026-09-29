@@ -1172,18 +1172,29 @@ impl<'a> Resolver<'a> {
 
     /// `when` — its condition, its branches, and option narrowing (RFC-0008 §4).
     fn when(&mut self, el: &Element, scope: &Scope) {
-        for attr in &el.attrs {
-            if !attr.name.is_empty() && !matches!(attr.name.as_str(), "not" | "is") {
-                self.err(
-                    "MZ0712",
-                    attr.span,
-                    format!(
-                        "`{} = {}` is inside a `when`, which holds elements only — move it onto an element",
-                        attr.name,
-                        clip(&attr.value)
-                    ),
-                );
-            }
+        // Attributes written straight into a `when` (the 7B model's `asChild` branches put
+        // six in each) are one mistake, so one diagnostic names the first and counts the
+        // rest, rather than one per line.
+        let misplaced: Vec<&Attr> = el
+            .attrs
+            .iter()
+            .filter(|a| !a.name.is_empty() && !matches!(a.name.as_str(), "not" | "is"))
+            .collect();
+        if let (Some(first), Some(last)) = (misplaced.first(), misplaced.last()) {
+            let shown = format!("`{} = {}`", first.name, clip(&first.value));
+            let say = if misplaced.len() == 1 {
+                format!(
+                    "{shown} is inside a `when`, which holds elements only — move it onto an element"
+                )
+            } else {
+                format!(
+                    "{shown} and {} more attributes (lines {}–{}) are inside a `when`, which holds elements only — move them onto an element",
+                    misplaced.len() - 1,
+                    first.span.start_line,
+                    last.span.start_line
+                )
+            };
+            self.err("MZ0712", first.span, say);
         }
         let cond: Vec<&Attr> = el
             .attrs

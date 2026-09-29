@@ -528,3 +528,19 @@ fn the_7b_models_seed_1_badge_names_each_mistake_once() {
     let report = check(&src, "t.mz");
     assert!(report.diagnostics.iter().all(|d| d.code != "MZ0501"));
 }
+
+#[test]
+fn a_run_of_attributes_inside_a_when_is_one_diagnostic() {
+    // The 7B model's `asChild` branches put six attributes straight into each `when`.
+    let src = component_with_view(
+        "    row\n      slot = \"q\"\n      when open\n        class = \"a\"\n        role = \"b\"\n        text = label\n      end\n    end",
+    );
+    let found = errors(&src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0712");
+    assert!(
+        found[0].1.contains("and 2 more attributes (lines 8–10)"),
+        "{}",
+        found[0].1
+    );
+}
