@@ -308,7 +308,16 @@ fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
     {
         r = after.trim_start();
     }
-    r.is_empty() || r.starts_with(':')
+    // A spread as a value — `tap = ...props`, or `tap is ...props` in a contract — leaves
+    // `tap =` behind if only the spread goes, which is a second error for the same
+    // mistake. The line is nothing without its value, so it goes too.
+    let word_then = |op: &str| {
+        r.strip_suffix(op).is_some_and(|w| {
+            let w = w.trim_end();
+            !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+    };
+    r.is_empty() || r.starts_with(':') || word_then("=") || word_then(" is")
 }
 
 /// Tokenize `src`. Never fails: bad input produces diagnostics and the lexer keeps going,
