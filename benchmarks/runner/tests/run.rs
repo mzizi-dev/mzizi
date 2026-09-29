@@ -103,6 +103,15 @@ fn submit_syntax_error_first(ep: &Path) {
     let stdout = String::from_utf8_lossy(&o.stdout);
     assert!(stdout.contains("MZ0204"), "{stdout}");
     assert!(stdout.contains("ITERATION 1/3: ERRORS"), "{stdout}");
+    // The default normaliser: the real `mz` was passed an absolute path, and the author
+    // sees only the file name (pilot 2 paid ~89 tokens per diagnostic line for it).
+    assert!(stdout.contains(r#""file":"candidate.mz""#), "{stdout}");
+    assert!(!stdout.contains(&*ep.to_string_lossy()), "{stdout}");
+    let recorded = std::fs::read_to_string(ep.join("iter-01/diagnostics.txt")).unwrap();
+    assert!(recorded.contains(r#""file":"candidate.mz""#), "{recorded}");
+    let meta: Value =
+        serde_json::from_str(&std::fs::read_to_string(ep.join("meta.json")).unwrap()).unwrap();
+    assert_eq!(meta["diagnostics_normaliser"], "file-name");
 }
 
 #[test]
