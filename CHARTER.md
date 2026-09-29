@@ -4,7 +4,7 @@
 
 **Owner:** Mzizi (100% — Mzizi framework, components, and logic are Mzizi IP)
 **Adjacent, Nyuchi-owned:** the Mzizi console ("Fundi"), active cyber testing
-**Publishing:** `@bundu` npm scope
+**Publishing:** `@nyuchi/` npm scope
 **Status:** charter draft — defines direction and phasing, not a sprint plan
 
 > **v0.3 changelog — owner-directed 2026-09-29.** Four changes, each marked
