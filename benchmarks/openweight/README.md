@@ -43,7 +43,12 @@ It runs detached (`setsid nohup`) and logs to `/opt/models/llama-server.log`. Ch
   All three returned byte-identical content. `seed: 999` returned different content, so the seed
   is actually being used. This was checked on a short prompt only, not at 3,000 tokens.
 
-The 7B model at `-c 16384` used about 6.1 GB of RAM.
+The 7B model at `-c 16384` used about 6.1 GB of RAM. The kill-criterion run uses `-c 32768`
+(`CTX=32768 setup.sh launch`; [`../kill-criterion/README.md`](../kill-criterion/README.md),
+"The pre-registered settings"), and falls back to 16,384 only if RAM cannot hold it, with
+the fallback recorded in its `RUN.md`. _Estimate, not measured:_ the f16 KV cache costs
+57,344 bytes a token (28 layers × 4 KV heads × 128 dims × K and V × 2 bytes), so 32,768
+needs about 0.94 GB more than 16,384.
 
 ## Measurements
 
