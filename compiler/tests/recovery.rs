@@ -373,3 +373,158 @@ end component a
     // second clause, which is what keeps the next iteration to one round trip.
     assert_eq!(tally.clauses, 0);
 }
+
+// ---------------------------------------------------------------------------------------
+// Cascades pilot 2 found (benchmarks/results/2026-09-27-pilot-2/RUN.md), each pinned to
+// one diagnostic whose fix, where it is `exact`, repairs the file.
+// ---------------------------------------------------------------------------------------
+
+use mzizi_lang_compiler::apply_exact_fixes;
+
+fn component_with_view(view: &str) -> String {
+    format!(
+        "component q\n  prop label: text\n  prop open: bool = false\n  view\n{view}\n  end\n  contract\n    slot is \"q\"\n  end\nend component q\n"
+    )
+}
+
+/// Exactly one error, with `code`; applying the `exact` fixes leaves no error.
+fn one_error_fixed_by_mz_fix(src: &str, code: &str) -> String {
+    let found = errors(src);
+    assert_eq!(found.len(), 1, "one mistake, one diagnostic: {found:#?}");
+    assert_eq!(found[0].0, code, "{found:#?}");
+    let fixed = apply_exact_fixes(src, &check(src, "t.mz"));
+    assert!(errors(&fixed).is_empty(), "{fixed}\n{:#?}", errors(&fixed));
+    found[0].1.clone()
+}
+
+#[test]
+fn a_missing_equals_is_one_diagnostic_on_the_line_that_is_wrong() {
+    // Divergence 4: `class "flex"` produced four errors, at `contract` and at the last
+    // line, and none on line 6.
+    let src = component_with_view(
+        "    row\n      slot = \"q\"\n      class \"flex\"\n      text = label\n    end",
+    );
+    let say = one_error_fixed_by_mz_fix(&src, "MZ0406");
+    assert!(say.contains("`class \"flex\"` is missing its `=`"), "{say}");
+    let d = check(&src, "t.mz")
+        .diagnostics
+        .into_iter()
+        .find(|d| d.code == "MZ0406")
+        .unwrap();
+    assert_eq!(d.span.start_line, 7);
+}
+
+#[test]
+fn a_missing_equals_after_an_unknown_word_is_only_a_guess() {
+    let src = component_with_view("    row\n      slot = \"q\"\n      tooltip \"hi\"\n    end");
+    let report = check(&src, "t.mz");
+    let d = report
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "MZ0406")
+        .unwrap();
+    assert_eq!(d.fix.as_ref().unwrap().confidence, Confidence::Guess);
+    // Still one diagnostic: the line is read as the attribute, not as a block opener.
+    assert_eq!(report.error_count(), 1, "{:#?}", report.diagnostics);
+}
+
+#[test]
+fn if_is_one_diagnostic_whose_fix_is_when() {
+    // Divergence 5: `if open` compiled silently, as an element named `if`.
+    let src = component_with_view(
+        "    row\n      slot = \"q\"\n      if open\n        span\n          text = label\n        end\n      end\n    end",
+    );
+    let say = one_error_fixed_by_mz_fix(&src, "MZ0407");
+    assert!(say.contains("no `if`"), "{say}");
+}
+
+#[test]
+fn an_element_word_with_more_on_its_line_is_an_error_not_a_silent_tail() {
+    let src = component_with_view(
+        "    row\n      slot = \"q\"\n      span class = \"x\"\n        text = label\n      end\n    end",
+    );
+    let found = errors(&src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0409");
+}
+
+#[test]
+fn attributes_directly_under_view_are_one_diagnostic_not_a_cascade() {
+    // Every 7B badge episode: `slot = …` lines straight under `view`, each read as an
+    // element whose block swallowed the rest of the file.
+    let src = component_with_view(
+        "    slot = \"q\"\n    class = \"inline-flex\"\n    row\n      text = label\n    end",
+    );
+    let found = errors(&src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0408");
+    assert!(found[0].1.contains("lines 5–6"), "{}", found[0].1);
+}
+
+#[test]
+fn contract_inside_an_unclosed_view_is_one_diagnostic_and_the_contract_still_parses() {
+    let src = "component g\n  view\n    row\n      slot = \"g\"\n  end\n  contract\n    slot is \"g\"\n  end\nend component g\n";
+    let report = check(src, "t.mz");
+    let found = errors(src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0204");
+    assert!(
+        found[0].1.contains("`view` opened on line 2"),
+        "{}",
+        found[0].1
+    );
+    // The contract after it was parsed as a contract, not as view lines.
+    assert!(report.diagnostics.iter().all(|d| d.code != "MZ0501"));
+}
+
+#[test]
+fn end_component_with_blocks_still_open_is_one_diagnostic_not_two_conflicting_fixes() {
+    let src = "component g\n  view\n    row\n      slot = \"g\"\n    end\nend component g\n";
+    let found = errors(src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0204");
+    assert!(
+        found[0].1.contains("an `end` is missing above"),
+        "{}",
+        found[0].1
+    );
+}
+
+#[test]
+fn every_closer_fix_rewrites_the_whole_closer() {
+    // Divergence 7: the fixes replaced only the `end` word, so the echo stayed behind it.
+    for (closer, code) in [
+        ("    end view", "MZ0206"),     // was `end element view`
+        ("    end enum row", "MZ0206"), // was `end element enum row`
+        ("    end fn x", "MZ0206"),
+    ] {
+        let src = format!(
+            "component g\n  view\n    row\n      slot = \"g\"\n{closer}\n  end\n  contract\n    slot is \"g\"\n  end\nend component g\n"
+        );
+        one_error_fixed_by_mz_fix(&src, code);
+    }
+    // A nameless `end component` was repaired to `end component g component`.
+    one_error_fixed_by_mz_fix("component g\n  contract\n  end\nend component\n", "MZ0208");
+    // `end enum g` for `enum g_tone`: an inner block needs no echo, so the repair is `end`.
+    let src = "component g\n  enum g_tone\n    a class \"x\"\n  end enum g\n  prop tone: g_tone = a\n  contract\n  end\nend component g\n";
+    one_error_fixed_by_mz_fix(src, "MZ0207");
+    let fixed = apply_exact_fixes(src, &check(src, "t.mz"));
+    assert!(fixed.contains("\n  end\n  prop tone"), "{fixed}");
+}
+
+#[test]
+fn the_7b_models_seed_1_badge_names_each_mistake_once() {
+    // Byte for byte what the ~7B model wrote in all five iterations of pilot 2's badge
+    // seed 1. On `a9c928d` it produced 13 errors, 9 of them `exact`-fixable, and the only
+    // one near the spreads said `prop needs a name, found .`; seven of the 13 were
+    // unclosed-block reports at the last line. Every error now names a real mistake.
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "../benchmarks/results/2026-09-27-pilot-2/raw/scored/qwen2.5-coder-7b-instruct-q4km/mzizi/badge/seed-1/iter-01/candidate.mz",
+    );
+    let src = std::fs::read_to_string(path).unwrap();
+    let codes: Vec<&str> = errors(&src).iter().map(|(c, _)| *c).collect();
+    assert_eq!(codes, ["MZ0106", "MZ0408", "MZ0106", "MZ0106"], "{codes:?}");
+    // The contract block is parsed as a contract again.
+    let report = check(&src, "t.mz");
+    assert!(report.diagnostics.iter().all(|d| d.code != "MZ0501"));
+}
