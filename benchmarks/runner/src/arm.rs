@@ -583,4 +583,44 @@ class_accessor = "each with classes"
         );
         assert!(ArmConfig::load(&repo(), "../x").is_err());
     }
+
+    /// RFC-0009 §4.2: every UI guide within ±5% of one token budget. The counts cannot be
+    /// taken in CI (no tokenizer there), so `benchmarks/prompts/BUDGET.md` records them with
+    /// each guide's SHA-256. This fails when a guide changes without being re-measured, or
+    /// when a recorded count leaves the band.
+    #[test]
+    fn every_ui_guide_is_measured_and_within_the_budget() {
+        let r = repo();
+        let budget_md = std::fs::read_to_string(r.join("benchmarks/prompts/BUDGET.md")).unwrap();
+        let budget: f64 = budget_md
+            .split("budget is **")
+            .nth(1)
+            .and_then(|t| t.split_whitespace().next())
+            .and_then(|n| n.replace(',', "").parse().ok())
+            .expect("BUDGET.md states the budget as `budget is **N tokens**`");
+        for id in list_arms(&r).unwrap() {
+            let a = ArmConfig::load(&r, &id).unwrap();
+            if a.family != "ui" {
+                continue;
+            }
+            let file = Path::new(&a.guide).file_name().unwrap().to_string_lossy();
+            let want = format!("`{file}`");
+            let cells: Vec<&str> = budget_md
+                .lines()
+                .map(|l| l.split('|').map(str::trim).collect::<Vec<_>>())
+                .find(|c| c.len() > 6 && c[2] == want)
+                .unwrap_or_else(|| panic!("{id}: {file} has no row in BUDGET.md"));
+            let tokens: f64 = cells[3].parse().unwrap();
+            let sha = cells[6].trim_matches('`');
+            assert_eq!(
+                crate::sha256::file_hex(&r.join(&a.guide)).unwrap(),
+                sha,
+                "{file} changed since it was measured: re-count its tokens and update BUDGET.md"
+            );
+            assert!(
+                (tokens - budget).abs() <= budget * 0.05,
+                "{file}: {tokens} tokens is outside {budget} ±5%"
+            );
+        }
+    }
 }
