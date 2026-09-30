@@ -145,6 +145,15 @@ carry no pull request number.
 
 ### Fixed
 
+- **The docs say what `mz build` does today.** `README.md`, `AGENTS.md`, `CONTRIBUTING.md`,
+  `SECURITY.md` and RFC-0012 §2 said `mz` emits no Rust, or that there is no lowering. They
+  now say that `mz build` lowers a `service` to a local Rust + axum package, that no component
+  lowers, and that there is no Workers, WebAssembly or Containers target. RFC-0009 §2.2 now
+  says no _component_ lowers. "Compiles to Rust" is still not true of Mzizi in general. Docs
+  only: no behaviour changed.
+- **"The corpus" wording is gone from the live contributor docs.** `AGENTS.md`,
+  `CONTRIBUTING.md` and `benchmarks/README.md` now say "the repo's `.mz` files", "the
+  reference implementations" or "the example components", whichever the sentence meant.
 - **A malformed route pattern still binds its parameters** (#33). With a trailing slash,
   `get "/v1/items/{id}/"` is one `MZ0802`, with its exact fix. It no longer also produces an
   `MZ0707` on every use of `id` in the handler, a cascade RFC-0001 §4.1 rules out. Found by

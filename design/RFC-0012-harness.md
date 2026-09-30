@@ -55,8 +55,8 @@ Checked against `compiler/src/main.rs` and the test suite on `main` at `63a9066`
 | The plugin host, manifest, lifecycle | **Design only.** Nothing in `mz` loads, lists or calls a plugin.                                                                                                                                                                                                                        |
 | `mz harness` (§5)                    | **Design only.** No such subcommand exists.                                                                                                                                                                                                                                             |
 
-`mz` also emits no Rust today. The harness does not depend on that: every part above works on the
-language as it is checked now.
+As for Rust: `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness does not depend on lowering: every part
+above works on the language as it is checked now.
 
 ## 3. RFC-0001 §4 and RFC-0003 are parts of the harness
 
