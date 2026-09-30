@@ -24,13 +24,16 @@ The rules are not restated here. They are in the RFCs, which own them:
 - **`run.sh --tasks <dir> --out <dir> --model-label <label> [...]`** drives one model
   endpoint (`mzbench` Mode 1). It runs every task in the set, on every arm (default
   `mzizi dioxus leptos`), for every seed (default `1 2 3 4 5`), at temperature 0.7 by default.
+  `--family` picks the input: `ui-port` (the default, `spec.tsx`) or `ui-spec` (`spec.md`, the
+  gating family).
   It refuses to start unless a `PLAN.md` exists in `<out>` or in the results directory above
   it, because RFC-0009 §7.2 registers the plan before the first episode (`--dry-run` skips
-  this check). It checks every task, then writes `<out>/manifest.json` (the repo commit, the
+  this check). `mzbench plan` drafts it from the same arguments (`../runner/README.md`,
+  "Registering and publishing a run"). It checks every task, then writes `<out>/manifest.json` (the repo commit, the
   settings, the context size the server reports, and each task's name and the SHA-256 of its
   files), runs the episodes into `<out>/episodes`, and writes `<out>/summary.md`. Last,
-  it writes `<out>/bundle.sha256`: the SHA-256 of the sorted list of every episode file's own
-  SHA-256 and path. That is the raw-bundle hash a held-out run publishes on the day
+  it writes `<out>/bundle.sha256` with `mzbench bundle-hash`: the SHA-256 of the sorted list of
+  every episode file's own SHA-256 and path. That is the raw-bundle hash a held-out run publishes on the day
   (RFC-0004 §4.2), and anyone can recompute it from the bundle once the set retires.
   `--dry-run` checks the tasks and writes the manifest, and runs no episode.
 
@@ -42,8 +45,9 @@ directory. RFC-0009 §5 reports it beside the headline and never pools the two.
 
 **Format.** The same fixture format as `../tasks/` (see its README): `task.toml`, the spec and
 `reference.rs`, with `[source]` provenance. For the gating `ui-spec` family the spec is
-RFC-0009 §2.1's language-neutral `spec.md`, and the runner does not read that yet (RFC-0009
-§9, step 1). `score_slots = true` is recommended for any task whose reference renders more
+RFC-0009 §2.1's language-neutral `spec.md`, which the runner reads with `--family ui-spec`
+(since 2026-09-29). A held-out `ui-spec` task needs `spec.md` and no `spec.tsx`. The four
+public tasks' `spec.md` files show the shape (`../tasks/README.md`). `score_slots = true` is recommended for any task whose reference renders more
 than one `data-slot`. `check-task.sh` must print `READY` with at least 3 facts.
 
 **What makes a task fresh.** Its spec and its reference have never been published anywhere.

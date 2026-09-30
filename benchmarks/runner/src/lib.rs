@@ -15,6 +15,8 @@
 //! - [`exec`] — injectable command templates for the compile check and the scorer.
 //! - [`endpoint`] — the llama.cpp client, behind traits so tests need no server.
 //! - [`episode`] — the episode state machine shared by `run` and `episode …`.
+//! - [`plan`] — `PLAN.md`'s machine-written tables and the raw-bundle hash (RFC-0009 §7).
+//! - [`sha256`] — SHA-256 without a dependency.
 //! - [`summary`] — `summarize`'s aggregation and markdown rendering.
 
 pub mod arm;
@@ -22,7 +24,9 @@ pub mod endpoint;
 pub mod episode;
 pub mod exec;
 pub mod extract;
+pub mod plan;
 pub mod prompt;
+pub mod sha256;
 pub mod summary;
 pub mod task;
 pub mod toml_lite;
