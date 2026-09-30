@@ -29,6 +29,8 @@ carry no pull request number.
   - CI's new `lowering` job builds `examples/registry.mz`, runs the generated tests, and
     sends one OPTIONS request over a socket to the running server.
   - Only a `service` lowers. No component does.
+  - `LANGUAGE-TRACKER.md`: "Compiles to something that runs", P3, P4, P10 and P11 cite
+    this PR, not an open PR. Each stays 🟡 (P10 📝): only a service lowers.
   - Tested by 8 new tests in `compiler/tests/lower.rs`, which check the generated text
     offline.
 - **`mz contract` runs a service in process** (RFC-0011 §6–§7, #31). An in-process
