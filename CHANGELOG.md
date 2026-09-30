@@ -66,7 +66,9 @@ carry no pull request number.
   kind of task; the component tasks against Dioxus and Leptos, the pilots among them, are
   tests within it. The kill criterion, the gate and the settings are unchanged, and nothing is
   measured by this change. README, AGENTS.md, ROADMAP and READINESS follow; the README's RFC
-  table now lists RFC-0008 to RFC-0010 and RFC-0012, and says the registry is Mzizi's.
+  table now lists RFC-0008 to RFC-0010 and RFC-0012, and says the registry is Mzizi's. §6 now
+  says Mzizi's own components supply the UI task set and support the language, where it called
+  them "the benchmark corpus, full stop".
 - **Code of Conduct reports go to `support@bundu.org`** (#28), not `conduct@nyuchi.com`.
   Security reports stay at `security@bundu.org`.
 
