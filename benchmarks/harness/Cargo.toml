@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Phase 0 benchmark harness: scores a Mzizi or Dioxus candidate's variant sets, defaults and touch heights against its hand-written Rust reference (RFC-0006 §10.1)."
+description = "Phase 0 benchmark harness: scores a Mzizi, Rust (Dioxus, Leptos) or React candidate's variant sets, defaults and touch heights against its hand-written Rust reference (RFC-0006 §10.1)."
 
 # No dependencies, for the same reason compiler/Cargo.toml gives for having
 # none: the extraction this crate does is deliberately regex-level and small
