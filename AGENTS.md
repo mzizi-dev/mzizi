@@ -48,7 +48,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 265 tests (387 in the workspace)
+cargo test                                                              # 284 tests (406 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place

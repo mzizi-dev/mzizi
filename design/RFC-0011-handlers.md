@@ -304,7 +304,8 @@ predicate := is <value> | in <value> … | not_empty | contains "<text>"
   the service compares them against, plus one value that matches none; all seven methods on
   each; each path with a trailing slash and with a doubled slash; `/` and one unknown path;
   and for each query parameter, absent, each literal it is compared with, `abc`, `-1` and
-  `0`, varied one at a time. The count is reported as `contract_tested`, the key RFC-0010 §6
+  `0`, varied one at a time. A clause that reads the body skips `HEAD` requests, whose
+  responses have no body by definition (RFC 9110 §9.3.2). The count is reported as `contract_tested`, the key RFC-0010 §6
   added to the summary. By C-4 the report says _tested (n requests)_, never _proven_.
 - **Codes** (RFC-0010 §6): a failed `example` is `MZ0612` and a failed `ensure` is `MZ0611`,
   whose `say` quotes the request that broke it. An `example` whose status contradicts an
@@ -409,6 +410,14 @@ Updated by each pull request that implements part of this RFC.
    yet: request bodies (§4.3), as planned. `mz contract` on a service reports every clause as
    `MZ0607`, "not yet testable", because nothing runs a service yet. `mz outline`, `mz hash` and
    `mz ir` refuse a service with exit status 2, because services have no IR yet (§13.4).
+2. **The evaluator** (§6 and §7). `compiler/src/serve.rs` runs §6's algorithm and the handler
+   statements in process, and `mz contract` evaluates a service's clauses by running it. The
+   summary line carries `contract_tested`. `examples/registry.mz` is the corpus example: 22
+   clauses, all holding, and its `ensure` clauses tested over 61 generated requests. CI runs it
+   through the same `mz check` and `mz contract` loops as the components.
+   `compiler/tests/serve.rs` (19 tests) covers each step of §6, the §4.2 decoding rule, the
+   JSON reader, the request set, and `MZ0605`, `MZ0611` and `MZ0612` on mutations of the
+   example. The request set and the `HEAD` exemption for body clauses are as §7 states them.
 
 ## 13. Open questions
 

@@ -19,7 +19,7 @@ component model, the way React is JavaScript's.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 387 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 406 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 **What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
 
@@ -76,17 +76,20 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (387 tests in 15 suites, gated in CI; 265 of them in the compiler crate):**
+**Built and tested (406 tests in 16 suites, gated in CI; 284 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
-the front end of a backend `service` declaration (RFC-0011: parsed and checked, not yet run or
-lowered), and the Phase 0 benchmark harness, runner and pilot tasks. `compiler/src` is 10,481 lines.
+a backend `service` declaration (RFC-0011: parsed, checked, and run in process by `mz contract`;
+not yet lowered), and the Phase 0 benchmark harness, runner and pilot tasks. `compiler/src` is
+11,552 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
-doesn't hold — all 45 assertions in the corpus evaluated (29 of them across the nine
-primitives), none merely counted. It checks
+doesn't hold — all 45 assertions in the components evaluated (29 of them across the nine
+primitives), none merely counted. For a service (`examples/registry.mz`, 22 clauses) it runs
+the service in process instead: each `example` is one request, and each `ensure` is tested
+over a generated set of 61 requests, which is tested, not proven (RFC-0010 C-4). It checks
 nothing rendered and nothing against a reference implementation. That comparison is the other
 half of the Phase 0 defect metric, and it lives outside the compiler. `benchmarks/harness` diffs
 a `.mz` component's variants, defaults, touch heights and (per task) `data-slot` set against
@@ -128,7 +131,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 265 tests; the compiler crate has zero dependencies
+cargo test                                                           # 284 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check
