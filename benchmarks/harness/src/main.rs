@@ -1,5 +1,5 @@
 //! `mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>`
-//! `mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs>
+//! `mzizi-benchmark-harness score --arm <mzizi|dioxus|react> --candidate <file> --reference <file.rs>
 //!  [--allow-variant-renames] [--slots]`
 //!
 //! **`diff`** — prerequisite: `mz contract --agent <file.mz>` must exit 0. `mz contract` is
@@ -91,7 +91,7 @@ fn parse_args() -> Result<Cmd, String> {
         let arm_s = get("--arm")?;
         let arm = Arm::parse(&arm_s).ok_or_else(|| {
             format!(
-                "{}\n--arm must be `mzizi` or `dioxus`, not `{arm_s}`",
+                "{}\n--arm must be `mzizi`, `dioxus` or `react`, not `{arm_s}`",
                 usage()
             )
         })?;
@@ -107,7 +107,7 @@ fn parse_args() -> Result<Cmd, String> {
 
 fn usage() -> String {
     "usage: mzizi-benchmark-harness diff --mzizi <file.mz> --reference <file.rs>\n       \
-     mzizi-benchmark-harness score --arm <mzizi|dioxus> --candidate <file> --reference <file.rs> \
+     mzizi-benchmark-harness score --arm <mzizi|dioxus|react> --candidate <file> --reference <file.rs> \
      [--allow-variant-renames] [--slots]"
         .to_string()
 }

@@ -6,7 +6,7 @@
 //! contract can satisfy that check while still diverging from the hand-written Rust the
 //! component is meant to port. This crate does the comparison RFC-0006 left to the harness.
 //!
-//! Two extractors feed one scorer:
+//! Three extractors feed one scorer:
 //!
 //! - [`parse_rust_enums`] reads a Rust file — the hand-written reference, and also a Dioxus
 //!   candidate, so both arms of the benchmark are scored against the reference by the same
@@ -16,6 +16,10 @@
 //! - [`parse_mzizi_enums`] reads a `.mz` file: every variant of every `enum ... end` block,
 //!   with its `class` and `height` columns, and each enum's default from a
 //!   `prop <x>: <enum> = <variant>` line.
+//!
+//! - [`parse_react_enums`] reads a TypeScript/TSX file's `cva(…)` calls (RFC-0009 §2.2): one
+//!   enum per variant key, named `<call>` + `<key>` (`buttonVariants.size` → `button_size`),
+//!   with its class strings and its `defaultVariants` entry. See the `react` module.
 //!
 //! A Rust type maps to a Mzizi enum by snake-casing its name (`ButtonSize` ↔ `button_size`),
 //! and variants the same way (`IconSm` ↔ `icon_sm`).
@@ -33,6 +37,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+
+mod react;
+pub use react::{parse_react_enums, parse_react_slots};
 
 // ---------------------------------------------------------------------------------------
 // The shared model both extractors produce
@@ -1104,14 +1111,18 @@ pub enum Arm {
     /// A Dioxus `.rs` file, read by [`parse_rust_enums`] — the reference's own extractor;
     /// its heights are derived from its own `classes()` strings.
     Dioxus,
+    /// A React `.tsx` file, read by [`parse_react_enums`] from its `cva(…)` calls; its
+    /// heights are derived from its own class strings, as the Rust side's are.
+    React,
 }
 
 impl Arm {
-    /// `"mzizi"` / `"dioxus"` → the arm.
+    /// `"mzizi"` / `"dioxus"` / `"react"` → the arm.
     pub fn parse(s: &str) -> Option<Arm> {
         match s {
             "mzizi" => Some(Arm::Mzizi),
             "dioxus" => Some(Arm::Dioxus),
+            "react" => Some(Arm::React),
             _ => None,
         }
     }
@@ -1121,6 +1132,7 @@ impl Arm {
         match self {
             Arm::Mzizi => "mzizi",
             Arm::Dioxus => "dioxus",
+            Arm::React => "react",
         }
     }
 
@@ -1129,6 +1141,7 @@ impl Arm {
         match self {
             Arm::Mzizi => parse_mzizi_enums(src),
             Arm::Dioxus => parse_rust_enums(src),
+            Arm::React => parse_react_enums(src),
         }
     }
 }
@@ -1647,6 +1660,7 @@ pub fn slot_fact(arm: Arm, reference_src: &str, candidate_src: &str) -> Option<F
     let got = match arm {
         Arm::Mzizi => parse_mzizi_slots(candidate_src),
         Arm::Dioxus => parse_rust_slots(candidate_src),
+        Arm::React => parse_react_slots(candidate_src),
     };
     let show = |s: &BTreeSet<String>| {
         let v: Vec<String> = s.iter().cloned().collect();
