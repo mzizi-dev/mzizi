@@ -16,8 +16,9 @@ the design, not the state: `mz` emits no Rust yet. The harness is the core of th
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
-network access it needs is to crates.io, for the index and the benchmark runner's two pinned
-crates (see "Build, test, run"). See "Repo boundaries" below before adding any dependency that would break that.
+network access it needs is to crates.io, for the index, the benchmark runner's two pinned
+crates, and the pinned `axum` and `tokio` that CI's `lowering` job builds a generated service
+against (see "Build, test, run"). See "Repo boundaries" below before adding any dependency that would break that.
 
 ## The one rule that overrides the others
 
@@ -27,7 +28,8 @@ tied the arms, and the ~7B open-weight model did worse in Mzizi on all three met
 ([`benchmarks/results/`](./benchmarks/results/)). Neither is the kill-criterion run, and that
 run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
 waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
-Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust", "the benchmark shows", "production
+Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust" (only a
+`service` lowers, to a local axum package; no component does), "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -48,19 +50,23 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 284 tests (406 in the workspace)
+cargo test                                                              # 292 tests (414 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
 cargo run --bin mz -- outline        ../primitives/alert.mz
 cargo run --bin mz -- ir              ../primitives/card.mz
+cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
+cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
 ```
 
 Run before every push. These are the commands in
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), job by job. The `mz` loops are copied
 from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` exits 2 (usage).
-The `secret scan` job (gitleaks) and the lint gate (`lint.yml`: actionlint, JSON validity,
+The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
+then `cargo test` and one request over a socket against the generated package, which fetches
+`axum` and `tokio` from crates.io), and the lint gate (`lint.yml`: actionlint, JSON validity,
 prettier, markdownlint, yamllint) are not listed here.
 
 ```bash
