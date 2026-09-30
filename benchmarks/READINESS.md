@@ -1,6 +1,6 @@
 # Readiness for the kill-criterion run
 
-**Status, 2026-09-29: not ready, and the run has not happened.** Nothing in this repository has
+**Status, 2026-09-30: not ready, and the run has not happened.** Nothing in this repository has
 been measured against the charter's kill criterion. Two Phase 0 pilots ran on 2026-09-27, and
 neither showed an advantage for Mzizi. On the frontier model the two arms were
 indistinguishable on compile rate and defects, and Mzizi used about 8% fewer transcript
@@ -21,9 +21,9 @@ on the headline ~7B model, on held-out tasks. A win on a metric counts only if a
 bootstrap that resamples tasks gives a 95% interval for the difference that excludes zero.
 What each run publishes is RFC-0009 §7 and RFC-0004 §4.2. This page tracks what the run
 still waits on. RFC-0009 also brings in the arms for more languages
-(TypeScript/React, Python, Go, C++ and plain-Rust backends). The runner already treats an arm
-as a guide, a check command and a diagnostic normaliser ([`runner/README.md`](runner/README.md),
-"Adding an arm"). None of the new arms has been added.
+(TypeScript/React, Python, Go, C++ and plain-Rust backends). Since 2026-09-30 an arm is one
+file, `arms/<id>/arm.toml` ([`runner/README.md`](runner/README.md), "Arms: `arm.toml`"). Of
+the new arms, only `react` has been added, and it has never run an episode.
 
 ## The audit
 
@@ -78,11 +78,31 @@ either pilot never raises its error count.
 The gating runs are RFC-0009's `ui-spec` and `backend` families (RFC-0009 §2). Phase 0
 passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
 
-1. **Runner and input (RFC-0009 §9, steps 1–2).** Arms read from `arm.toml`, `spec.md` as
-   the language-neutral input, a `react` arm with a `cva` extractor, and guides rebalanced to
-   one token budget within ±5% (§4.2). The Mzizi guide is 12,513 bytes after this branch's
-   changes, against 10,375 (Dioxus) and 10,723 (Leptos). The pilots' `spec.tsx` tasks are the
-   `ui-port` family, which is for development and pilot comparison only.
+1. **Runner and input (RFC-0009 §9, steps 1–2). Built on 2026-09-30, except for one
+   open item: the React pins.** Nothing here has run an episode.
+   - **Done.** Every arm is read from `arms/<id>/arm.toml`. `mzizi`, `dioxus` and `leptos`
+     were migrated with no behaviour change: a test rebuilds pilot 2's committed user
+     messages byte for byte. `--family ui-spec` hands the author `spec.md`, the
+     language-neutral input, now written for button, badge, card and the changelog renderer.
+     The parity test runs over every pair of arms in each family. `mzbench plan` drafts
+     `PLAN.md` from the files on disk, and `mzbench bundle-hash` computes the raw-bundle hash
+     that `run.sh` now uses (§7). A `react` arm exists: a strict `tsc` check in an offline
+     sandbox, and a `cva` extractor in the harness. On the registry's own `button.tsx` and
+     `badge.tsx` the extractor gives 0 defects against the Rust references. The four UI guides
+     are rebalanced to 2,750 Qwen2.5-Coder tokens, from 2,691 to 2,750 (2.2% apart, against
+     31% before). [`prompts/BUDGET.md`](prompts/BUDGET.md) records them, and a test catches a
+     guide that changed without being re-measured.
+   - **Open: the React pins are provisional.** RFC-0009 §1 pins the React arm from
+     `mzizi-registry`'s lockfile at the task commit. That lockfile could not be read when the
+     arm was built, so its six pins are the npm registry's versions of 2026-09-30
+     ([`arms/react/README.md`](arms/react/README.md)). They must be replaced by the registry
+     lockfile's before a gating run, and the guide re-measured if its version lines change.
+   - **Not measured.** The guide counts come from Hugging Face `tokenizers`, not llama.cpp's
+     `/tokenize`. The run's own `guide_tokens` (on every final line) is the count that goes in
+     `PLAN.md`. The React arm, like Leptos (item 4), has never run end to end.
+   - The pilots' `spec.tsx` tasks are the `ui-port` family, for development and pilot
+     comparison only. The guide rebalancing also changes what a `ui-port` episode is shown, so
+     a `ui-port` run after it is not pooled with the pilots.
 2. **Held-out tasks** for each gating family, in the private repository, each passing
    `kill-criterion/check-task.sh` (items 4 and 5). Who writes them: (a) maintainers by hand,
    or (b) another vendor's model drafts them and a person reviews each one; not
@@ -107,10 +127,15 @@ CTX=32768 benchmarks/openweight/setup.sh all   # llama.cpp b11206, Qwen2.5-Coder
 R=benchmarks/results/<date>-kill-criterion-ui-spec
 # $R/PLAN.md is committed first (RFC-0009 §7.2); run.sh refuses to start without it.
 # Each run.sh below records the server's n_ctx in its manifest.json.
-benchmarks/kill-criterion/run.sh --tasks /path/to/held-out/ui-spec \
+benchmarks/arms/react/setup.sh                 # once: npm ci from the pinned lockfile
+target/debug/mzbench plan --out "$R" --tasks /path/to/held-out/ui-spec --held-out true \
+  --arms "mzizi dioxus leptos react" --family ui-spec \
+  --model-label qwen2.5-coder-7b-instruct-q4km --seeds "1 2 3 4 5" --temperature 0.7 \
+  --n-ctx 32768                                 # then fill in the "To fill" parts and commit
+benchmarks/kill-criterion/run.sh --tasks /path/to/held-out/ui-spec --family ui-spec \
   --out "$R/qwen2.5-coder-7b-instruct-q4km" --model-label qwen2.5-coder-7b-instruct-q4km \
   --arms "mzizi dioxus leptos react" --seeds "1 2 3 4 5" --temperature 0.7 --max-iters 5
-benchmarks/kill-criterion/run.sh --tasks /path/to/held-out/ui-spec \
+benchmarks/kill-criterion/run.sh --tasks /path/to/held-out/ui-spec --family ui-spec \
   --out "$R/qwen2.5-coder-7b-instruct-q4km-t0.2" --model-label qwen2.5-coder-7b-instruct-q4km \
   --arms "mzizi dioxus leptos react" --seeds "1" --temperature 0.2 --max-iters 5
 ```

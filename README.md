@@ -12,7 +12,7 @@ limited parameters, context and long-range attention.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 308 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 335 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 ## The bet
 
@@ -65,7 +65,7 @@ of work with a different owner that happens to share the name and the org.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (308 tests in 14 suites, gated in CI; 213 of them in the compiler crate):**
+**Built and tested (335 tests in 14 suites, gated in CI; 213 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
