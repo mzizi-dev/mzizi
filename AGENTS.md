@@ -122,6 +122,20 @@ the offline check a task author runs.
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
   not already used on `main` or claimed by an open PR. Other RFCs may be in flight on branches.
 
+## Site and docs freshness (hard rule)
+
+_Owner rule, 2026-09-30._ mzizi.dev (`mzizi-dev/mzizi-site`) and docs.mzizi.dev
+(`mzizi-dev/mzizi-docs`) must never lag this repository. Any change here to the language
+changes what they must say: its syntax, diagnostics, commands, test counts, RFCs, charter,
+or benchmark status and results. Two standing freshness agents keep both sites current.
+
+Every pull request here that changes something user-visible has a **Site/docs impact**
+heading in its body. It lists what changed, so the freshness agents pick it up. A PR that
+changes nothing user-visible says `None.` under it.
+
+This is a rule about what a PR says, not a dependency. Nothing in this repository reads,
+builds or calls either site, and CI stays self-contained (see "Repo boundaries").
+
 ## Repo boundaries
 
 > Everything else consumes Mzizi. Mzizi consumes nothing else. — RFC-0004 §3, applied to

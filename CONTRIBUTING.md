@@ -220,6 +220,20 @@ Conventions the log actually follows:
 If your message is one line and the change is not a typo, you have probably not finished
 the commit.
 
+## Site and docs freshness (hard rule)
+
+_Owner rule, 2026-09-30._ mzizi.dev (`mzizi-dev/mzizi-site`) and docs.mzizi.dev
+(`mzizi-dev/mzizi-docs`) must never lag this repository. Any change here to the language
+changes what they must say: its syntax, diagnostics, commands, test counts, RFCs, charter,
+or benchmark status and results. Two standing freshness agents keep both sites current.
+
+Every pull request here that changes something user-visible has a **Site/docs impact**
+heading in its body. It lists what changed, so the freshness agents pick it up. A PR that
+changes nothing user-visible says `None.` under it.
+
+This is a rule about what a PR says, not a dependency. Nothing in this repository reads,
+builds or calls either site, and CI stays self-contained (see "Repo boundaries" in `AGENTS.md`).
+
 ## Proposing a language change: the RFC process
 
 Anything that changes the surface syntax, the type system, the IR node model, the
