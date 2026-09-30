@@ -19,6 +19,17 @@ carry no pull request number.
 
 ### Added
 
+- **`mz contract` runs a service in process** (RFC-0011 §6–§7, #31). An in-process
+  evaluator (`compiler/src/serve.rs`) implements the runtime's dispatch: the canonical-path
+  308, routes where literals beat parameters, HEAD from GET, OPTIONS 204 and 405 with a
+  computed `allow`, the fallback, and service-level headers.
+  - Each `example` is one request. Each `ensure` is checked over a deterministic set of
+    generated requests, 61 for `examples/registry.mz`. That is tested, not proven
+    (RFC-0010 C-4).
+  - A failed example is `MZ0612`, a failed ensure `MZ0611` naming the request, and a
+    `body.<field>` on a body that is not JSON `MZ0605`. Body clauses skip HEAD requests.
+  - The summary line gains `contract_tested`. The `MZ0607` placeholder from #30 is gone.
+  - Tested by 19 new tests in `compiler/tests/serve.rs`.
 - **`mz check` parses and checks a `service`** (RFC-0011 §1–§5 and §9, #30). The checker
   proves every path through a handler responds exactly once (`MZ0804` when one does not,
   `MZ0805` with an exact fix for a line after `respond`). The other `MZ0801`–`MZ0812` codes

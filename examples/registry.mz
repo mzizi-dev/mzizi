@@ -1,0 +1,68 @@
+## A registry of two components: routes, methods, redirects and a JSON 404.
+## RFC-0011's worked example, shaped like the API gateway's `/v1/ui` routes (RFC-0009 §2.4, B1).
+service registry
+
+  header "x-mzizi-source" "fixture"
+
+  record problem
+    field error: text
+  end
+
+  record health
+    field status: text
+  end
+
+  record item
+    field name: text
+  end
+
+  route health_check
+    get "/v1/health"
+    respond 200 json health status "ok"
+  end
+
+  route ui_list
+    get "/v1/ui"
+    respond 200 file "fixtures/ui.json"
+  end
+
+  route ui_item
+    get "/v1/ui/{name}"
+    when name in "badge" "button"
+      respond 200 json item name name
+    end
+    header "cache-control" "private, no-cache, no-store, max-age=0, must-revalidate"
+    respond 404 json problem error "Not found"
+  end
+
+  fallback
+    header "cache-control" "private, no-cache, no-store, max-age=0, must-revalidate"
+    respond 404 json problem error "Not found"
+  end
+
+  contract
+    example get "/v1/health" body.status is "ok"
+    example get "/v1/ui" status is 200
+    example get "/v1/ui" header "content-type" is "application/json"
+    example get "/v1/ui/button" status is 200
+    example get "/v1/ui/button" body.name is "button"
+    example get "/v1/ui/does-not-exist" status is 404
+    example get "/v1/ui/does-not-exist" body.error is "Not found"
+    example get "/v1/ui/does-not-exist" header "cache-control" is "private, no-cache, no-store, max-age=0, must-revalidate"
+    example head "/v1/ui/button" status is 200
+    example head "/v1/ui/button" body is ""
+    example options "/v1/ui" status is 204
+    example options "/v1/ui" header "allow" is "GET, HEAD, OPTIONS"
+    example delete "/v1/ui/button" status is 405
+    example delete "/v1/ui/button" body is ""
+    example get "/v1/ui/" status is 308
+    example get "/v1/ui/?limit=2" header "location" is "/v1/ui?limit=2"
+    example get "/nope" status is 404
+    example get "/nope" header "content-type" is "application/json"
+    ensure status in 200 204 308 404 405
+    ensure header "x-mzizi-source" is "fixture"
+    ensure when status is 404 then body.error is "Not found"
+    ensure when status is 405 then header "allow" is "GET, HEAD, OPTIONS"
+  end
+
+end service registry

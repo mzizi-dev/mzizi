@@ -103,7 +103,7 @@ that killed the parallel-`Record` drift, applied to accessibility.
 ## Status
 
 Every file here parses under `mz check` and every assertion in it is evaluated by
-`mz contract` — 45 assertions across these nine files and the two corpus examples, all of them
+`mz contract` — 45 assertions across these nine files and the two component examples, all of them
 holding, all of them gated in CI. A clause the evaluator cannot apply is an error, so a
 green run means the assertions ran, not that they were counted.
 

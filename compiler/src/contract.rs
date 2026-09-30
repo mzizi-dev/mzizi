@@ -180,6 +180,9 @@ pub struct Tally {
     pub clauses: usize,
     /// Assertions that failed or could not be evaluated. Non-zero fails `mz contract`.
     pub failed: usize,
+    /// Generated cases run, for a declaration whose clauses are tested rather than checked
+    /// statically (RFC-0010 §6's `contract_tested`). `None` for a component.
+    pub tested: Option<usize>,
 }
 
 /// One assertion's result.
@@ -682,7 +685,8 @@ component a
             tally,
             Tally {
                 clauses: 1,
-                failed: 0
+                failed: 0,
+                tested: None
             },
             "{says:?}"
         );
@@ -808,7 +812,8 @@ end component a
             tally,
             Tally {
                 clauses: 2,
-                failed: 0
+                failed: 0,
+                tested: None
             },
             "{says:?}"
         );

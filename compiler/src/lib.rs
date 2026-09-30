@@ -34,6 +34,7 @@ pub mod lex;
 pub mod outline;
 pub mod parse;
 pub mod resolve;
+pub mod serve;
 pub mod service;
 
 use diagnostic::{CheckReport, Severity};
@@ -117,34 +118,12 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
     (report, tally)
 }
 
-/// A service's contract. Nothing evaluates it yet, so every clause is `MZ0607`, "not yet
-/// testable" — an error, never a pass (RFC-0010 §4.2, C-2).
+/// A service's contract, evaluated by running the service in process (RFC-0011 §7).
 fn service_contract(
     s: &service::Service,
     file: &str,
 ) -> (contract::Tally, Vec<diagnostic::Diagnostic>) {
-    let clauses = s.contract.as_ref().map_or(&[][..], |c| &c.clauses[..]);
-    let diags: Vec<_> = clauses
-        .iter()
-        .map(|c| {
-            diagnostic::Diagnostic::error(
-                "MZ0607",
-                file,
-                c.span,
-                format!(
-                    "`{}` is not yet testable — nothing runs a service yet",
-                    c.canonical()
-                ),
-            )
-        })
-        .collect();
-    (
-        contract::Tally {
-            clauses: clauses.len(),
-            failed: clauses.len(),
-        },
-        diags,
-    )
+    serve::evaluate(s, file)
 }
 
 /// Apply every `exact` fix in `report` to `src` in one pass (RFC-0001 §4.3), and return

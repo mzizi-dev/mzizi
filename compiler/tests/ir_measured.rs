@@ -19,7 +19,13 @@ fn sources() -> Vec<(String, String)> {
             let file = entry.expect("entry").path();
             if file.extension().and_then(|e| e.to_str()) == Some("mz") {
                 let name = file.file_name().unwrap().to_string_lossy().to_string();
-                out.push((name, std::fs::read_to_string(&file).expect("readable")));
+                let src = std::fs::read_to_string(&file).expect("readable");
+                // Services have no IR yet (RFC-0011 §13); these measurements are of
+                // components.
+                if src.lines().any(|l| l.starts_with("service ")) {
+                    continue;
+                }
+                out.push((name, src));
             }
         }
     }
