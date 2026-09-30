@@ -19,6 +19,18 @@ carry no pull request number.
 
 ### Added
 
+- **`mz check` parses and checks a `service`** (RFC-0011 §1–§5 and §9, #30). The checker
+  proves every path through a handler responds exactly once (`MZ0804` when one does not,
+  `MZ0805` with an exact fix for a line after `respond`). The other `MZ0801`–`MZ0812` codes
+  cover methods, patterns, duplicate routes, `respond`, `header`, record literals, `query`
+  types, fixtures and misplaced lines. A service's records reuse RFC-0008's resolver and
+  codes (`MZ0701`, `MZ0707`, `MZ0708`, `MZ0710`, `MZ0712`).
+  - `examples/registry.mz` is the corpus service.
+  - In this PR, `mz contract` reports each of a service's clauses as `MZ0607`, "not yet
+    testable", an error and never a pass. `mz outline`, `mz hash` and `mz ir` refuse a
+    service with exit 2.
+  - A service does not yet run or lower. Tested by 52 new tests in
+    `compiler/tests/services.rs`.
 - **RFC-0011, handlers: the backend measurement slice** (design, #29). RFC-0009 §6.4's
   slice in one RFC: a top-level `service` declaration of `route` blocks and a `fallback`,
   handlers of three statements (`when`/`else`, `header`, `respond`) where every path must

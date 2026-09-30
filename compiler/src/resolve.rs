@@ -172,6 +172,33 @@ pub fn resolve(component: &Component, file: &str) -> Vec<Diagnostic> {
     r.diags
 }
 
+/// Every record's fields and their resolved types, for checkers outside this module (a
+/// service's record literals, RFC-0011 §3). Diagnostics are [`resolve`]'s to report.
+pub fn record_types(component: &Component) -> BTreeMap<String, Vec<(String, Ty)>> {
+    let mut r = Resolver {
+        c: component,
+        file: String::new(),
+        diags: Vec::new(),
+        records: BTreeMap::new(),
+        columns: BTreeMap::new(),
+        props: BTreeMap::new(),
+        all_bindings: BTreeSet::new(),
+    };
+    r.record_fields();
+    r.records
+}
+
+/// The built-in type another language's name stands for, else the nearest candidate.
+pub fn alias_or_nearest<'b>(
+    name: &str,
+    candidates: impl IntoIterator<Item = &'b str>,
+) -> Option<(String, Confidence)> {
+    match ALIASES.iter().find(|(from, _)| *from == name) {
+        Some((_, to)) => Some((to.to_string(), Confidence::Exact)),
+        None => nearest(name, candidates),
+    }
+}
+
 struct Resolver<'a> {
     c: &'a Component,
     file: String,

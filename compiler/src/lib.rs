@@ -34,34 +34,50 @@ pub mod lex;
 pub mod outline;
 pub mod parse;
 pub mod resolve;
+pub mod service;
 
 use diagnostic::{CheckReport, Severity};
 
-/// Parse, then resolve every name and type (RFC-0008). Resolution runs even when parsing
-/// reported errors, so an agent sees the whole error set in one pass (FM-5); names a
-/// broken line declared are carried as unknown, so that is one diagnostic, not a cascade.
+/// Parse, then resolve every name and type (RFC-0008), or check the service (RFC-0011).
+/// Resolution runs even when parsing reported errors, so an agent sees the whole error set
+/// in one pass (FM-5); names a broken line declared are carried as unknown, so that is one
+/// diagnostic, not a cascade.
+fn front_end_program(
+    src: &str,
+    file: &str,
+) -> (Option<parse::Program>, Vec<diagnostic::Diagnostic>) {
+    let (program, mut diagnostics) = parse::parse_program(src, file);
+    let resolved = match &program {
+        Some(parse::Program::Component(component)) => resolve::resolve(component, file),
+        Some(parse::Program::Service(s)) => service::check(s, file),
+        None => Vec::new(),
+    };
+    // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.
+    // If that form still names nothing, the resolver reports the same token again —
+    // one mistake, two overlapping fixes. Keep the resolver's: its fix replaces the
+    // whole written word with the name that does resolve.
+    diagnostics.retain(|d| {
+        d.code != "MZ0101"
+            || !resolved
+                .iter()
+                .any(|r| r.severity == Severity::Error && r.span == d.span)
+    });
+    diagnostics.extend(resolved);
+    (program, diagnostics)
+}
+
+/// [`front_end_program`], for callers that handle components only.
 fn front_end(src: &str, file: &str) -> (Option<ast::Component>, Vec<diagnostic::Diagnostic>) {
-    let (component, mut diagnostics) = parse::parse(src, file);
-    if let Some(component) = &component {
-        let resolved = resolve::resolve(component, file);
-        // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.
-        // If that form still names nothing, the resolver reports the same token again —
-        // one mistake, two overlapping fixes. Keep the resolver's: its fix replaces the
-        // whole written word with the name that does resolve.
-        diagnostics.retain(|d| {
-            d.code != "MZ0101"
-                || !resolved
-                    .iter()
-                    .any(|r| r.severity == Severity::Error && r.span == d.span)
-        });
-        diagnostics.extend(resolved);
+    let (program, diagnostics) = front_end_program(src, file);
+    match program {
+        Some(parse::Program::Component(c)) => (Some(c), diagnostics),
+        _ => (None, diagnostics),
     }
-    (component, diagnostics)
 }
 
 /// Check one source file and return its diagnostics in deterministic order.
 pub fn check(src: &str, file: &str) -> CheckReport {
-    let (_component, diagnostics) = front_end(src, file);
+    let (_program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
     report.disjoint_exact_fixes();
     report.sort();
@@ -78,19 +94,57 @@ pub fn check(src: &str, file: &str) -> CheckReport {
 /// for this metric — the defect rate measures what gets _past_ the compiler wrong". Running
 /// assertions against a tree the parser had to guess at would blur exactly that line.
 pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
-    let (component, diagnostics) = front_end(src, file);
+    let (program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
     let mut tally = contract::Tally::default();
-    if report.error_count() == 0
-        && let Some(component) = &component
-    {
-        let (evaluated, mut failures) = contract::evaluate(component, file);
-        tally = evaluated;
-        report.diagnostics.append(&mut failures);
+    if report.error_count() == 0 {
+        match &program {
+            Some(parse::Program::Component(component)) => {
+                let (evaluated, mut failures) = contract::evaluate(component, file);
+                tally = evaluated;
+                report.diagnostics.append(&mut failures);
+            }
+            Some(parse::Program::Service(s)) => {
+                let (evaluated, mut failures) = service_contract(s, file);
+                tally = evaluated;
+                report.diagnostics.append(&mut failures);
+            }
+            None => {}
+        }
     }
     report.disjoint_exact_fixes();
     report.sort();
     (report, tally)
+}
+
+/// A service's contract. Nothing evaluates it yet, so every clause is `MZ0607`, "not yet
+/// testable" — an error, never a pass (RFC-0010 §4.2, C-2).
+fn service_contract(
+    s: &service::Service,
+    file: &str,
+) -> (contract::Tally, Vec<diagnostic::Diagnostic>) {
+    let clauses = s.contract.as_ref().map_or(&[][..], |c| &c.clauses[..]);
+    let diags: Vec<_> = clauses
+        .iter()
+        .map(|c| {
+            diagnostic::Diagnostic::error(
+                "MZ0607",
+                file,
+                c.span,
+                format!(
+                    "`{}` is not yet testable — nothing runs a service yet",
+                    c.canonical()
+                ),
+            )
+        })
+        .collect();
+    (
+        contract::Tally {
+            clauses: clauses.len(),
+            failed: clauses.len(),
+        },
+        diags,
+    )
 }
 
 /// Apply every `exact` fix in `report` to `src` in one pass (RFC-0001 §4.3), and return
@@ -157,6 +211,15 @@ pub fn apply_exact_fixes(src: &str, report: &CheckReport) -> String {
         out.splice(start..end, replace.chars());
     }
     out.into_iter().collect()
+}
+
+/// Check a file and also return its parsed declaration, component or service.
+pub fn check_program(src: &str, file: &str) -> (Option<parse::Program>, CheckReport) {
+    let (program, diagnostics) = front_end_program(src, file);
+    let mut report = CheckReport { diagnostics };
+    report.disjoint_exact_fixes();
+    report.sort();
+    (program, report)
 }
 
 /// Check a file and also return the parsed component, for callers that need the tree.

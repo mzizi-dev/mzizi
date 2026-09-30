@@ -399,8 +399,16 @@ The limits, stated plainly:
 
 ## 12. Implementation record
 
-Updated by each pull request that implements part of this RFC. Empty until the first one
-lands.
+Updated by each pull request that implements part of this RFC.
+
+1. **The front end** (§1–§4.2, §9, and `mz check`'s part of §7). `compiler/src/service.rs`
+   holds the tree and the checker, and `compiler/src/parse/service.rs` the parser. Every
+   `MZ08xx` code in §9 is emitted and has a test that triggers it (`compiler/tests/services.rs`,
+   52 tests). A service's records and enums are checked by the same RFC-0008 resolver as a
+   component's, through a synthetic component, so there is one set of type rules. Not built
+   yet: request bodies (§4.3), as planned. `mz contract` on a service reports every clause as
+   `MZ0607`, "not yet testable", because nothing runs a service yet. `mz outline`, `mz hash` and
+   `mz ir` refuse a service with exit status 2, because services have no IR yet (§13.4).
 
 ## 13. Open questions
 
