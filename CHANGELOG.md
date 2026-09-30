@@ -23,6 +23,7 @@ carry no pull request number.
   evaluator (`compiler/src/serve.rs`) implements the runtime's dispatch: the canonical-path
   308, routes where literals beat parameters, HEAD from GET, OPTIONS 204 and 405 with a
   computed `allow`, the fallback, and service-level headers.
+  - `examples/registry.mz` is the example service, 22 clauses, all holding.
   - Each `example` is one request. Each `ensure` is checked over a deterministic set of
     generated requests, 61 for `examples/registry.mz`. That is tested, not proven
     (RFC-0010 C-4).
