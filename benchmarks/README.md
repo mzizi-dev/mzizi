@@ -135,6 +135,13 @@ frontier model (`benchmarks/openweight/`). It is not the Phase 0 number either. 
 small-model data there is, and on it Mzizi did worse than Dioxus on all three metrics; the
 write-up traces why.
 
+**Arms and extractors, 2026-09-30.** An arm is one file,
+[`arms/<id>/arm.toml`](runner/README.md#arms-armtoml): `mzizi`, `dioxus`, `leptos` and `react`.
+The harness reads the same facts from all four through three extractors: Mzizi enum tables, Rust
+`enum` / `classes()` (Dioxus and Leptos), and React `cva(…)` calls (`score --arm react`). The
+`ui-spec` family hands every arm the language-neutral `spec.md`. None of this has been run
+against a model yet.
+
 **Before the next run:** [`READINESS.md`](READINESS.md) audits pilot 2's list of fixes against
 `main`, records which are done, and gives the command for the kill-criterion run.
 [`kill-criterion/`](kill-criterion/README.md) holds its driver, the task checker and the
