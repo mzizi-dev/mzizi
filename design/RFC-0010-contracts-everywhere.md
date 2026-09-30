@@ -17,6 +17,13 @@ out for v0.
 > (its grammar is the component case of §3, and its §10.5, lowering, is answered by §5). Both
 > carry a note pointing here.
 
+<!-- A second note; the separator keeps it distinct. -->
+
+> **Amended by RFC-0011.** §3.2's and §3.3's declaration lines were placeholders for G2.2. A
+> `route` is now an inner block of a `service`, one service per file, and a top-level `route`
+> waits for modules (G2.3). A service's contract is evaluated by running it in process, so
+> `MZ0607` never applies to one (RFC-0011 §7).
+
 ---
 
 ## 0. Method: four more failure modes, one of them measured
