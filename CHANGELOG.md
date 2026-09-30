@@ -67,6 +67,9 @@ carry no pull request number.
 
 ### Changed
 
+- **ROADMAP says "UI task set" and "reference implementations", not "the benchmark
+  corpus"** (#29), after charter v0.4 §6. The Rust components the UI task set scores
+  against are its reference implementations. Wording only: no plan or status changed.
 - **Charter v0.4: Mzizi is a general-purpose programming language, and Phase 0 is scoped to
   one goal** (owner-directed 2026-09-30). "Mzizi is built to make Rust better, the way
   TypeScript makes JavaScript better": Rust is the platform Mzizi is designed to lower to (not
