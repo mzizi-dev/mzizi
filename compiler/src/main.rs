@@ -28,7 +28,10 @@ use std::time::Instant;
 use mzizi_lang_compiler::diagnostic::Severity;
 use mzizi_lang_compiler::ir::{Store, lower, paths};
 use mzizi_lang_compiler::outline::outline;
-use mzizi_lang_compiler::{apply_exact_fixes, check, check_contract, check_with_ast};
+use mzizi_lang_compiler::parse::Program;
+use mzizi_lang_compiler::{
+    apply_exact_fixes, check, check_contract, check_program, check_with_ast,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -133,6 +136,16 @@ fn main() -> ExitCode {
     // The IR-backed commands all need the tree, so they share one parse.
     if command != "check" {
         let (component, report) = check_with_ast(&src, path);
+        if component.is_none()
+            && let (Some(Program::Service(_)), _) = check_program(&src, path)
+        {
+            // Services have no IR yet (RFC-0011 §13), so these commands have nothing to
+            // print. Saying so is a usage error, not a silent success.
+            eprintln!(
+                "mz: `{command}` does not cover services yet; `check`, `fix` and `contract` do"
+            );
+            return ExitCode::from(2);
+        }
         let Some(component) = component else {
             eprintln!("mz: {path} does not parse; run `mz check` for diagnostics");
             return ExitCode::from(1);

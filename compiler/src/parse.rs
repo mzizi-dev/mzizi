@@ -17,10 +17,31 @@ use crate::ast::{
 use crate::contract::{Clause, Contract, PREDICATE_WORDS, Predicate, Subject};
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::lex::{Tok, Token, lex};
+use crate::service::Service;
+
+mod service;
+
+/// A parsed file: its one top-level declaration.
+#[derive(Debug, PartialEq)]
+pub enum Program {
+    /// `component <name>` … `end component <name>`.
+    Component(Component),
+    /// `service <name>` … `end service <name>` (RFC-0011).
+    Service(Service),
+}
 
 /// Parse a source file. Returns the component when the shape was recoverable, plus every
 /// diagnostic found — parsing never stops at the first error.
 pub fn parse(src: &str, file: &str) -> (Option<Component>, Vec<Diagnostic>) {
+    let (program, diags) = parse_program(src, file);
+    match program {
+        Some(Program::Component(c)) => (Some(c), diags),
+        _ => (None, diags),
+    }
+}
+
+/// Parse a source file holding either kind of top-level declaration.
+pub fn parse_program(src: &str, file: &str) -> (Option<Program>, Vec<Diagnostic>) {
     let (tokens, mut diags) = lex(src, file);
     let mut p = Parser {
         tokens,
@@ -28,10 +49,24 @@ pub fn parse(src: &str, file: &str) -> (Option<Component>, Vec<Diagnostic>) {
         file: file.to_string(),
         diags: Vec::new(),
         unwinding: false,
+        service: None,
     };
     let component = p.parse_file();
+    let program = match p.service.take() {
+        Some(service) => Some(Program::Service(service)),
+        None => component.map(Program::Component),
+    };
+    // `GET` as a method is one mistake, which the parser reports with the method's own
+    // fix; the lexer's snake_case repair (`g_e_t`) on the same token would be a second.
+    diags.retain(|d| {
+        d.code != "MZ0101"
+            || !p
+                .diags
+                .iter()
+                .any(|m| matches!(m.code, "MZ0801" | "MZ0601") && m.span == d.span)
+    });
     diags.append(&mut p.diags);
-    (component, diags)
+    (program, diags)
 }
 
 /// What kind of block is open, for the `end` cross-check.
@@ -44,6 +79,10 @@ enum BlockKind {
     Fn,
     Contract,
     Element,
+    Service,
+    Route,
+    Fallback,
+    When,
 }
 
 impl BlockKind {
@@ -56,12 +95,16 @@ impl BlockKind {
             BlockKind::Fn => "fn",
             BlockKind::Contract => "contract",
             BlockKind::Element => "element",
+            BlockKind::Service => "service",
+            BlockKind::Route => "route",
+            BlockKind::Fallback => "fallback",
+            BlockKind::When => "when",
         }
     }
 
     /// Whether `end` for this block must echo `<kind> <name>` (top-level declarations do).
     fn requires_echo(self) -> bool {
-        matches!(self, BlockKind::Component)
+        matches!(self, BlockKind::Component | BlockKind::Service)
     }
 }
 
@@ -80,6 +123,8 @@ struct Parser {
     /// `prop`, …) turns up inside a `view`: every open view block stops where it is, and
     /// the component loop reports them once and carries on from that line.
     unwinding: bool,
+    /// The service, when the file holds one rather than a component (RFC-0011).
+    service: Option<Service>,
 }
 
 impl Parser {
@@ -318,6 +363,11 @@ impl Parser {
             self.skip_newlines();
         }
 
+        if matches!(self.peek(), Tok::Ident(w) if w == "service") {
+            self.service = self.parse_service(docs);
+            return None;
+        }
+
         if !self.eat_keyword("component") {
             let span = self.peek_span();
             self.diags.push(Diagnostic::error(
@@ -325,7 +375,7 @@ impl Parser {
                 &self.file,
                 span,
                 format!(
-                    "a .mz file starts with `component <name>`, found {}",
+                    "a .mz file starts with `component <name>` or `service <name>`, found {}",
                     describe(self.peek())
                 ),
             ));
@@ -493,8 +543,28 @@ impl Parser {
             }
         }
 
-        // Anything still open at EOF is unclosed. One diagnostic each, innermost first,
-        // every one carrying the exact text that would close it.
+        self.close_at_eof(&mut stack);
+
+        self.as_child(&component);
+
+        if component.contract.is_none() {
+            self.diags.push(Diagnostic::warning(
+                "MZ0501",
+                &self.file,
+                name_span,
+                format!(
+                    "`component {}` has no `contract` block — behaviour is unverified (RFC-0001 §1.6)",
+                    component.name
+                ),
+            ));
+        }
+
+        Some(component)
+    }
+
+    /// Anything still open at EOF is unclosed. One diagnostic each, innermost first,
+    /// every one carrying the exact text that would close it.
+    fn close_at_eof(&mut self, stack: &mut Vec<Open>) {
         while let Some(open) = stack.pop() {
             let eof = self.peek_span();
             let closer = if open.kind.requires_echo() {
@@ -526,22 +596,6 @@ impl Parser {
                 ),
             );
         }
-
-        self.as_child(&component);
-
-        if component.contract.is_none() {
-            self.diags.push(Diagnostic::warning(
-                "MZ0501",
-                &self.file,
-                name_span,
-                format!(
-                    "`component {}` has no `contract` block — behaviour is unverified (RFC-0001 §1.6)",
-                    component.name
-                ),
-            ));
-        }
-
-        Some(component)
     }
 
     /// `prop as_child` — React's `asChild`, which renders the component *as* its child by
@@ -621,9 +675,16 @@ impl Parser {
                 Some(k)
             }
             // `record` is not a keyword (RFC-0008 §1), so its echo arrives as a word.
-            Tok::Ident(word) if word == "record" => {
+            Tok::Ident(word)
+                if matches!(word.as_str(), "record" | "service" | "route" | "fallback") =>
+            {
                 self.bump();
-                Some("record")
+                match word.as_str() {
+                    "record" => Some("record"),
+                    "service" => Some("service"),
+                    "route" => Some("route"),
+                    _ => Some("fallback"),
+                }
             }
             _ => None,
         };
@@ -644,11 +705,11 @@ impl Parser {
         // to close the innermost block and report MZ0206 ("write `end element`") plus an
         // MZ0204 at end of file ("add `end component`") — two fixes that contradict each
         // other. It is one mistake: report the open blocks once, and close the component.
-        if echoed_kind == Some("component")
+        if matches!(echoed_kind, Some("component" | "service"))
             && stack.len() > 1
-            && stack
-                .first()
-                .is_some_and(|o| o.kind == BlockKind::Component)
+            && stack.first().is_some_and(|o| {
+                o.kind.requires_echo() && o.kind.word() == echoed_kind.unwrap_or("")
+            })
         {
             let mut open = Vec::new();
             while stack.len() > 1 {
@@ -664,7 +725,8 @@ impl Parser {
                     &self.file,
                     end_span,
                     format!(
-                        "`end component` arrived while {} {} still open — an `end` is missing above; add {} before this line",
+                        "`end {}` arrived while {} {} still open — an `end` is missing above; add {} before this line",
+                        echoed_kind.unwrap_or("component"),
                         names.join(", "),
                         if open.len() == 1 { "is" } else { "are" },
                         if open.len() == 1 {
