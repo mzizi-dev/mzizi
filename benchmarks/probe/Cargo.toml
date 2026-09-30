@@ -1,0 +1,32 @@
+[package]
+name = "mzizi-benchmark-probe"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+description = "Backend-task probes (RFC-0009 §2.3): send each probe's HTTP request to a running candidate or reference, and check the facts expected of the response."
+
+# Its own workspace member, so the harness keeps zero dependencies (RFC-0009 §9 step 3).
+# Three dependencies, pinned exactly, against a house style of zero:
+#
+# - `ureq` and `serde_json`, at the runner's pins and for the runner's reasons: this crate
+#   is an HTTP client on the measurement path (chunked bodies, timeouts), and it parses JSON
+#   it does not control — a candidate's response body. A hand-rolled parser there is where
+#   a quiet mis-parse would skew a defect count. Redirects are never followed and 4xx/5xx
+#   are never errors, because both are facts under test.
+# - `toml` — `probes.toml` uses arrays of tables and nested inline tables (RFC-0009 §2.3's
+#   shape). The runner's `toml_lite` reads top-level keys only, by design. A second
+#   hand-rolled parser for a richer subset is a second place for a probe to be misread, so
+#   this crate takes the reference implementation instead.
+[dependencies]
+ureq = { version = "=3.4.2", default-features = false }
+serde_json = "=1.0.151"
+toml = "=0.9.8"
+
+[[bin]]
+name = "mzprobe"
+path = "src/main.rs"
+
+[lib]
+name = "mzizi_benchmark_probe"
+path = "src/lib.rs"

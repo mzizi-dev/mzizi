@@ -19,6 +19,23 @@ carry no pull request number.
 
 ### Added
 
+- **The `mzizi-be` arm, the probe crate `mzprobe`, and task B1** (RFC-0009 §6.4 and §9
+  step 6, #33). This is the first `backend` arm.
+  - `benchmarks/arms/mzizi-be/` holds the `arm.toml` (checked with `mz check --agent`,
+    extractor `none`). Its `serve.sh` lowers a candidate with `mz build`, builds it offline,
+    and serves it on `$PORT`.
+  - Its guide is `benchmarks/prompts/mzizi-be-guide.md`, at 2,210 Qwen2.5-Coder tokens. The
+    `backend` family has no budget until the incumbent backend guides exist.
+    `verify-guide.sh` and a compiler test both hold the guide to the checker's real output.
+  - `benchmarks/probe` (`mzprobe run`, `serve`, `verify`) sends a task's probes and judges
+    each fact. It never follows a redirect, and treats no HTTP status as an error. 9 offline
+    tests.
+  - `benchmarks/tasks/b1-routing` is B1: a language-neutral `spec.md`, and 20 probes holding
+    59 facts. It has two references, RFC-0011's service form and plain axum. Both hold all
+    59 facts, and CI's `lowering` job runs `mzprobe verify` on them.
+  - The runner does not call the probes yet, so a backend episode would be clean but
+    unscored.
+  - No backend episode has run. B2–B5 and the incumbent backend arms do not exist.
 - **`mz build <file> --out <dir>` lowers a service to a Rust + axum package** (RFC-0011 §8,
   #32). The package is RFC-0011 §6's routing as one Rust function, served by axum through a
   single fallback. It gets one generated `#[tokio::test]` per `example`, sent with

@@ -608,3 +608,33 @@ fn no_two_exact_fixes_overlap_and_mz_fix_never_adds_errors() {
         );
     }
 }
+
+// The backend guide ----------------------------------------------------------------------
+
+#[test]
+fn the_backend_guide_shows_the_checkers_real_output_and_a_clean_example() {
+    // benchmarks/prompts/mzizi-be-guide.md is the mzizi-be arm's system message. Its
+    // wrong-on-purpose file must produce exactly the output it prints, and its worked
+    // example must check and evaluate clean, or the guide teaches something false.
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../benchmarks/prompts/mzizi-be-guide.md"
+    );
+    let guide = std::fs::read_to_string(path).unwrap();
+    let blocks = |tag: &str| -> Vec<String> {
+        guide
+            .split(&format!("```{tag}\n"))
+            .skip(1)
+            .map(|b| b.split("```").next().unwrap().to_string())
+            .collect()
+    };
+    let mz = blocks("mz");
+    let text = blocks("text");
+    assert_eq!(mz.len(), 2, "a wrong file and a worked example");
+    let printed = check(&mz[0], "candidate.mz").to_ndjson(0);
+    assert_eq!(printed, text[1], "the guide's checker output is stale");
+    let (report, tally) = check_contract(&mz[1], "candidate.mz");
+    assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
+    assert!(report.diagnostics.is_empty(), "{:#?}", report.diagnostics);
+    assert_eq!(tally.failed, 0);
+}

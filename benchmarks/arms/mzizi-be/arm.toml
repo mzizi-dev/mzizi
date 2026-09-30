@@ -1,0 +1,18 @@
+# The Mzizi backend arm (RFC-0009 §1, §6.4). Format: ../../runner/README.md, "Arms:
+# `arm.toml`" (RFC-0009 §9 step 1). The check is this
+# repo's own compiler, so there is no sandbox and no pin file: the pin is the repo commit.
+id = "mzizi-be"
+family = "backend"
+task_families = ["backend"]
+language_name = "Mzizi"
+file_kind = "a single Mzizi source file (.mz) holding one service"
+extension = "mz"
+guide = "benchmarks/prompts/mzizi-be-guide.md"
+check = [
+  "cargo", "run", "-q", "--manifest-path", "{repo}/compiler/Cargo.toml",
+  "--bin", "mz", "--", "check", "--agent", "{file}",
+]
+normaliser = "file-name"
+# A backend episode is scored by the task's probes (benchmarks/probe), not by a source
+# extractor. Until the runner calls the probe crate, clean episodes are clean but unscored.
+extractor = "none"

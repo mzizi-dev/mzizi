@@ -109,8 +109,8 @@ jobs:
       - name: cargo clippy -D warnings (workspace)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: cargo test (harness and runner)
-        run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
+      - name: cargo test (harness, runner and probe)
+        run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner -p mzizi-benchmark-probe
 
   # RFC-0011 §8: the example service lowered to an axum package, its generated `oneshot`
   # tests run, and the server started and asked one question over a real socket. Rust
@@ -128,8 +128,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            compiler
+            .
             target/mz-build/registry
+            target/mz-build/b1-routing-reference
+            benchmarks/tasks/b1-routing/reference-rust
 
       - name: mz build the example service
         working-directory: compiler
@@ -151,6 +153,11 @@ jobs:
           kill "$server"
           grep -q '^HTTP/1.1 204' response.txt
           grep -qi '^allow: GET, HEAD, OPTIONS$' response.txt
+
+      # RFC-0009 §2.3: every probe must pass against both of a backend task's references,
+      # one in Mzizi (lowered by `mz build`) and one in plain axum, before any run.
+      - name: mzprobe verify B1 against both references
+        run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b1-routing
 
   secrets:
     name: secret scan

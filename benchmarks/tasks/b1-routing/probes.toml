@@ -1,0 +1,124 @@
+# B1's probes (RFC-0009 §2.3). Each expected status, header, body and JSON value is one
+# fact. `clause` is the spec rule the probe checks: B1.1–B1.3 the routes, B1.4–B1.6 the
+# methods, B1.7 the trailing slash, B1.8 the not-found response. Every probe must pass
+# against both references (`mzprobe verify benchmarks/tasks/b1-routing`).
+
+[[probe]]
+id = "health"
+clause = "B1.1"
+request = { method = "GET", path = "/v1/health" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/status" = "ok" } }
+
+[[probe]]
+id = "ui-list"
+clause = "B1.2"
+request = { method = "GET", path = "/v1/ui" }
+expect = { status = 200, headers = { "content-type" = "application/json" }, json = { "/count" = 2 } }
+
+[[probe]]
+id = "ui-item-badge"
+clause = "B1.3"
+request = { method = "GET", path = "/v1/ui/badge" }
+expect = { status = 200, headers = { "content-type" = "application/json" }, json = { "/name" = "badge" } }
+
+[[probe]]
+id = "ui-item-button"
+clause = "B1.3"
+request = { method = "GET", path = "/v1/ui/button" }
+expect = { status = 200, json = { "/name" = "button" } }
+
+[[probe]]
+id = "ui-item-unknown"
+clause = "B1.3"
+request = { method = "GET", path = "/v1/ui/card" }
+expect = { status = 404, headers = { "content-type" = "application/json", "cache-control" = "private, no-cache, no-store, max-age=0, must-revalidate", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "head-item"
+clause = "B1.4"
+request = { method = "HEAD", path = "/v1/ui/button" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "head-health"
+clause = "B1.4"
+request = { method = "HEAD", path = "/v1/health" }
+expect = { status = 200, body = "" }
+
+[[probe]]
+id = "options-list"
+clause = "B1.5"
+request = { method = "OPTIONS", path = "/v1/ui" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "options-unknown-item"
+clause = "B1.5"
+request = { method = "OPTIONS", path = "/v1/ui/card" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS" } }
+
+[[probe]]
+id = "delete-item"
+clause = "B1.6"
+request = { method = "DELETE", path = "/v1/ui/button" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "post-list"
+clause = "B1.6"
+request = { method = "POST", path = "/v1/ui" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS" }, body = "" }
+
+[[probe]]
+id = "put-health"
+clause = "B1.6"
+request = { method = "PUT", path = "/v1/health" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS" } }
+
+[[probe]]
+id = "trailing-slash"
+clause = "B1.7"
+request = { method = "GET", path = "/v1/ui/" }
+expect = { status = 308, headers = { location = "/v1/ui", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "trailing-slash-query"
+clause = "B1.7"
+request = { method = "GET", path = "/v1/ui/?page=2" }
+expect = { status = 308, headers = { location = "/v1/ui?page=2" } }
+
+[[probe]]
+id = "trailing-slash-item"
+clause = "B1.7"
+request = { method = "GET", path = "/v1/ui/button/" }
+expect = { status = 308, headers = { location = "/v1/ui/button" } }
+
+[[probe]]
+id = "trailing-slash-delete"
+clause = "B1.7"
+request = { method = "DELETE", path = "/v1/health/" }
+expect = { status = 308, headers = { location = "/v1/health" } }
+
+[[probe]]
+id = "unknown-path"
+clause = "B1.8"
+request = { method = "GET", path = "/v2/nothing" }
+expect = { status = 404, headers = { "content-type" = "application/json", "cache-control" = "private, no-cache, no-store, max-age=0, must-revalidate", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "root"
+clause = "B1.8"
+request = { method = "GET", path = "/" }
+expect = { status = 404, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "case-sensitive"
+clause = "B1.8"
+request = { method = "GET", path = "/V1/UI" }
+expect = { status = 404, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "unknown-path-delete"
+clause = "B1.8"
+request = { method = "DELETE", path = "/v2/nothing" }
+expect = { status = 404, json = { "/error" = "Not found" } }

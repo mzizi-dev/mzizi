@@ -4,13 +4,18 @@
 # or how CI invokes it (every existing step runs with `working-directory:
 # compiler` and, per Cargo's own rule, a command run from inside a workspace
 # member defaults to that member unless `--workspace` is passed).
-# `benchmarks/runner` (the `mzbench` binary) is the only member with dependencies; its
-# Cargo.toml says why.
+# `benchmarks/runner` (the `mzbench` binary) and `benchmarks/probe` (`mzprobe`) are the only
+# members with dependencies; each Cargo.toml says why.
 [workspace]
 resolver = "2"
-members = ["compiler", "benchmarks/harness", "benchmarks/runner"]
+members = ["compiler", "benchmarks/harness", "benchmarks/runner", "benchmarks/probe"]
 # The Dioxus and Leptos arms' sandboxes are each their own workspace root (both declare
 # an empty `[workspace]`), so CI's `--workspace` never builds either. Excluded here as
 # well so a future glob in `members` cannot pull them in. See
 # benchmarks/arms/dioxus/README.md and benchmarks/arms/leptos/README.md.
-exclude = ["benchmarks/arms/dioxus", "benchmarks/arms/leptos"]
+exclude = [
+  "benchmarks/arms/dioxus",
+  "benchmarks/arms/leptos",
+  # A backend task's Rust reference is its own package and workspace root (RFC-0009 §2.3).
+  "benchmarks/tasks/b1-routing/reference-rust",
+]

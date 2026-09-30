@@ -40,18 +40,18 @@ An **arm** is one language with one framework, a pinned toolchain, a sandbox, a 
 guide and a scorer extractor. Today three exist: `mzizi`, `dioxus` and `leptos`
 (`benchmarks/arms/`, `benchmarks/runner/src/prompt.rs`). This RFC adds seven.
 
-| Arm        | Family  | Language and framework                              | Pin comes from                                            | Status             |
-| ---------- | ------- | --------------------------------------------------- | --------------------------------------------------------- | ------------------ |
-| `mzizi`    | UI      | Mzizi                                               | this repo                                                 | exists             |
-| `dioxus`   | UI      | Rust, Dioxus `=0.7.10`                              | `mzizi-registry`'s lockfile (`arms/dioxus/README.md`)     | exists             |
-| `leptos`   | UI      | Rust, Leptos `=0.8.21`                              | `arms/leptos/README.md` (never ported in the registry)    | exists             |
-| `react`    | UI      | TypeScript, React, `class-variance-authority`       | `mzizi-registry`'s lockfile at the task commit            | new                |
-| `mzizi-be` | backend | Mzizi                                               | this repo                                                 | **blocked** (§6.4) |
-| `ts`       | backend | TypeScript, Hono on Node                            | `mzizi-api-gateway`'s lockfile at `2468b2a`               | new                |
-| `python`   | backend | Python, FastAPI with pydantic v2, served by uvicorn | exact pins, chosen when the arm lands, lockfile committed | new                |
-| `go`       | backend | Go, `net/http` from the standard library            | exact Go toolchain version                                | new                |
-| `cpp`      | backend | C++20, `cpp-httplib` + `nlohmann/json` (both MIT)   | vendored single headers, recorded in a NOTICE             | new                |
-| `rust`     | backend | Rust, axum on tokio, serde                          | exact pins, lockfile committed                            | new                |
+| Arm        | Family  | Language and framework                              | Pin comes from                                            | Status                          |
+| ---------- | ------- | --------------------------------------------------- | --------------------------------------------------------- | ------------------------------- |
+| `mzizi`    | UI      | Mzizi                                               | this repo                                                 | exists                          |
+| `dioxus`   | UI      | Rust, Dioxus `=0.7.10`                              | `mzizi-registry`'s lockfile (`arms/dioxus/README.md`)     | exists                          |
+| `leptos`   | UI      | Rust, Leptos `=0.8.21`                              | `arms/leptos/README.md` (never ported in the registry)    | exists                          |
+| `react`    | UI      | TypeScript, React, `class-variance-authority`       | `mzizi-registry`'s lockfile at the task commit            | new                             |
+| `mzizi-be` | backend | Mzizi                                               | this repo                                                 | exists, unscored (RFC-0011 §12) |
+| `ts`       | backend | TypeScript, Hono on Node                            | `mzizi-api-gateway`'s lockfile at `2468b2a`               | new                             |
+| `python`   | backend | Python, FastAPI with pydantic v2, served by uvicorn | exact pins, chosen when the arm lands, lockfile committed | new                             |
+| `go`       | backend | Go, `net/http` from the standard library            | exact Go toolchain version                                | new                             |
+| `cpp`      | backend | C++20, `cpp-httplib` + `nlohmann/json` (both MIT)   | vendored single headers, recorded in a NOTICE             | new                             |
+| `rust`     | backend | Rust, axum on tokio, serde                          | exact pins, lockfile committed                            | new                             |
 
 Decisions, and why:
 
@@ -284,6 +284,10 @@ that fails the old rule can pass the new one. It is registered before any gating
 after data that can only make passing harder cannot flatter.
 
 ### 6.4 What the decision costs: a Mzizi backend arm has to exist
+
+_Status, 2026-09-30: the slice below is designed in RFC-0011 and built, and `mzizi-be` exists
+with B1 as its first task (RFC-0011 §12). Nothing in the family has run, and the runner does
+not yet score an episode with probes._
 
 The `backend` family cannot pass without a `mzizi-be` arm, and Mzizi cannot write a handler today.
 There is no handler declaration (RFC-0007 G2.2), no boundary records (G2.4), no error model

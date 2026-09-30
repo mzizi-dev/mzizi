@@ -1,0 +1,15 @@
+# B1's Rust reference: plain axum, written as an axum author would, independently of
+# Mzizi's lowering. Never shown to an agent. Its own workspace root (RFC-0009 §2.3).
+[package]
+name = "b1-reference"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[dependencies]
+axum = "=0.8.9"
+tokio = { version = "=1.53.1", features = ["rt-multi-thread", "macros", "net"] }
+serde_json = "=1.0.151"
