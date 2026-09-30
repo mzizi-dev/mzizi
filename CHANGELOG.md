@@ -25,7 +25,6 @@ carry no pull request number.
   cover methods, patterns, duplicate routes, `respond`, `header`, record literals, `query`
   types, fixtures and misplaced lines. A service's records reuse RFC-0008's resolver and
   codes (`MZ0701`, `MZ0707`, `MZ0708`, `MZ0710`, `MZ0712`).
-  - `examples/registry.mz` is the corpus service.
   - In this PR, `mz contract` reports each of a service's clauses as `MZ0607`, "not yet
     testable", an error and never a pass. `mz outline`, `mz hash` and `mz ir` refuse a
     service with exit 2.
