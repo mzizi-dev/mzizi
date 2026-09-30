@@ -5,8 +5,8 @@
 Mzizi is **Phase 0 of a research charter**, and the honest description of what exists today
 is in the README: a prototype front end. The lexer, the recovering parser, the agent
 diagnostic protocol, the content-addressed IR and nine primitives exist and are tested.
-Contract bodies parse but are **not evaluated**. There is no lowering, no runtime, no
-rendering. The Phase 0 benchmark has not run, so **nothing here has been measured against
+Contract bodies parse but are **not evaluated**. `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. There is no runtime
+and no rendering. The Phase 0 benchmark has not run, so **nothing here has been measured against
 the charter's kill criteria** — and [`CHARTER.md`](./CHARTER.md) §4 is explicit that if the
 benchmark does not show a measurable advantage, Phase 1 does not start.
 
@@ -85,7 +85,7 @@ They look like they duplicate `cargo test` — `compiler/tests/primitives.rs` an
 distinction is the reason the CI job was worth recreating when this repository was split
 out of `agent-tools`:
 
-> `cargo test` proves the **test harness** parses the corpus. `mz check` proves the
+> `cargo test` proves the **test harness** parses the repo's `.mz` files. `mz check` proves the
 > **binary this project ships** does. Those are different claims, and only the second is
 > the one the charter makes.
 
@@ -109,7 +109,9 @@ in a test fixture.
 
 ### What CI does not check
 
-There is no lowering, no runtime and no rendering, so there is nothing there to gate.
+The `lowering` job gates one lowered package: `mz build` of `examples/registry.mz`, which it
+compiles, tests and serves. No component lowers, and there is no runtime and no rendering, so
+there is nothing more there to gate.
 
 Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
 component against its own declarations: its variant tables, its view tree, its prop
@@ -278,14 +280,14 @@ code with eight reading barriers (`RB-1` … `RB-8`). RFC-0001 states the rule o
 decision doesn't trace to a failure mode, it doesn't belong in the language._ A proposal
 that cannot name the failure it removes will be asked to.
 
-**Examples come from the benchmark corpus, never invented.** RFC-0001 §1 says so explicitly
+**Examples come from real components, never invented.** RFC-0001 §1 says so explicitly
 and uses `mzizi-connectivity-bar`, a real component whose TypeScript reference and Rust
 port both exist, so every line is checkable against known ground truth. Use a component
-from the corpus, or one of the nine primitives.
+with a reference implementation, or one of the nine primitives.
 
 **Numbers are measured, not asserted.** RFC-0003 §7 is a table of claims with the
 measurements beside them, produced by `compiler/tests/ir_measured.rs` over the nine
-primitives and the corpus example. That test exists so the RFC's numeric claims are
+primitives and the example components in `examples/`. That test exists so the RFC's numeric claims are
 verifiable and stay true — it is also why RFCs live next to the code they govern rather
 than in a separate `rfcs` repository (MIGRATION.md §1, "Not repositories": "Split them and
 the RFCs become documentation nobody checks"). If your RFC claims a number, land a test that measures it,

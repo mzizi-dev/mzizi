@@ -7,8 +7,8 @@ feedback loop are designed for **machine authorship**, and specifically for the 
 need the help most: small open-weight models with limited parameters, context and long-range
 attention. Rust is its platform, the way JavaScript is TypeScript's: Mzizi is designed to lower
 to Rust, with no borrows, lifetimes or ownership at the surface ([RFC-0001](./design/RFC-0001-syntax.md)
-§1.8). **That is the design and the goal, not the state:** the compiler emits no Rust yet, and
-"makes Rust better" is what Phase 0 exists to test. The harness is the core of the language,
+§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target.
+"Makes Rust better" is what Phase 0 exists to test. The harness is the core of the language,
 what an agent reads ([RFC-0012](./design/RFC-0012-harness.md), a draft), and Mzizi Roots is its
 component model, the way React is JavaScript's.
 
