@@ -110,6 +110,10 @@ impl<'a> Runtime<'a> {
                     .push((h.name.clone(), interpolate(&h.value, &BTreeMap::new())));
             }
         }
+        // A value holding a control character is not a header value (RFC 9110 §5.5). It
+        // is dropped, exactly as the lowered server drops what `HeaderValue` refuses.
+        res.headers
+            .retain(|(_, v)| !v.chars().any(|c| (c < ' ' && c != '\t') || c == '\u{7f}'));
         res
     }
 

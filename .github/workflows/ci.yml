@@ -112,6 +112,46 @@ jobs:
       - name: cargo test (harness and runner)
         run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
 
+  # RFC-0011 §8: the corpus service lowered to an axum package, its generated `oneshot`
+  # tests run, and the server started and asked one question over a real socket. Rust
+  # only: the package's dependencies come from crates.io like the runner's, and the
+  # request is written with bash's /dev/tcp, so no other toolchain is needed.
+  lowering:
+    name: lowering
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            compiler
+            target/mz-build/registry
+
+      - name: mz build the corpus service
+        working-directory: compiler
+        run: cargo run --quiet --bin mz -- build ../examples/registry.mz --out ../target/mz-build/registry
+
+      - name: cargo test the lowered service (one oneshot test per example)
+        run: cargo test --manifest-path target/mz-build/registry/Cargo.toml
+
+      - name: serve it, and answer OPTIONS over a socket
+        run: |
+          set -euo pipefail
+          cargo build --release --manifest-path target/mz-build/registry/Cargo.toml
+          PORT=18080 target/mz-build/registry/target/release/mz-registry > serve.log 2>&1 &
+          server=$!
+          for _ in $(seq 1 50); do grep -q listening serve.log && break; sleep 0.2; done
+          exec 3<>/dev/tcp/127.0.0.1/18080
+          printf 'OPTIONS /v1/ui HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
+          tr -d '\r' <&3 | tee response.txt
+          kill "$server"
+          grep -q '^HTTP/1.1 204' response.txt
+          grep -qi '^allow: GET, HEAD, OPTIONS$' response.txt
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest
