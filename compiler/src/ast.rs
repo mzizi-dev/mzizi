@@ -49,7 +49,7 @@ impl Component {
 }
 
 /// An enum whose variants carry data columns (RFC-0001 §1.3).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnumDecl {
     /// Enum name.
     pub name: String,
@@ -58,7 +58,7 @@ pub struct EnumDecl {
 }
 
 /// One enum variant and its column values.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variant {
     /// Variant name.
     pub name: String,
@@ -69,7 +69,7 @@ pub struct Variant {
 }
 
 /// A record declaration: named fields, closed with a bare `end` (RFC-0008 §2).
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecordDecl {
     /// Record name.
     pub name: String,
@@ -85,7 +85,7 @@ pub struct RecordDecl {
 }
 
 /// One `field <name>: <type>` line.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FieldDecl {
     /// Field name.
     pub name: String,
