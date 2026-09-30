@@ -7,8 +7,13 @@
 
 ## What this repo is
 
-**`mzizi-dev/mzizi` is the language** — a Rust compiler/syntax research prototype, Phase 0
-of the Mzizi research charter. It is **not** the component registry
+**`mzizi-dev/mzizi` is the language** — Mzizi, a general-purpose programming language, and
+its compiler (`mz`, written in Rust), a research prototype in Phase 0 of the Mzizi research
+charter. Its one goal is building Mzizi as a language that stands against the best existing
+language for each kind of task ([`CHARTER.md`](./CHARTER.md) §1, v0.4). "Compiles to Rust" is
+the design, not the state: `mz` emits no Rust yet. The harness is the core of the language
+([RFC-0012](./design/RFC-0012-harness.md), a draft); `benchmarks/harness/` is a different
+thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
 network access it needs is to crates.io, for the index and the benchmark runner's two pinned
@@ -172,7 +177,7 @@ in branch protection.
 
 - The language repo is plain `mzizi`. The org's other product repositories are
   `mzizi-`-prefixed, with `agent-tools` the one exception.
-- Mzizi owns and operates the framework, the language, the registry, the design system, the
+- Mzizi owns and operates the language, its toolchain, the registry, the design system, the
   docs and the API. Nyuchi operates the console (`app.mzizi.dev`) and the revenue products.
   Copyright notices name the Bundu Foundation as the parent copyright holder; Mzizi is not a
   separate legal entity. Keep that line — CHARTER.md draws it deliberately.
