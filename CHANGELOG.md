@@ -19,6 +19,7 @@ carry no pull request number.
 
 ### Added
 
+- `LANGUAGE-TRACKER.md`: the one tracker of what Mzizi still needs to be a working programming language, stacked against Python, Go, C++, TypeScript and Rust, with a status, evidence and a done-when test for every capability, and milestones M1–M3 (owner, 2026-09-30).
 - **Arms are data: `benchmarks/arms/<id>/arm.toml`** (RFC-0009 §9 step 1, #28). The runner
   reads each arm (guide, check argv, normaliser, file layout, extractor, naming) from one
   strict file, and the hard-coded `Arm` enum is gone. `mzizi`, `dioxus` and `leptos` are
