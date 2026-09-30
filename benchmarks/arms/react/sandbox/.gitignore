@@ -1,0 +1,4 @@
+# Written by ../check.sh for each candidate, then removed. Never committed.
+/src/component.tsx
+/node_modules/
+/check.lock

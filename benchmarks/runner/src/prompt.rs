@@ -259,6 +259,24 @@ mod tests {
     }
 
     #[test]
+    fn the_react_arm_is_named_cva_keys_and_runs_ui_spec_only() {
+        let r = arm("react");
+        assert!(
+            !r.runs(TaskFamily::UiPort),
+            "handed spec.tsx, React would be copying"
+        );
+        let p = build_prompt(&r, TaskFamily::UiSpec, "G", "# Button\n", &enums());
+        assert!(p.user.contains(
+            "Name the variant enums exactly `buttonVariants.variant`, `buttonVariants.size`, \
+             each a variant key of a `cva` call whose values are its Tailwind classes."
+        ));
+        assert!(
+            p.user
+                .starts_with("Implement the component specified below in TypeScript with React.")
+        );
+    }
+
+    #[test]
     fn system_is_the_guide_verbatim() {
         let guide = "# Guide\n\n  indented, trailing spaces   \n\n";
         for a in all_arms() {

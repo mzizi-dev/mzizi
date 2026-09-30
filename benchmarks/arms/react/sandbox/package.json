@@ -1,0 +1,15 @@
+{
+  "name": "react-arm-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The React arm's type-check sandbox. See ../README.md. Exact pins, installed once with `../setup.sh`; nothing is fetched at check time.",
+  "type": "module",
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "react": "19.3.0",
+    "tailwind-merge": "3.7.0",
+    "typescript": "5.9.3"
+  }
+}
