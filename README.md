@@ -1,9 +1,16 @@
 # Mzizi
 
-**A general-purpose framework for the agentic world, in Rust** — a language whose syntax,
-type system and compiler feedback loop are designed for **machine authorship**, and
-specifically for the machines that need the help most: small open-weight models with
-limited parameters, context and long-range attention.
+**Mzizi is built to make Rust better, the way TypeScript makes JavaScript better.**
+
+Mzizi is a general-purpose programming language whose syntax, type system and compiler
+feedback loop are designed for **machine authorship**, and specifically for the machines that
+need the help most: small open-weight models with limited parameters, context and long-range
+attention. Rust is its platform, the way JavaScript is TypeScript's: Mzizi is designed to lower
+to Rust, with no borrows, lifetimes or ownership at the surface ([RFC-0001](./design/RFC-0001-syntax.md)
+§1.8). **That is the design and the goal, not the state:** the compiler emits no Rust yet, and
+"makes Rust better" is what Phase 0 exists to test. The harness is the core of the language,
+what an agent reads ([RFC-0012](./design/RFC-0012-harness.md), a draft), and Mzizi Roots is its
+component model, the way React is JavaScript's.
 
 [![CI](https://github.com/mzizi-dev/mzizi/actions/workflows/ci.yml/badge.svg)](https://github.com/mzizi-dev/mzizi/actions/workflows/ci.yml)
 [![Lint](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml/badge.svg)](https://github.com/mzizi-dev/mzizi/actions/workflows/lint.yml)
@@ -16,9 +23,9 @@ limited parameters, context and long-range attention.
 
 ## The bet
 
-Every framework that won, won by being unmistakably better at one thing first — not by
-matching every existing framework's feature set on day one. React was Facebook's fix for one
-rendering problem. Svelte bet on a single contrarian idea years before anyone else took it
+Every language or framework that won, won by being unmistakably better at one thing first — not by
+matching every incumbent's feature set on day one. TypeScript made JavaScript better and still
+runs as JavaScript. React was Facebook's fix for one rendering problem. Svelte bet on a single contrarian idea years before anyone else took it
 seriously. Mzizi's bet: **the actual bottleneck of 2026-and-beyond development is an agent
 iterating against a compiler in a tight loop, thousands of times a session** — and no
 existing language, Rust included, was designed with that reader in mind. Every syntax
@@ -53,9 +60,11 @@ not shipped. See [`CHARTER.md`](./CHARTER.md) for the full thesis, the five-phas
 plan, the explicit non-goals, and — most importantly — the kill criterion this project holds
 itself to.
 
-**This repository is the language.** It is not the component registry — that's
-[`mzizi-dev/mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry), a different body
-of work with a different owner that happens to share the name and the org.
+**This repository is the language, and its one goal** is building Mzizi as a programming
+language that stands against the best existing language for each kind of task: TypeScript,
+Python, C++, Go and Rust ([`CHARTER.md`](./CHARTER.md) §1, §4). It is not the component
+registry — that's [`mzizi-dev/mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry),
+which Mzizi also owns, and which holds the components that support the language.
 
 ---
 
@@ -138,23 +147,28 @@ mzizi/
 ├── design/             # the RFCs, and ROADMAP.md — read these next
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
-├── examples/           # one real corpus component, ported by hand
-└── benchmarks/         # Phase 0 harness, runner, pilot tasks and results; READINESS.md; the held-out set is private
+├── examples/           # two real corpus components, ported by hand
+└── benchmarks/         # Phase 0 benchmark harness, runner, arms, pilot tasks and results; READINESS.md; the held-out set is private
 ```
 
 ## The RFCs
 
-| RFC                                                                        | What it settles                                                                                                                    |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [0001 — syntax](./design/RFC-0001-syntax.md)                               | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.                                       |
-| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md) | The design-target correction: small models, not frontier ones. Why the runtime is the product.                                     |
-| [0003 — IR](./design/RFC-0003-ir.md)                                       | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them.                             |
-| [0004 — test topology](./design/RFC-0004-test-topology.md)                 | What testing is public vs. held-out, and the dependency rule that keeps forks working.                                             |
-| [0006 — contracts](./design/RFC-0006-contracts.md)                         | The contract clause grammar, what `mz contract` proves, and what it can't.                                                         |
-| [0007 — gap register](./design/RFC-0007-gap-register.md)                   | What the charter's scope needs that the language and compiler lack, checked against the code, and the order to build it in. Draft. |
+| RFC                                                                            | What it settles                                                                                                                    |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| [0001 — syntax](./design/RFC-0001-syntax.md)                                   | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.                                       |
+| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md)     | The design-target correction: small models, not frontier ones. Why the runtime is the product.                                     |
+| [0003 — IR](./design/RFC-0003-ir.md)                                           | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them.                             |
+| [0004 — test topology](./design/RFC-0004-test-topology.md)                     | What testing is public vs. held-out, and the dependency rule that keeps forks working.                                             |
+| [0006 — contracts](./design/RFC-0006-contracts.md)                             | The contract clause grammar, what `mz contract` proves, and what it can't.                                                         |
+| [0007 — gap register](./design/RFC-0007-gap-register.md)                       | What the charter's scope needs that the language and compiler lack, checked against the code, and the order to build it in. Draft. |
+| [0008 — types, lists, records](./design/RFC-0008-types-collections-records.md) | Types, lists, records, options and `for each`, with a resolver that can say no.                                                    |
+| [0009 — comparison benchmark](./design/RFC-0009-comparison-benchmark.md)       | The arms, the task families, the best-incumbent kill criterion and the publication rules.                                          |
+| [0010 — contracts everywhere](./design/RFC-0010-contracts-everywhere.md)       | Contracts on functions, handlers, services and the standard library. Draft; nothing implemented.                                   |
+| [0012 — the harness](./design/RFC-0012-harness.md)                             | The harness, the core of the language: what an agent reads, the agent protocol and the plugin host. Draft; mostly design.          |
 
 RFC-0005 is reserved (`mzizi-dev/agent-tools#76`, private — not linked, since a link to a
-private repo 404s for anyone without access) but not yet written. Every RFC ends with open
+private repo 404s for anyone without access) but not yet written. RFC-0011 is claimed by the
+backend work in open pull requests. Every RFC ends with open
 questions addressed to the next one; resolved questions are struck through in place, not
 deleted, so the document records what was believed as well as what is believed now.
 
@@ -167,14 +181,14 @@ Mzizi-the-language is one repository in [`mzizi-dev`](https://github.com/mzizi-d
 Mzizi org. **The language repo is plain `mzizi`; everything else is
 `mzizi-`-prefixed** — the language is the project.
 
-| Repository                                                            | What it is                                                                                                                                                                                                                                                                                                                               | Relationship to this repo                                                               |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — 577+ components, the brand system, the DNA-helix architecture. It holds no database: its files are the data layer. Mzizi's own components are being converted to Rust as **Mzizi Roots** (UI and server components for the agentic web). The React/TSX components keep working and are deprioritised. | **The benchmark corpus.** Charter §6 makes Mzizi's own components the Phase 0 task set. |
-| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | `docs.mzizi.dev` (Mintlify), the one home of the docs — language reference, RFC index, registry guides.                                                                                                                                                                                                                                  | Documents this repo. The RFCs stay **here**, next to the code they govern.              |
-| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | The front door — `mzizi.dev`, a static Astro site that leads with the language.                                                                                                                                                                                                                                                          | Publishes; is not depended on.                                                          |
-| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | `api.mzizi.dev`: a Hono Cloudflare Worker in TypeScript. It serves the registry's repository files, generated at a pinned registry commit and bundled into the Worker, with no origin and no database. It replaced the earlier Rust proxy.                                                                                               | Serves the registry, not the language.                                                  |
-| [`agent-tools`](https://github.com/mzizi-dev/agent-tools)             | `mcp.mzizi.dev` (`mzizi-mcp`): registry data and skills from files bundled at build time, and the docs as `docs_*` tools federated from `docs.mzizi.dev`.                                                                                                                                                                                | Serves agents the registry and the docs, not the language.                              |
-| Held-out benchmark repository (private, unnamed)                      | Planned, not yet created. It will hold the held-out task set and its expected outputs, which stay private ([CHARTER.md](./CHARTER.md) §6, [RFC-0004](./design/RFC-0004-test-topology.md)). The harness, the runner and the public pilot tasks are in this repo, under `benchmarks/`, and CI runs the harness and runner tests.           | Will run this repo's public harness. This repo never reads from it.                     |
+| Repository                                                            | What it is                                                                                                                                                                                                                                                                                                                               | Relationship to this repo                                                  |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [`mzizi-registry`](https://github.com/mzizi-dev/mzizi-registry)       | The canonical component registry — 577+ components, the brand system, the DNA-helix architecture. It holds no database: its files are the data layer. Mzizi's own components are being converted to Rust as **Mzizi Roots** (UI and server components for the agentic web). The React/TSX components keep working and are deprioritised. | Supports the language: its components are the UI task corpus (Charter §6). |
+| [`mzizi-docs`](https://github.com/mzizi-dev/mzizi-docs)               | `docs.mzizi.dev` (Mintlify), the one home of the docs — language reference, RFC index, registry guides.                                                                                                                                                                                                                                  | Documents this repo. The RFCs stay **here**, next to the code they govern. |
+| [`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)               | The front door — `mzizi.dev`, a static Astro site that leads with the language.                                                                                                                                                                                                                                                          | Publishes; is not depended on.                                             |
+| [`mzizi-api-gateway`](https://github.com/mzizi-dev/mzizi-api-gateway) | `api.mzizi.dev`: a Hono Cloudflare Worker in TypeScript. It serves the registry's repository files, generated at a pinned registry commit and bundled into the Worker, with no origin and no database. It replaced the earlier Rust proxy.                                                                                               | Serves the registry, not the language.                                     |
+| [`agent-tools`](https://github.com/mzizi-dev/agent-tools)             | `mcp.mzizi.dev` (`mzizi-mcp`): registry data and skills from files bundled at build time, and the docs as `docs_*` tools federated from `docs.mzizi.dev`.                                                                                                                                                                                | Serves agents the registry and the docs, not the language.                 |
+| Held-out benchmark repository (private, unnamed)                      | Planned, not yet created. It will hold the held-out task set and its expected outputs, which stay private ([CHARTER.md](./CHARTER.md) §6, [RFC-0004](./design/RFC-0004-test-topology.md)). The harness, the runner and the public pilot tasks are in this repo, under `benchmarks/`, and CI runs the harness and runner tests.           | Will run this repo's public harness. This repo never reads from it.        |
 
 **The rule that keeps the ecosystem honest** — RFC-0004 §3 applied to code, not just tests:
 
@@ -200,7 +214,7 @@ carrying the full design history of the `mzizi-lang/` directory it grew up in.
 [`MIGRATION.md`](./MIGRATION.md) is the record of that move.
 
 Mzizi is **100% Mzizi IP** (CHARTER.md), licensed under the
-[Apache License 2.0](./LICENSE). Mzizi owns and operates the framework, the language, the
+[Apache License 2.0](./LICENSE). Mzizi owns and operates the language, its toolchain, the
 registry, the design system, the docs and the API. **Nyuchi** operates the console
 (`app.mzizi.dev`, the only part of the ecosystem that uses Supabase) and the revenue products.
 Copyright notices name the **Bundu Foundation** as the parent copyright holder; Mzizi is not

@@ -46,8 +46,27 @@ carry no pull request number.
   pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
   the benchmarks adds an entry here (owner rule, 2026-09-30).
 
+- **RFC-0012, the harness: the core of the language, what the agent reads** (design, a
+  draft). The harness is the language as an agent reads it, the agent protocol (RFC-0001 §4)
+  and the plugin host that `mz`, the CLI, the MCP server and plugins attach to. It lives in this
+  repository. Of it, only the agent protocol and the IR exist today (`mz check --agent`,
+  `mz fix`, `mz contract`, `mz outline`, `mz ir`, `mz hash`); the definition an agent reads,
+  the plugin host and `mz harness` are design only. The agent skills fold into it once it
+  exists. `benchmarks/harness/` is renamed in prose to "the benchmark harness", a different
+  thing.
+
 ### Changed
 
+- **Charter v0.4: Mzizi is a general-purpose programming language, and Phase 0 is scoped to
+  one goal** (owner-directed 2026-09-30). "Mzizi is built to make Rust better, the way
+  TypeScript makes JavaScript better": Rust is the platform Mzizi is designed to lower to (not
+  yet built: `mz` emits no Rust), the harness is the core of the language, and Mzizi Roots is
+  its component model. The toolchain and the components support the language and are not it.
+  Phase 0's goal is to show that Mzizi can stand against the best existing language for each
+  kind of task; the component tasks against Dioxus and Leptos, the pilots among them, are
+  tests within it. The kill criterion, the gate and the settings are unchanged, and nothing is
+  measured by this change. README, AGENTS.md, ROADMAP and READINESS follow; the README's RFC
+  table now lists RFC-0008 to RFC-0010 and RFC-0012, and says the registry is Mzizi's.
 - **Code of Conduct reports go to `support@bundu.org`** (#28), not `conduct@nyuchi.com`.
   Security reports stay at `security@bundu.org`.
 
