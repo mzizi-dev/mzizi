@@ -31,6 +31,7 @@ pub mod diagnostic;
 pub mod hash;
 pub mod ir;
 pub mod lex;
+pub mod lower;
 pub mod outline;
 pub mod parse;
 pub mod resolve;

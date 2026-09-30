@@ -121,9 +121,10 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
 5. **The `backend` family** needs a `mzizi-be` arm, which needs the language work in
    RFC-0009 §6.4. Until it exists that family has not passed, and so neither has Phase 0.
    _Progress, 2026-09-30:_ the slice is designed in
-   [RFC-0011](../design/RFC-0011-handlers.md), and its front end and in-process evaluator are built:
-   `mz check` checks a `service`, and `mz contract` runs it. Nothing lowers a service yet, so
-   nothing answers a probe over HTTP. There is no `mzizi-be` arm, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
+   [RFC-0011](../design/RFC-0011-handlers.md), and its front end, in-process evaluator and lowering are
+   built: `mz check` checks a `service`, `mz contract` runs it, and `mz build` lowers it to an
+   axum package that serves locally and answers HTTP. There is no `mzizi-be` arm, no probe crate
+   and no backend task yet, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
 
 ## The command
 

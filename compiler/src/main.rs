@@ -8,6 +8,7 @@
 //! mz outline <file.mz>          the interface only, as valid Mzizi (RFC-0003 §4)
 //! mz hash <file.mz>             the root hash and the stored node count
 //! mz ir <file.mz>               every node with its hash and structural path
+//! mz build <file.mz> --out <dir> lower a service to an axum package (RFC-0011 §8)
 //! ```
 //!
 //! Exit status is 0 when there are no errors (warnings do not fail), 1 when there are, and
@@ -34,25 +35,44 @@ use mzizi_lang_compiler::{
 };
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
     let agent = args.iter().any(|a| a == "--agent");
+    // `--out <dir>` is `mz build`'s only option with a value.
+    let out = match args.iter().position(|a| a == "--out") {
+        Some(i) if i + 1 < args.len() => {
+            let dir = args.remove(i + 1);
+            args.remove(i);
+            Some(dir)
+        }
+        Some(_) => {
+            eprintln!("mz: `--out` needs a directory");
+            return ExitCode::from(2);
+        }
+        None => None,
+    };
     let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
 
     let (command, path) = match positional.as_slice() {
         [cmd, path]
             if matches!(
                 cmd.as_str(),
-                "check" | "fix" | "contract" | "outline" | "hash" | "ir"
+                "check" | "fix" | "contract" | "outline" | "hash" | "ir" | "build"
             ) =>
         {
             (cmd.as_str(), *path)
         }
         [path] => ("check", *path),
         _ => {
-            eprintln!("usage: mz <check|fix|contract|outline|hash|ir> [--agent] <file.mz>");
+            eprintln!(
+                "usage: mz <check|fix|contract|outline|hash|ir> [--agent] <file.mz>\n       mz build <service.mz> --out <dir>"
+            );
             return ExitCode::from(2);
         }
     };
+    if command == "build" && out.is_none() {
+        eprintln!("usage: mz build <service.mz> --out <dir>");
+        return ExitCode::from(2);
+    }
 
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -102,6 +122,62 @@ fn main() -> ExitCode {
         } else {
             ExitCode::SUCCESS
         };
+    }
+
+    // `mz build`: check, then lower a service to an axum package (RFC-0011 §8). Only a
+    // file with no errors is lowered, so the generated code never guesses at a tree.
+    if command == "build" {
+        let (program, report) = check_program(&src, path);
+        if report.error_count() > 0 {
+            print_human(&report);
+            println!(
+                "mz: {} errors ({} exact-fixable); nothing built",
+                report.error_count(),
+                report.exact_fixable()
+            );
+            return ExitCode::from(1);
+        }
+        let Some(Program::Service(service)) = program else {
+            eprintln!("mz: `build` lowers a service; components do not lower yet (RFC-0007 G2.1)");
+            return ExitCode::from(2);
+        };
+        let dir = std::path::PathBuf::from(out.unwrap_or_default());
+        let package = mzizi_lang_compiler::lower::lower(&service, &file_name(path));
+        let from = std::path::Path::new(path)
+            .parent()
+            .unwrap_or(std::path::Path::new(""));
+        let mut written = Vec::new();
+        for (rel, text) in &package.files {
+            written.push((dir.join(rel), text.clone().into_bytes()));
+        }
+        for rel in &package.fixtures {
+            match std::fs::read(from.join(rel)) {
+                Ok(bytes) => written.push((dir.join(rel), bytes)),
+                Err(e) => {
+                    eprintln!("mz: cannot read fixture {rel}: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        for (file, bytes) in written {
+            let made = file
+                .parent()
+                .map_or(Ok(()), std::fs::create_dir_all)
+                .and_then(|()| std::fs::write(&file, bytes));
+            if let Err(e) = made {
+                eprintln!("mz: cannot write {}: {e}", file.display());
+                return ExitCode::from(2);
+            }
+        }
+        println!(
+            "mz: built `service {}` into {} ({} routes, {} fixtures); run it with `cargo run --release --manifest-path {}`",
+            service.name,
+            dir.display(),
+            service.routes.len(),
+            package.fixtures.len(),
+            dir.join("Cargo.toml").display()
+        );
+        return ExitCode::SUCCESS;
     }
 
     if command == "contract" {
@@ -204,6 +280,13 @@ fn main() -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// The file name alone, for the generated package's header.
+fn file_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned())
 }
 
 /// One line per diagnostic, in the same shape for every subcommand.

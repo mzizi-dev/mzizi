@@ -418,6 +418,17 @@ Updated by each pull request that implements part of this RFC.
    `compiler/tests/serve.rs` (19 tests) covers each step of §6, the §4.2 decoding rule, the
    JSON reader, the request set, and `MZ0605`, `MZ0611` and `MZ0612` on mutations of the
    example. The request set and the `HEAD` exemption for body clauses are as §7 states them.
+3. **The lowering** (§8). `compiler/src/lower.rs` and `mz build <file> --out <dir>` write the
+   package: the runtime (§6 as one Rust function, emitted verbatim), the generated route table
+   and handlers, and one `#[tokio::test]` per `example`, sent with `oneshot`. CI's `lowering`
+   job builds `examples/registry.mz`, runs its 18 generated tests, starts the server and sends
+   one `OPTIONS` over a socket (`204`, `allow: GET, HEAD, OPTIONS`). `compiler/tests/lower.rs`
+   (8 tests) checks the generated text offline, including that the serving code holds no
+   `unwrap`, `expect`, `panic!` or indexing. A header value holding a control character is
+   dropped by both the lowering and the evaluator, because `HeaderValue` refuses it (§3).
+   The pins are `axum =0.8.9`, `tokio =1.53.1`, and for tests `tower =0.5.3`,
+   `http-body-util =0.1.5` and `serde_json =1.0.151`. The generated package has no lockfile,
+   so their own dependencies float, as the runner's do.
 
 ## 13. Open questions
 

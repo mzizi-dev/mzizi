@@ -19,6 +19,18 @@ carry no pull request number.
 
 ### Added
 
+- **`mz build <file> --out <dir>` lowers a service to a Rust + axum package** (RFC-0011 §8,
+  #32). The package is RFC-0011 §6's routing as one Rust function, served by axum through a
+  single fallback. It gets one generated `#[tokio::test]` per `example`, sent with
+  `tower::ServiceExt::oneshot`. `ensure` clauses are not lowered: `mz contract` tests them.
+  - The package pins `axum =0.8.9` and `tokio =1.53.1`, and its tests pin `tower =0.5.3`,
+    `http-body-util =0.1.5` and `serde_json =1.0.151`. It is its own workspace root and has
+    no lockfile. The compiler crate still has no dependencies.
+  - CI's new `lowering` job builds `examples/registry.mz`, runs the generated tests, and
+    sends one OPTIONS request over a socket to the running server.
+  - Only a `service` lowers. No component does.
+  - Tested by 8 new tests in `compiler/tests/lower.rs`, which check the generated text
+    offline.
 - **`mz contract` runs a service in process** (RFC-0011 §6–§7, #31). An in-process
   evaluator (`compiler/src/serve.rs`) implements the runtime's dispatch: the canonical-path
   308, routes where literals beat parameters, HEAD from GET, OPTIONS 204 and 405 with a
