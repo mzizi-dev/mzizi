@@ -27,7 +27,7 @@ What each run publishes is RFC-0009 §7 and RFC-0004 §4.2. This page tracks wha
 still waits on. RFC-0009 also brings in the arms for more languages
 (TypeScript/React, Python, Go, C++ and plain-Rust backends). Since 2026-09-30 an arm is one
 file, `arms/<id>/arm.toml` ([`runner/README.md`](runner/README.md), "Arms: `arm.toml`"). Of
-the new arms, only `react` has been added, and it has never run an episode.
+the new arms, `react` and `mzizi-be` (item 5) have been added, and neither has run an episode.
 
 ## The audit
 
@@ -123,8 +123,10 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
    _Progress, 2026-09-30:_ the slice is designed in
    [RFC-0011](../design/RFC-0011-handlers.md), and its front end, in-process evaluator and lowering are
    built: `mz check` checks a `service`, `mz contract` runs it, and `mz build` lowers it to an
-   axum package that serves locally and answers HTTP. There is no `mzizi-be` arm, no probe crate
-   and no backend task yet, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
+   axum package that serves locally and answers HTTP. The `mzizi-be` arm exists, with a
+   probe crate (`benchmarks/probe`) and B1 as its first task, whose Mzizi and axum references
+   both hold all 59 of its facts. Still open: the runner does not score an episode with
+   probes, B2–B5 and the incumbent backend arms do not exist, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
 
 ## The command
 

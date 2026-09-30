@@ -1,0 +1,25 @@
+# B1 (RFC-0009 §2.4): HTTP handlers, routing and methods. A development task: it is derived
+# from a public repository, so it is contaminated by construction and never gating.
+name = "b1-routing"
+spec_md = "spec.md"
+# The runner requires one reference file to exist; a backend task is scored by its probes
+# (probes.toml), never against this file.
+reference = "reference-rust/src/main.rs"
+
+[backend]
+# Every probe must pass against both before any run (RFC-0009 §2.3; `mzprobe verify`).
+references = ["reference-mzizi", "reference-rust"]
+
+[source]
+# The facts are the API gateway's, at the commit RFC-0009 §2.4 and RFC-0010 §3.2 cite. They
+# are restated in spec.md in that RFC's words; nothing was fetched from the gateway.
+repo = "mzizi-dev/mzizi-api-gateway"
+commit = "2468b2a"
+facts = [
+  "OPTIONS -> 204 with Allow: GET, HEAD, OPTIONS (RFC-0009 §2.3, test/api.test.ts)",
+  "other methods -> an empty 405 (RFC-0009 §2.4)",
+  "a trailing slash -> 308 (RFC-0009 §2.4)",
+  "an unknown path -> a JSON 404 (RFC-0009 §2.4)",
+  "404 cache-control: private, no-cache, no-store, max-age=0, must-revalidate (RFC-0010 §3.2)",
+  "every response carries X-Mzizi-Source (RFC-0010 §3.2)",
+]
