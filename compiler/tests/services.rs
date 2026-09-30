@@ -538,11 +538,12 @@ fn a_predicate_that_does_not_fit_its_facet_is_mz0601() {
 }
 
 #[test]
-fn until_services_run_every_clause_is_not_yet_testable() {
+fn a_service_contract_is_evaluated_not_deferred() {
     let (report, tally) = check_contract(B1, "registry.mz");
+    assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
     assert_eq!(tally.clauses, 2);
-    assert_eq!(tally.failed, 2);
-    assert!(report.diagnostics.iter().all(|d| d.code == "MZ0607"));
+    assert_eq!(tally.failed, 0);
+    assert!(tally.tested.is_some_and(|n| n > 0));
 }
 
 // Recovery ----------------------------------------------------------------------------

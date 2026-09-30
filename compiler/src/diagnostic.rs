@@ -288,7 +288,7 @@ impl CheckReport {
 
     /// The whole report as NDJSON plus RFC-0001 §4.4's summary line.
     pub fn to_ndjson(&self, elapsed_ms: u128) -> String {
-        self.to_ndjson_with(elapsed_ms, None)
+        self.to_ndjson_with(elapsed_ms, None, None)
     }
 
     /// The same, with RFC-0001 §4.4's contract counts appended to the summary.
@@ -297,7 +297,14 @@ impl CheckReport {
     /// 480ms` — contract results were always part of the protocol. They are two extra keys
     /// rather than a second line, so a consumer that reads the last line still gets
     /// everything, and one written before contracts existed sees the keys it knows.
-    pub fn to_ndjson_with(&self, elapsed_ms: u128, contract: Option<(usize, usize)>) -> String {
+    ///
+    /// `tested`, when given, is RFC-0010 §6's `contract_tested`: the generated cases run.
+    pub fn to_ndjson_with(
+        &self,
+        elapsed_ms: u128,
+        contract: Option<(usize, usize)>,
+        tested: Option<usize>,
+    ) -> String {
         let mut out = String::new();
         for d in &self.diagnostics {
             out.push_str(&d.to_ndjson());
@@ -318,6 +325,9 @@ impl CheckReport {
                 r#","contract_clauses":{clauses},"contract_failures":{failed}"#
             )
             .unwrap();
+        }
+        if let Some(n) = tested {
+            write!(out, r#","contract_tested":{n}"#).unwrap();
         }
         writeln!(out, r#","ms":{elapsed_ms}}}"#).unwrap();
         out

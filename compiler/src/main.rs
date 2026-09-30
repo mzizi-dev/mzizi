@@ -112,12 +112,17 @@ fn main() -> ExitCode {
         if agent {
             print!(
                 "{}",
-                report.to_ndjson_with(elapsed, Some((tally.clauses, tally.failed)))
+                report.to_ndjson_with(elapsed, Some((tally.clauses, tally.failed)), tally.tested)
             );
         } else {
             print_human(&report);
+            // RFC-0010 C-4: generated cases are reported as tested, with their count.
+            let tested = tally
+                .tested
+                .map(|n| format!(", tested over {n} generated requests"))
+                .unwrap_or_default();
             println!(
-                "mz: {} errors ({} exact-fixable), {} contract clauses, {} failed, {}ms",
+                "mz: {} errors ({} exact-fixable), {} contract clauses, {} failed{tested}, {}ms",
                 report.error_count(),
                 report.exact_fixable(),
                 tally.clauses,

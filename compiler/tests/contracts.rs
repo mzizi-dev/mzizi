@@ -28,7 +28,8 @@ fn corpus() -> Vec<(String, String)> {
         for entry in std::fs::read_dir(&path).unwrap_or_else(|e| panic!("{path:?}: {e}")) {
             let file = entry.expect("entry").path();
             if file.extension().and_then(|e| e.to_str()) == Some("mz") {
-                let name = file.file_name().unwrap().to_string_lossy().to_string();
+                // The path, not the bare name: a service reads its fixtures next to it.
+                let name = file.to_string_lossy().to_string();
                 out.push((name, std::fs::read_to_string(&file).expect("readable")));
             }
         }
