@@ -1,0 +1,18 @@
+# The Mzizi arm. Format: ../../runner/README.md, "Arms: `arm.toml`".
+# The check is this repo's own compiler, so there is no sandbox and no pin file: the pin is
+# the repo commit, which every episode's manifest records.
+id = "mzizi"
+family = "ui"
+task_families = ["ui-port", "ui-spec"]
+language_name = "Mzizi"
+file_kind = "a single Mzizi source file (.mz)"
+extension = "mz"
+guide = "benchmarks/prompts/mzizi-guide.md"
+check = [
+  "cargo", "run", "-q", "--manifest-path", "{repo}/compiler/Cargo.toml",
+  "--bin", "mz", "--", "check", "--agent", "{file}",
+]
+normaliser = "file-name"
+extractor = "mzizi"
+enum_case = "snake"
+class_accessor = "each with a `class` column"

@@ -248,3 +248,85 @@ fn the_card_task_scores_its_slot_set() {
     let button = start(&out.0);
     assert!(!score_argv(&button).iter().any(|a| a == "--slots"));
 }
+
+/// A `ui-spec` episode hands the author `spec.md`, not `spec.tsx` (RFC-0009 §2.1), and
+/// records the family and the arm's resolved `arm.toml` in `meta.json`. The rest of the loop
+/// is the same: the real `mz` checks it and the real harness scores it.
+#[test]
+fn a_ui_spec_episode_is_given_spec_md_and_records_its_arm() {
+    let out = Scratch::new("uispec");
+    let task = repo_root().join("benchmarks/tasks/button");
+    let o = mzbench(&[
+        "episode".as_ref(),
+        "start".as_ref(),
+        "--task".as_ref(),
+        &task,
+        "--arm".as_ref(),
+        "mzizi".as_ref(),
+        "--family".as_ref(),
+        "ui-spec".as_ref(),
+        "--model-label".as_ref(),
+        "it-scripted".as_ref(),
+        "--out".as_ref(),
+        &out.0,
+        "--endpoint".as_ref(),
+        "http://127.0.0.1:9".as_ref(),
+    ]);
+    assert!(o.status.success(), "{}", text(&o));
+    let ep = PathBuf::from(String::from_utf8(o.stdout).unwrap().trim());
+    let user = std::fs::read_to_string(ep.join("user.txt")).unwrap();
+    let spec_md = std::fs::read_to_string(task.join("spec.md")).unwrap();
+    assert!(user.starts_with("Implement the component specified below in Mzizi."));
+    assert!(user.contains(&spec_md));
+    assert!(
+        !user.contains("React") && !user.contains("import "),
+        "{user}"
+    );
+    let meta: Value =
+        serde_json::from_str(&std::fs::read_to_string(ep.join("meta.json")).unwrap()).unwrap();
+    assert_eq!(meta["task_family"], "ui-spec");
+    assert_eq!(meta["arm"], "mzizi");
+    assert_eq!(meta["arm_config"]["extractor"], "mzizi");
+    assert_eq!(meta["arm_config"]["extension"], "mz");
+
+    let real = repo_root().join("primitives/button.mz");
+    let o = submit(&ep, &real);
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    let fin = finish(&ep);
+    assert_eq!(fin["scored"], true, "{fin}");
+    assert_eq!(fin["defects"], 0, "{fin}");
+}
+
+/// An arm refuses a family its `arm.toml` does not list, and an unknown arm is refused with
+/// the list of arms there are.
+#[test]
+fn unknown_arms_and_families_are_refused() {
+    let out = Scratch::new("refuse");
+    let task = repo_root().join("benchmarks/tasks/button");
+    let run = |arm: &str, family: &str| {
+        mzbench(&[
+            "episode".as_ref(),
+            "start".as_ref(),
+            "--task".as_ref(),
+            &task,
+            "--arm".as_ref(),
+            arm.as_ref(),
+            "--family".as_ref(),
+            family.as_ref(),
+            "--model-label".as_ref(),
+            "x".as_ref(),
+            "--out".as_ref(),
+            &out.0,
+        ])
+    };
+    let o = run("cobol", "ui-port");
+    assert_eq!(o.status.code(), Some(2), "{}", text(&o));
+    assert!(text(&o).contains("unknown arm `cobol`"), "{}", text(&o));
+    let o = run("mzizi", "backend");
+    assert_eq!(o.status.code(), Some(2), "{}", text(&o));
+    assert!(
+        text(&o).contains("does not run the backend family"),
+        "{}",
+        text(&o)
+    );
+}

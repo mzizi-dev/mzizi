@@ -1,7 +1,7 @@
 //! `mzbench` — the Phase 0 benchmark runner. See `benchmarks/runner/README.md`.
 //!
 //! ```text
-//! mzbench run --task <dir> --arm <mzizi|dioxus|leptos> --model-label <s> --seed <n>
+//! mzbench run --task <dir> --arm <id> --model-label <s> --seed <n>
 //!             --temperature <f> --out <results> [--endpoint <url>] [--max-iters 5]
 //!             [--max-tokens 4096] [--timeout-secs 3600] [common options]
 //! mzbench episode start --task <dir> --arm <a> --model-label <s> --out <results>
@@ -10,7 +10,7 @@
 //! mzbench episode finish <episode dir> [--endpoint <url>]
 //! mzbench summarize <results dir>
 //!
-//! common options: --repo <dir> --guide <file> --check-cmd <json argv> --score-cmd <json argv>
+//! common options: --family <ui-port|ui-spec|backend> --repo <dir> --guide <file> --check-cmd <json argv> --score-cmd <json argv>
 //!                 --normalise <file-name|none>
 //! ```
 //!
@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use mzizi_benchmark_runner::arm::{ArmConfig, TaskFamily};
 use mzizi_benchmark_runner::endpoint::{GenParams, HttpEndpoint};
 use mzizi_benchmark_runner::episode::{
     EpisodeMeta, Mode, create_episode, episode_dir, finish, fnv1a64, load_state, run_model_episode,
@@ -30,14 +31,14 @@ use mzizi_benchmark_runner::episode::{
 use mzizi_benchmark_runner::exec::{
     CommandTemplate, Normaliser, default_check, default_score, parse_argv_json,
 };
-use mzizi_benchmark_runner::prompt::{Arm, Prompt, build_prompt};
+use mzizi_benchmark_runner::prompt::{Prompt, build_prompt};
 use mzizi_benchmark_runner::summary::{collect, render};
 use mzizi_benchmark_runner::task::load_task;
 
 const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:8080";
 
 const USAGE: &str = "usage:
-  mzbench run --task <dir> --arm <mzizi|dioxus|leptos> --model-label <s> --seed <n> --temperature <f>
+  mzbench run --task <dir> --arm <id> --model-label <s> --seed <n> --temperature <f>
               --out <results> [--endpoint <url>] [--max-iters 5] [--max-tokens 4096]
               [--timeout-secs 3600] [common]
   mzbench episode start --task <dir> --arm <a> --model-label <s> --out <results>
@@ -45,7 +46,7 @@ const USAGE: &str = "usage:
   mzbench episode submit <episode dir> <candidate file>
   mzbench episode finish <episode dir> [--endpoint <url>]
   mzbench summarize <results dir>
-common: --repo <dir> --guide <file> --check-cmd '<json argv>' --score-cmd '<json argv>'
+common: --family <ui-port|ui-spec|backend> --repo <dir> --guide <file> --check-cmd '<json argv>' --score-cmd '<json argv>'
         --normalise <file-name|none>";
 
 struct Flags {
@@ -107,7 +108,11 @@ fn default_repo() -> PathBuf {
 /// from the one shared builder, so `run` and `episode start` cannot word it differently.
 fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf, Prompt), String> {
     let task = load_task(Path::new(&f.req("task")?))?;
-    let arm = Arm::parse(&f.req("arm")?)?;
+    let arm_id = f.req("arm")?;
+    let family = match f.take("family") {
+        Some(s) => TaskFamily::parse(&s)?,
+        None => TaskFamily::UiPort,
+    };
     let model = f.req("model-label")?;
     let out = PathBuf::from(f.req("out")?);
     let max_iters: u32 = f.num("max-iters", Some(5))?;
@@ -123,14 +128,28 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
             .unwrap_or_else(default_repo),
     )
     .map_err(|e| format!("--repo: {e}"))?;
+    let arm = ArmConfig::load(&repo, &arm_id)?;
+    if !arm.runs(family) {
+        return Err(format!(
+            "arm `{}` does not run the {} family (its arm.toml lists {})",
+            arm.id,
+            family.as_str(),
+            arm.task_families
+                .iter()
+                .map(|f| f.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
     let guide_path = f
         .take("guide")
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo.join("benchmarks/prompts").join(arm.guide_file_name()));
+        .unwrap_or_else(|| repo.join(&arm.guide));
     let guide = std::fs::read_to_string(&guide_path)
         .map_err(|e| format!("guide {}: {e}", guide_path.display()))?;
-    let spec = std::fs::read_to_string(&task.spec_path)
-        .map_err(|e| format!("spec {}: {e}", task.spec_path.display()))?;
+    let spec_path = task.input(family)?;
+    let spec = std::fs::read_to_string(spec_path)
+        .map_err(|e| format!("spec {}: {e}", spec_path.display()))?;
 
     let template =
         |flag: Option<String>, default: CommandTemplate| -> Result<CommandTemplate, String> {
@@ -142,10 +161,10 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
                 None => default,
             })
         };
-    let check = template(f.take("check-cmd"), default_check(arm, &repo))?;
+    let check = template(f.take("check-cmd"), default_check(&arm, &repo))?;
     let normaliser = match f.take("normalise") {
         Some(n) => Normaliser::parse(&n)?,
-        None => Normaliser::FileName,
+        None => arm.normaliser,
     };
     let mut score = template(f.take("score-cmd"), default_score(&repo))?;
     // Appended to a custom `--score-cmd` too, so the task's opt-in cannot be lost by
@@ -157,7 +176,7 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
         score.argv.push("--slots".into());
     }
 
-    let prompt = build_prompt(arm, &guide, &spec, &task.enums);
+    let prompt = build_prompt(&arm, family, &guide, &spec, &task.enums);
     let meta = EpisodeMeta {
         mode,
         task: task.name.clone(),
@@ -165,7 +184,8 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
         rename_reason: task.rename_reason.clone(),
         task_dir: task.dir.clone(),
         reference_path: task.reference_path.clone(),
-        arm,
+        arm: arm.clone(),
+        family,
         model: model.clone(),
         seed,
         temperature: None,
@@ -179,7 +199,7 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
         normaliser,
         score,
     };
-    let dir = episode_dir(&out, &model, arm, &task.name, seed)?;
+    let dir = episode_dir(&out, &model, &arm.id, &task.name, seed)?;
     Ok((meta, dir, prompt))
 }
 

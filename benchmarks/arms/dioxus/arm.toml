@@ -1,0 +1,17 @@
+# The Dioxus arm. Format: ../../runner/README.md, "Arms: `arm.toml`". The pin and its
+# provenance are in README.md in this directory.
+id = "dioxus"
+family = "ui"
+task_families = ["ui-port", "ui-spec"]
+language_name = "Dioxus"
+file_kind = "a single Rust source file (.rs) using Dioxus"
+extension = "rs"
+guide = "benchmarks/prompts/dioxus-guide.md"
+check = ["{repo}/benchmarks/arms/dioxus/check.sh", "{file}"]
+normaliser = "file-name"
+# The harness's Rust extractor reads any plain `enum` / `impl … { fn classes() }` file.
+# Its `--arm` value is `dioxus` for historical reasons; nothing in it is Dioxus-specific.
+extractor = "dioxus"
+enum_case = "pascal"
+class_accessor = "each with a `classes()` method returning its Tailwind classes"
+pins = ["sandbox/Cargo.toml", "sandbox/Cargo.lock"]
