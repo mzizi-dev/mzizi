@@ -133,6 +133,27 @@ never consumes private, and a missing private result reports `neutral`, never `f
 Do not wire a build step, test, or script here that reaches out to `mzizi-registry`,
 `agent-tools`, or any other sibling repo.
 
+## Changelog
+
+_Owner rule, 2026-09-30: changelogs are super important._ [`CHANGELOG.md`](./CHANGELOG.md)
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), in dated sections
+because the compiler has no releases. Every pull request that changes behaviour,
+diagnostics, the language, the charter, an RFC or the benchmarks adds an entry under
+`## [Unreleased]`:
+
+- Put it under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`.
+- Say what changed, and name the diagnostic codes and commands. Keep what is tested apart
+  from what is designed: an RFC is design, and says so.
+- The one rule that overrides the others applies here too. An entry never implies a
+  measured result that does not exist.
+- Whoever merges moves the `[Unreleased]` entries into a section dated with the merge day.
+
+The `changelog / entry required` CI job fails a pull request that changes other files
+without touching `CHANGELOG.md`. It lets through a pull request labelled `no-changelog`, and
+one that touches only `.github/**` or lint configuration (`.prettierrc`, `.prettierignore`,
+`.markdownlint.jsonc`, `.yamllint.yaml`). The job is not a required check
+in branch protection.
+
 ## Naming and ownership
 
 - The language repo is plain `mzizi`. The org's other product repositories are
