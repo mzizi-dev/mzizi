@@ -1,12 +1,14 @@
-//! A task directory: `task.toml`, `spec.tsx` (the only source the author sees) and
-//! `reference.rs` (never shown; scoring only).
+//! A task directory: `task.toml`, the input the author sees (`spec.tsx` for the `ui-port`
+//! family, `spec.md` for `ui-spec`; RFC-0009 §2) and `reference.rs` (never shown; scoring
+//! only). A task has at least one of the two inputs; a held-out `ui-spec` task has only
+//! `spec.md`.
 //!
 //! `task.toml` is read with a deliberately tiny reader: top-level `key = "string"` pairs
 //! before the first `[table]` header. The `[source]` table (provenance) is not needed to
-//! run an episode, so it is not interpreted — only the top-level `name`, `spec`,
+//! run an episode, so it is not interpreted — only the top-level `name`, `spec`, `spec_md`,
 //! `reference`, and optional `enums`, `allow_variant_renames` and `rename_reason` keys are.
-//! `spec` and `reference` are paths relative to the task directory, defaulting to
-//! `spec.tsx` and `reference.rs`. `enums` is a single-line array of Rust PascalCase enum
+//! `spec`, `spec_md` and `reference` are paths relative to the task directory, defaulting
+//! to `spec.tsx`, `spec.md` and `reference.rs`. `enums` is a single-line array of Rust PascalCase enum
 //! names (see `prompt::enum_sentence`).
 //!
 //! `allow_variant_renames = true` opts the task in to the scorer pairing renamed variants
@@ -21,11 +23,16 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::arm::TaskFamily;
+
 #[derive(Clone, Debug)]
 pub struct Task {
     pub name: String,
     pub dir: PathBuf,
-    pub spec_path: PathBuf,
+    /// `spec.tsx`, the `ui-port` input, when the task has one.
+    pub spec_path: Option<PathBuf>,
+    /// `spec.md`, the language-neutral `ui-spec` / `backend` input, when the task has one.
+    pub spec_md_path: Option<PathBuf>,
     pub reference_path: PathBuf,
     /// Optional `enums = [...]` (Rust PascalCase): the enum names the prompt asks for.
     pub enums: Vec<String>,
@@ -35,6 +42,24 @@ pub struct Task {
     pub rename_reason: Option<String>,
     /// `score_slots = true`: score the `data-slot` set too. `false` when absent.
     pub score_slots: bool,
+}
+
+impl Task {
+    /// The input a `family` episode hands the author: `spec.tsx` for `ui-port`, `spec.md`
+    /// otherwise.
+    pub fn input(&self, family: TaskFamily) -> Result<&Path, String> {
+        let (p, what) = match family {
+            TaskFamily::UiPort => (&self.spec_path, "spec.tsx (the ui-port input)"),
+            TaskFamily::UiSpec | TaskFamily::Backend => {
+                (&self.spec_md_path, "spec.md (the language-neutral input)")
+            }
+        };
+        p.as_deref().ok_or(format!(
+            "task `{}` has no {what}, so it cannot run in the {} family",
+            self.name,
+            family.as_str()
+        ))
+    }
 }
 
 pub fn load_task(dir: &Path) -> Result<Task, String> {
@@ -51,12 +76,18 @@ pub fn load_task(dir: &Path) -> Result<Task, String> {
     let spec = top_level_string(&toml, "spec").unwrap_or_else(|| "spec.tsx".into());
     let reference = top_level_string(&toml, "reference").unwrap_or_else(|| "reference.rs".into());
 
-    let spec_path = dir.join(spec);
+    let spec_md = top_level_string(&toml, "spec_md").unwrap_or_else(|| "spec.md".into());
+    let spec_path = Some(dir.join(spec)).filter(|p| p.is_file());
+    let spec_md_path = Some(dir.join(spec_md)).filter(|p| p.is_file());
+    if spec_path.is_none() && spec_md_path.is_none() {
+        return Err(format!(
+            "task file missing: {} has neither its spec.tsx nor its spec.md",
+            dir.display()
+        ));
+    }
     let reference_path = dir.join(reference);
-    for p in [&spec_path, &reference_path] {
-        if !p.is_file() {
-            return Err(format!("task file missing: {}", p.display()));
-        }
+    if !reference_path.is_file() {
+        return Err(format!("task file missing: {}", reference_path.display()));
     }
     let enums = top_level_string_array(&toml, "enums")
         .map_err(|e| format!("{}: {e}", toml_path.display()))?
@@ -87,6 +118,7 @@ pub fn load_task(dir: &Path) -> Result<Task, String> {
         name: safe_component(&name)?,
         dir,
         spec_path,
+        spec_md_path,
         reference_path,
         enums,
         allow_variant_renames,
@@ -322,6 +354,35 @@ mod tests {
                 "{name}"
             );
         }
+    }
+
+    #[test]
+    fn every_public_task_has_both_inputs_and_either_alone_loads() {
+        let tasks = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tasks");
+        for name in ["button", "badge", "card", "mzizi-changelog-renderer"] {
+            let t = load_task(&tasks.join(name)).unwrap();
+            assert!(
+                t.input(TaskFamily::UiPort).unwrap().ends_with("spec.tsx"),
+                "{name}"
+            );
+            assert!(
+                t.input(TaskFamily::UiSpec).unwrap().ends_with("spec.md"),
+                "{name}"
+            );
+        }
+        // The task_dir helper writes spec.tsx only: it runs ui-port and refuses ui-spec.
+        let t = load_task(&task_dir("name = \"tsx-only\"\n")).unwrap();
+        let e = t.input(TaskFamily::UiSpec).unwrap_err();
+        assert!(e.contains("has no spec.md"), "{e}");
+        // A held-out ui-spec task has spec.md and no spec.tsx.
+        let d = task_dir("name = \"md-only\"\n");
+        std::fs::remove_file(d.join("spec.tsx")).unwrap();
+        let _ = std::fs::remove_file(d.join("spec.md"));
+        assert!(load_task(&d).is_err());
+        std::fs::write(d.join("spec.md"), "# spec\n").unwrap();
+        let t = load_task(&d).unwrap();
+        assert!(t.input(TaskFamily::UiPort).is_err());
+        assert!(t.input(TaskFamily::UiSpec).is_ok());
     }
 
     #[test]

@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use serde_json::Value;
 
-use crate::prompt::Arm;
+use crate::arm::ArmConfig;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandTemplate {
@@ -183,33 +183,12 @@ fn s(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
 
-/// The shared compile-check interface for each arm, with `{repo}` already resolved.
-/// Remaining placeholder: `{file}`.
-pub fn default_check(arm: Arm, repo: &Path) -> CommandTemplate {
-    let argv = match arm {
-        Arm::Mzizi => s(&[
-            "cargo",
-            "run",
-            "-q",
-            "--manifest-path",
-            "{repo}/compiler/Cargo.toml",
-            "--bin",
-            "mz",
-            "--",
-            "check",
-            "--agent",
-            "{file}",
-        ]),
-        Arm::Dioxus => s(&["{repo}/benchmarks/arms/dioxus/check.sh", "{file}"]),
-        Arm::Leptos => s(&["{repo}/benchmarks/arms/leptos/check.sh", "{file}"]),
-    };
-    let t = CommandTemplate {
-        argv,
-        cwd: repo.to_path_buf(),
-    };
+/// An arm's compile check, from its `arm.toml` (`{repo}` already resolved when the arm
+/// loaded). It runs in the repo root. Remaining placeholder: `{file}`.
+pub fn default_check(arm: &ArmConfig, repo: &Path) -> CommandTemplate {
     CommandTemplate {
-        argv: t.render(&[("repo", &repo.to_string_lossy())]),
-        cwd: t.cwd,
+        argv: arm.check.clone(),
+        cwd: repo.to_path_buf(),
     }
 }
 
@@ -289,7 +268,8 @@ mod tests {
 
     #[test]
     fn json_round_trip_and_argv_parse() {
-        let t = default_check(Arm::Dioxus, Path::new("/repo"));
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let t = default_check(&ArmConfig::load(&repo, "dioxus").unwrap(), &repo);
         assert_eq!(CommandTemplate::from_json(&t.to_json()).unwrap(), t);
         assert_eq!(parse_argv_json(r#"["sh","-c","exit 0"]"#).unwrap().len(), 3);
         assert!(parse_argv_json("[]").is_err());

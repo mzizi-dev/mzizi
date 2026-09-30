@@ -11,12 +11,14 @@ fact). Results on it are reported whichever way they come out.
 
 ## Fixture format
 
-One directory per task, named after the component, holding exactly three files:
+One directory per task, named after the component, holding three copied files and one
+written here (`spec.md`, below):
 
 ```text
 benchmarks/tasks/<name>/
   task.toml      metadata and provenance
   spec.tsx       byte-identical copy of the registry .tsx
+  spec.md        the same component, restated language-neutrally (written here)
   reference.rs   byte-identical copy of the registry .rs
 ```
 
@@ -33,7 +35,8 @@ spec_path = "components/registry/n2-primitives/button.tsx"
 reference_path = "components/registry/n2-primitives/button.rs"
 ```
 
-- `spec` is the _only_ component source the authoring agent is shown.
+- `spec` is the _only_ component source a `ui-port` agent is shown, and `spec.md` (or
+  `spec_md = "…"`) the only one a `ui-spec` agent is shown.
 - `reference` is never shown to the authoring agent. It is read only by the scorer.
 - `spec` and `reference` are paths relative to the task directory. `[source]` records where
   both files came from, so anyone can re-derive them with `git show <commit>:<path>`.
@@ -47,6 +50,27 @@ Neither file is edited, reformatted or annotated. That is why neither carries a 
 header: `task.toml` carries it instead, and a copy that is not byte-identical is not a
 fixture. This is also why `spec.tsx` is not formatted to this repository's Prettier config —
 it is formatted the way the registry formatted it.
+
+### `spec.md`: the language-neutral input (RFC-0009 §2.1)
+
+_Added 2026-09-29._ Each task also has a `spec.md`, the input for the `ui-spec` family
+(`mzbench … --family ui-spec`). `spec.tsx` remains the `ui-port` input, the default, and
+is what the pilots ran. `spec.md` is **not** a registry file. It is written for this
+repository, by hand, from `spec.tsx` alone (never from `reference.rs`), and it restates
+the component without React idiom: prose, one table per variant group with its variants,
+classes and default, the base classes, and each rendered element with its `data-slot`,
+attributes and classes. A React agent given `spec.tsx` would be copying (RFC-0009 BM-1).
+Given `spec.md`, every arm starts from the same statement.
+
+What each `spec.md` leaves out of its `spec.tsx`, on purpose: the `import` lines, `cn()`,
+`asChild` and `Slot`, prop spreading (stated instead as "any other attribute is passed
+through"), and the TypeScript types. The pilot tasks keep their `enums` and flags, so a
+`ui-spec` episode is scored on the same facts as a `ui-port` one. The spec states the class
+strings, defaults and slots the facts are about, just as `spec.tsx` did. `spec.md` is
+formatted with this repository's Prettier config, because it is this repository's file.
+
+A held-out `ui-spec` task needs only `spec.md`. The loader accepts a task with either
+input, and `kill-criterion/check-task.sh` checks whichever the task has.
 
 ### The task set is a path argument
 
