@@ -19,9 +19,42 @@ carry no pull request number.
 
 ### Added
 
+- **Arms are data: `benchmarks/arms/<id>/arm.toml`** (RFC-0009 §9 step 1, #28). The runner
+  reads each arm (guide, check argv, normaliser, file layout, extractor, naming) from one
+  strict file, and the hard-coded `Arm` enum is gone. `mzizi`, `dioxus` and `leptos` are
+  migrated with no behaviour change: a test rebuilds pilot 2's committed user messages byte
+  for byte.
+  - `--family ui-spec` hands the author a language-neutral `spec.md`, now written for the
+    four public tasks.
+  - The prompt-parity test runs over every pair of arms.
+  - `mzbench plan` drafts a run's `PLAN.md`, and `mzbench bundle-hash` computes its
+    raw-bundle hash.
+  - Every final line records `guide_tokens`.
+  - No episode has been run with any of it.
+- **A `react` arm** (RFC-0009 §9 step 2, #28): a `tsc --noEmit` strict check in an offline
+  sandbox (`arms/react/`), for `ui-spec` only. The harness can now score it:
+  `mzizi-benchmark-harness score --arm react` reads `cva(…)` calls and `data-slot`.
+  - The four UI guides are rewritten to one 2,750-token budget, and now measure 2,691 to
+    2,750 Qwen2.5-Coder tokens (`benchmarks/prompts/BUDGET.md`). They were 31% apart.
+  - The React pins are provisional (the npm registry's versions of 2026-09-30), not yet the
+    registry lockfile's, which RFC-0009 §1 asks for.
+  - The React arm has never run an episode.
+- **The site and docs freshness rule** (AGENTS.md and CONTRIBUTING.md, #28). mzizi.dev and
+  docs.mzizi.dev must never lag this repository. Every user-visible pull request carries a
+  "Site/docs impact" heading (owner rule, 2026-09-30).
 - **`CHANGELOG.md`**, backfilled to 2026-08-23. AGENTS.md and CONTRIBUTING.md now say every
   pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
   the benchmarks adds an entry here (owner rule, 2026-09-30).
+
+### Changed
+
+- **Code of Conduct reports go to `support@bundu.org`** (#28), not `conduct@nyuchi.com`.
+  Security reports stay at `security@bundu.org`.
+
+### Fixed
+
+- **`tests/contracts.rs`'s broken-contract file is unique per process** (#28), so
+  concurrent `cargo test` runs no longer collide on one fixed temp path.
 
 ## 2026-09-29
 
