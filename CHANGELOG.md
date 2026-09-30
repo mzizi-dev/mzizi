@@ -19,6 +19,15 @@ carry no pull request number.
 
 ### Added
 
+- **RFC-0011, handlers: the backend measurement slice** (design, #29). RFC-0009 §6.4's
+  slice in one RFC: a top-level `service` declaration of `route` blocks and a `fallback`,
+  handlers of three statements (`when`/`else`, `header`, `respond`) where every path must
+  respond exactly once, and a runtime that owns the canonical-path 308, HEAD from GET,
+  OPTIONS 204, and 405 with a computed `allow`. It also specifies the query decoding rule,
+  the new `MZ08xx` codes (`MZ0801`–`MZ0812`), contracts on a service (`mz contract`), and
+  lowering to a local Rust + axum package. It is the design for RFC-0007 gaps G2.1, G2.2,
+  G2.4, G2.5 and G2.11, and RFC-0010 gains amendment notes. This entry is design: nothing
+  in it is implemented or measured.
 - `LANGUAGE-TRACKER.md`: the one tracker of what Mzizi still needs to be a working programming language, stacked against Python, Go, C++, TypeScript and Rust, with a status, evidence and a done-when test for every capability, and milestones M1–M3 (owner, 2026-09-30).
 - **Arms are data: `benchmarks/arms/<id>/arm.toml`** (RFC-0009 §9 step 1, #28). The runner
   reads each arm (guide, check argv, normaliser, file layout, extractor, naming) from one
