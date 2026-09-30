@@ -24,9 +24,18 @@ done
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 fail() { echo "NOT READY  $dir: $*"; exit 1; }
 
-for f in task.toml spec.tsx reference.rs; do
+for f in task.toml reference.rs; do
   [[ -f $dir/$f ]] || fail "missing $f"
 done
+# The input: spec.md for the gating ui-spec family (RFC-0009 §2.1), spec.tsx for ui-port.
+# A held-out task needs only spec.md; a public task may have both.
+if [[ -f $dir/spec.md ]]; then
+  family=ui-spec
+elif [[ -f $dir/spec.tsx ]]; then
+  family=ui-port
+else
+  fail "missing spec.md (or spec.tsx for a ui-port task)"
+fi
 grep -q '^\[source\]' "$dir/task.toml" || fail "task.toml has no [source] table (provenance)"
 
 flags=()
@@ -45,11 +54,11 @@ defects=$(grep -o '"defects":[0-9]*' <<<"$json" | cut -d: -f2)
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 cargo run -q --manifest-path "$repo/Cargo.toml" -p mzizi-benchmark-runner --bin mzbench -- \
-  episode start --task "$dir" --arm mzizi --model-label check --out "$scratch" \
+  episode start --task "$dir" --arm mzizi --family "$family" --model-label check --out "$scratch" \
   --endpoint http://127.0.0.1:9 >/dev/null 2>"$scratch/err" ||
   fail "mzbench cannot load it: $(cat "$scratch/err")"
 
 grep -o '"fact":"[a-z_]*"' <<<"$json" | sort | uniq -c | sed 's/^/  /'
 [[ $defects -eq 0 ]] || fail "the reference scores $defects defect(s) against itself"
 [[ $facts -ge $min ]] || fail "$facts scoreable fact(s), fewer than $min"
-echo "READY  $dir: $facts facts, flags: ${flags[*]:-none}"
+echo "READY  $dir: $facts facts, input: $family, flags: ${flags[*]:-none}"

@@ -23,10 +23,11 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
+use crate::arm::{ArmConfig, TaskFamily};
 use crate::endpoint::{ChatModel, GenParams, Message, Tokenizer};
 use crate::exec::{CheckStatus, CommandTemplate, Normaliser, classify};
 use crate::extract::{ExtractError, extract_code_block};
-use crate::prompt::{Arm, Prompt, compile_error_feedback, extraction_feedback};
+use crate::prompt::{Prompt, compile_error_feedback, extraction_feedback};
 use crate::task::safe_component;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,7 +72,11 @@ pub struct EpisodeMeta {
     pub rename_reason: Option<String>,
     pub task_dir: PathBuf,
     pub reference_path: PathBuf,
-    pub arm: Arm,
+    /// The arm as its `arm.toml` declared it when the episode started (`arm_config` in
+    /// `meta.json`), so `submit` and `finish` never re-read the file.
+    pub arm: ArmConfig,
+    /// Which input the agent was handed (RFC-0009 §2).
+    pub family: TaskFamily,
     pub model: String,
     pub seed: u64,
     pub temperature: Option<f64>,
@@ -101,7 +106,9 @@ impl EpisodeMeta {
             "rename_reason": self.rename_reason,
             "task_dir": self.task_dir.to_string_lossy(),
             "reference_path": self.reference_path.to_string_lossy(),
-            "arm": self.arm.as_str(),
+            "arm": self.arm.id,
+            "arm_config": self.arm.to_json(),
+            "task_family": self.family.as_str(),
             "model": self.model,
             "seed": self.seed,
             "temperature": self.temperature,
@@ -150,7 +157,15 @@ impl EpisodeMeta {
                 .map(str::to_string),
             task_dir: PathBuf::from(st("task_dir")?),
             reference_path: PathBuf::from(st("reference_path")?),
-            arm: Arm::parse(&st("arm")?)?,
+            // A meta.json from before arm.toml has only the arm's name (and ran ui-port).
+            arm: match v.get("arm_config") {
+                Some(c) => ArmConfig::from_json(c)?,
+                None => ArmConfig::legacy(&st("arm")?)?,
+            },
+            family: match v.get("task_family").and_then(Value::as_str) {
+                Some(f) => TaskFamily::parse(f)?,
+                None => TaskFamily::UiPort,
+            },
             model: st("model")?,
             seed: un("seed")?,
             temperature: v.get("temperature").and_then(Value::as_f64),
@@ -184,13 +199,13 @@ pub fn fnv1a64(bytes: &[u8]) -> String {
 pub fn episode_dir(
     out: &Path,
     model: &str,
-    arm: Arm,
+    arm: &str,
     task: &str,
     seed: u64,
 ) -> Result<PathBuf, String> {
     Ok(out
         .join(safe_component(model)?)
-        .join(arm.as_str())
+        .join(safe_component(arm)?)
         .join(safe_component(task)?)
         .join(format!("seed-{seed}")))
 }
@@ -342,7 +357,7 @@ pub fn record_iteration(
                 )
             }
             Ok(code) => {
-                let cand = idir.join(format!("candidate.{}", meta.arm.extension()));
+                let cand = idir.join(format!("candidate.{}", meta.arm.extension));
                 write(&cand, code)?;
                 let mut out = meta.check.run(&[("file", &cand.to_string_lossy())])?;
                 // What the author sees, and what is recorded as what they saw, is the
@@ -468,7 +483,7 @@ pub fn transcript_tokens(st: &EpisodeState, tok: &dyn Tokenizer) -> Result<u64, 
     for line in &st.iterations {
         let n = line["iter"].as_u64().ok_or("iteration line without iter")? as u32;
         let idir = iter_dir(&st.dir, n);
-        let cand = idir.join(format!("candidate.{}", st.meta.arm.extension()));
+        let cand = idir.join(format!("candidate.{}", st.meta.arm.extension));
         for p in [cand, idir.join("feedback.txt")] {
             if p.is_file() {
                 texts.push(fs::read_to_string(&p).map_err(|e| e.to_string())?);
@@ -493,9 +508,18 @@ struct ScoreResult {
 }
 
 fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
-    let cand = iter_dir(&st.dir, clean_iter).join(format!("candidate.{}", st.meta.arm.extension()));
+    let cand = iter_dir(&st.dir, clean_iter).join(format!("candidate.{}", st.meta.arm.extension));
+    if st.meta.arm.extractor == "none" {
+        return Ok(ScoreResult {
+            facts_checked: None,
+            defects: None,
+            class_token_jaccard: None,
+            renames: None,
+            error: Some(format!("arm `{}` has no scorer extractor", st.meta.arm.id)),
+        });
+    }
     let out = st.meta.score.run(&[
-        ("arm", st.meta.arm.harness_arm_str()),
+        ("arm", &st.meta.arm.extractor),
         ("candidate", &cand.to_string_lossy()),
         ("reference", &st.meta.reference_path.to_string_lossy()),
     ])?;
@@ -580,7 +604,7 @@ pub fn finish_ended(
         "kind": "final",
         "mode": m.mode.as_str(),
         "task": m.task,
-        "arm": m.arm.as_str(),
+        "arm": m.arm.id,
         "model": m.model,
         "seed": m.seed,
         "temperature": m.temperature,
@@ -754,7 +778,8 @@ mod tests {
             rename_reason: None,
             task_dir: tmp.to_path_buf(),
             reference_path: reference,
-            arm: Arm::Mzizi,
+            arm: ArmConfig::legacy("mzizi").unwrap(),
+            family: TaskFamily::UiPort,
             model: "test-model".into(),
             seed: 1,
             temperature: if mode == Mode::Model { Some(0.0) } else { None },
@@ -774,8 +799,14 @@ mod tests {
 
     fn start(tmp: &Path, mode: Mode, score: CommandTemplate) -> PathBuf {
         let m = meta(tmp, mode, score);
-        let p = build_prompt(Arm::Mzizi, "the guide", "spec body", &[]);
-        let dir = episode_dir(&tmp.join("out"), &m.model, m.arm, &m.task, m.seed).unwrap();
+        let p = build_prompt(
+            &ArmConfig::legacy("mzizi").unwrap(),
+            TaskFamily::UiPort,
+            "the guide",
+            "spec body",
+            &[],
+        );
+        let dir = episode_dir(&tmp.join("out"), &m.model, &m.arm.id, &m.task, m.seed).unwrap();
         create_episode(&dir, &m, &p).unwrap()
     }
 
@@ -791,6 +822,26 @@ mod tests {
             .lines()
             .map(|l| serde_json::from_str(l).unwrap())
             .collect()
+    }
+
+    #[test]
+    fn a_pilot_meta_json_from_before_arm_toml_still_loads() {
+        // Mode 2 episodes are finished by re-reading meta.json, so one written by the
+        // hard-coded-arm runner must still load, as the arm it named, in the ui-port family.
+        let pilot = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../results/2026-09-27-pilot/claude-subagent");
+        for (arm, ext) in [("mzizi", "mz"), ("dioxus", "rs")] {
+            let p = pilot.join(arm).join("button/seed-0/meta.json");
+            let v: Value = serde_json::from_str(&fs::read_to_string(&p).unwrap()).unwrap();
+            assert!(v.get("arm_config").is_none(), "{}", p.display());
+            let m = EpisodeMeta::from_json(&v).unwrap();
+            assert_eq!(m.arm.id, arm);
+            assert_eq!(m.arm.extension, ext);
+            assert_eq!(m.family, TaskFamily::UiPort);
+            // And it round-trips with the arm written out in full.
+            let again = EpisodeMeta::from_json(&m.to_json()).unwrap();
+            assert_eq!(again.arm, m.arm);
+        }
     }
 
     #[test]
@@ -921,7 +972,13 @@ mod tests {
         let dir = create_episode(
             &t.0.join("ep"),
             &m2,
-            &build_prompt(Arm::Mzizi, "g", "s", &[]),
+            &build_prompt(
+                &ArmConfig::legacy("mzizi").unwrap(),
+                TaskFamily::UiPort,
+                "g",
+                "s",
+                &[],
+            ),
         )
         .unwrap();
         assert!(submit(&dir, &cand(&t.0, "a.mz", "OK")).is_err());
@@ -933,8 +990,21 @@ mod tests {
         let t = TempDir::new("exists");
         start(&t.0, Mode::Agent, fake_score(SCORE_OK));
         let m = meta(&t.0, Mode::Agent, fake_score(SCORE_OK));
-        let dir = episode_dir(&t.0.join("out"), &m.model, m.arm, &m.task, m.seed).unwrap();
-        assert!(create_episode(&dir, &m, &build_prompt(Arm::Mzizi, "g", "s", &[])).is_err());
+        let dir = episode_dir(&t.0.join("out"), &m.model, &m.arm.id, &m.task, m.seed).unwrap();
+        assert!(
+            create_episode(
+                &dir,
+                &m,
+                &build_prompt(
+                    &ArmConfig::legacy("mzizi").unwrap(),
+                    TaskFamily::UiPort,
+                    "g",
+                    "s",
+                    &[]
+                )
+            )
+            .is_err()
+        );
     }
 
     struct ScriptedModel {
@@ -991,7 +1061,13 @@ mod tests {
             replies: RefCell::new(vec!["```mz\nbroken\n```"]),
             error: LLAMA_OVERFLOW,
         };
-        let p = build_prompt(Arm::Mzizi, "g", "s", &[]);
+        let p = build_prompt(
+            &ArmConfig::legacy("mzizi").unwrap(),
+            TaskFamily::UiPort,
+            "g",
+            "s",
+            &[],
+        );
         let fin = run_model_episode(&dir, &p, &model, &FakeTok, &params()).unwrap();
         assert_eq!(fin["clean"], false);
         assert_eq!(fin["iterations"], 1);
@@ -1009,7 +1085,13 @@ mod tests {
             replies: RefCell::new(vec![]),
             error: LLAMA_OVERFLOW,
         };
-        let p = build_prompt(Arm::Mzizi, "g", "s", &[]);
+        let p = build_prompt(
+            &ArmConfig::legacy("mzizi").unwrap(),
+            TaskFamily::UiPort,
+            "g",
+            "s",
+            &[],
+        );
         let e = run_model_episode(&dir, &p, &model, &FakeTok, &params()).unwrap_err();
         assert!(e.contains("iteration 1"), "{e}");
         assert!(jsonl(&dir).is_empty(), "no final line: the episode aborted");
@@ -1030,7 +1112,13 @@ mod tests {
             ]),
             seen: RefCell::new(vec![]),
         };
-        let p = build_prompt(Arm::Mzizi, "the guide", "spec body", &[]);
+        let p = build_prompt(
+            &ArmConfig::legacy("mzizi").unwrap(),
+            TaskFamily::UiPort,
+            "the guide",
+            "spec body",
+            &[],
+        );
         let params = GenParams {
             model: "test-model".into(),
             temperature: 0.0,

@@ -6,6 +6,8 @@
 //! forced to — how a reply is obtained and where token counts come from — and those
 //! differences are written into every episode's output rather than left implicit.
 //!
+//! - [`arm`] — an arm as data, read from `benchmarks/arms/<id>/arm.toml`.
+//! - [`toml_lite`] — the small reader `arm.toml` is parsed with.
 //! - [`prompt`] — the system/user text and the error-feedback text, identical across arms
 //!   except for the language name and file kind.
 //! - [`extract`] — the one fenced code block in a model reply.
@@ -15,6 +17,7 @@
 //! - [`episode`] — the episode state machine shared by `run` and `episode …`.
 //! - [`summary`] — `summarize`'s aggregation and markdown rendering.
 
+pub mod arm;
 pub mod endpoint;
 pub mod episode;
 pub mod exec;
@@ -22,3 +25,4 @@ pub mod extract;
 pub mod prompt;
 pub mod summary;
 pub mod task;
+pub mod toml_lite;
