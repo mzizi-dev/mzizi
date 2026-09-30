@@ -34,6 +34,6 @@ and update the row in the same commit.
 
 **What every guide contains**, in this order: file shape, what is available, naming rules,
 reading the checker's output (a file wrong on purpose, and the checker's real output for it),
-and one worked example from the corpus that is not a task: the registry's avatar.
+and one worked example from the reference implementations that is not a task: the registry's avatar.
 `verify-guide.sh <guide>` runs every block through that arm's real checker, and checks that
 each wrong-on-purpose block's output matches the guide byte for byte.
