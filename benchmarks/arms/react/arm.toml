@@ -1,0 +1,23 @@
+# The React arm. Format: ../../runner/README.md, "Arms: `arm.toml`". The pin and its
+# provenance are in README.md in this directory.
+id = "react"
+family = "ui"
+# ui-spec only: handed spec.tsx, a React arm would be copying (RFC-0009 BM-1).
+task_families = ["ui-spec"]
+language_name = "TypeScript with React"
+file_kind = "a single TypeScript React source file (.tsx)"
+extension = "tsx"
+guide = "benchmarks/prompts/react-guide.md"
+check = ["{repo}/benchmarks/arms/react/check.sh", "{file}"]
+normaliser = "file-name"
+extractor = "react"
+# `ButtonSize` is written `buttonVariants.size`: the `size` key of the `buttonVariants`
+# cva call. The harness reads it back by the same rule (harness/src/react.rs).
+enum_case = "cva"
+class_accessor = "each a variant key of a `cva` call whose values are its Tailwind classes"
+pins = [
+  "sandbox/package.json",
+  "sandbox/package-lock.json",
+  "sandbox/tsconfig.json",
+  "sandbox/src/lib/utils.ts",
+]

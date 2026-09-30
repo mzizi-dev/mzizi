@@ -322,6 +322,14 @@ fn unknown_arms_and_families_are_refused() {
     let o = run("cobol", "ui-port");
     assert_eq!(o.status.code(), Some(2), "{}", text(&o));
     assert!(text(&o).contains("unknown arm `cobol`"), "{}", text(&o));
+    // Handed spec.tsx, a React arm would be copying the answer (RFC-0009 BM-1).
+    let o = run("react", "ui-port");
+    assert_eq!(o.status.code(), Some(2), "{}", text(&o));
+    assert!(
+        text(&o).contains("does not run the ui-port family"),
+        "{}",
+        text(&o)
+    );
     let o = run("mzizi", "backend");
     assert_eq!(o.status.code(), Some(2), "{}", text(&o));
     assert!(
@@ -329,4 +337,44 @@ fn unknown_arms_and_families_are_refused() {
         "{}",
         text(&o)
     );
+}
+
+/// The React arm end to end, with the check faked (Node is not a CI requirement, RFC-0009
+/// §9) and the scorer real: a React candidate is written as `candidate.tsx` and scored by the
+/// harness's cva extractor. The candidate is the registry's own button.tsx, which states the
+/// reference's facts, so it scores every one with no defect.
+#[test]
+fn a_react_episode_is_scored_by_the_cva_extractor() {
+    let out = Scratch::new("react");
+    let task = repo_root().join("benchmarks/tasks/button");
+    let o = mzbench(&[
+        "episode".as_ref(),
+        "start".as_ref(),
+        "--task".as_ref(),
+        &task,
+        "--arm".as_ref(),
+        "react".as_ref(),
+        "--family".as_ref(),
+        "ui-spec".as_ref(),
+        "--check-cmd".as_ref(),
+        r#"["sh","-c","exit 0"]"#.as_ref(),
+        "--model-label".as_ref(),
+        "it-scripted".as_ref(),
+        "--out".as_ref(),
+        &out.0,
+        "--endpoint".as_ref(),
+        "http://127.0.0.1:9".as_ref(),
+    ]);
+    assert!(o.status.success(), "{}", text(&o));
+    let ep = PathBuf::from(String::from_utf8(o.stdout).unwrap().trim());
+    let o = submit(&ep, &task.join("spec.tsx"));
+    assert_eq!(o.status.code(), Some(0), "{}", text(&o));
+    assert!(ep.join("iter-01/candidate.tsx").is_file());
+    let fin = finish(&ep);
+    assert_eq!(fin["arm"], "react", "{fin}");
+    assert_eq!(fin["scored"], true, "{fin}");
+    assert_eq!(fin["facts_checked"], 9, "{fin}");
+    assert_eq!(fin["defects"], 0, "{fin}");
+    let score = std::fs::read_to_string(ep.join("score.json")).unwrap();
+    assert!(score.starts_with(r#"{"arm":"react","#), "{score}");
 }
