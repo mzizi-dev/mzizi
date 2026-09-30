@@ -1,7 +1,7 @@
 #!/bin/sh
 # Warm the cargo cache the lowered packages build from, once, before any episode: a run's
 # sandbox has no network (RFC-0009 §4.5), and serve.sh builds with --offline. Building the
-# corpus service fetches exactly the pinned axum and tokio every lowered service uses.
+# example service fetches exactly the pinned axum and tokio every lowered service uses.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
