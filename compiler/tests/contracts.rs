@@ -298,7 +298,10 @@ fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one()
         String::from_utf8_lossy(&ok.stderr)
     );
 
-    let broken = std::env::temp_dir().join("mz-contract-broken.mz");
+    // Unique per process: two `cargo test` runs on one machine used to share one fixed
+    // `$TMPDIR/mz-contract-broken.mz` and overwrite each other's file mid-test.
+    let broken = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("mz-contract-broken-{}.mz", std::process::id()));
     std::fs::write(
         &broken,
         mutate(
