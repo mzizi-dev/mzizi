@@ -205,6 +205,15 @@ fn a_partial_segment_capture_is_mz0802_without_a_fix() {
 }
 
 #[test]
+fn a_malformed_pattern_still_binds_its_parameters() {
+    // One mistake, one diagnostic: `{id}` is still in scope for the handler.
+    let src = service(
+        "  route r\n    get \"/v1/items/{id}/\"\n    when id is \"1\"\n      respond 200\n    end\n    respond 404\n  end\n",
+    );
+    fixes_clean(&src, "MZ0802");
+}
+
+#[test]
 fn a_parameter_bound_twice_is_mz0802() {
     one(
         &service("  route r\n    get \"/{a}/{a}\"\n    respond 200\n  end\n"),

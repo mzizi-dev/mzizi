@@ -126,6 +126,11 @@ carry no pull request number.
 
 ### Fixed
 
+- **A malformed route pattern still binds its parameters** (#33). With a trailing slash,
+  `get "/v1/items/{id}/"` is one `MZ0802`, with its exact fix. It no longer also produces an
+  `MZ0707` on every use of `id` in the handler, a cascade RFC-0001 §4.1 rules out. Found by
+  checking the backend guide's wrong-on-purpose file. Tested by
+  `a_malformed_pattern_still_binds_its_parameters`.
 - **`tests/contracts.rs`'s broken-contract file is unique per process** (#28), so
   concurrent `cargo test` runs no longer collide on one fixed temp path.
 

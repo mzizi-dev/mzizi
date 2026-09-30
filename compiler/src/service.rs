@@ -800,6 +800,16 @@ impl Checker<'_> {
                         }
                     }
                     None => {
+                        // The pattern is one mistake: its `{name}`s still bind, so their
+                        // uses are not a second diagnostic each (RFC-0001 §4.1).
+                        for part in pattern.split('/') {
+                            if let Some(name) =
+                                part.strip_prefix('{').and_then(|p| p.strip_suffix('}'))
+                                && !name.is_empty()
+                            {
+                                params.insert(name.to_string(), PTy::Scalar(Ty::Text));
+                            }
+                        }
                         let (say, fix) = pattern_problem(pattern);
                         match fix {
                             Some(fixed) => self.err_fix(
