@@ -21,6 +21,8 @@ carry no pull request number.
 
 - **The `mzizi-be` arm, the probe crate `mzprobe`, and task B1** (RFC-0009 §6.4 and §9
   step 6, #33). This is the first `backend` arm.
+  - `LANGUAGE-TRACKER.md`: "Where Mzizi stands today" describes the backend slice as merged,
+    P2 cites #31 and #32, and the backend measurement row says what B1 still waits on.
   - `benchmarks/arms/mzizi-be/` holds the `arm.toml` (checked with `mz check --agent`,
     extractor `none`). Its `serve.sh` lowers a candidate with `mz build`, builds it offline,
     and serves it on `$PORT`.

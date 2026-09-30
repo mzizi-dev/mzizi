@@ -30,7 +30,7 @@ broken into work.
 | 📝   | Designed in an RFC, not implemented.                                                     |
 | ❌   | Neither designed nor implemented.                                                        |
 
-## Where Mzizi stands today (2026-09-30, `main` at bcc02e3)
+## Where Mzizi stands today (2026-09-30, `main` with the backend slice, #29–#33)
 
 What exists is the front end of a language whose first domain is UI components:
 
@@ -40,13 +40,17 @@ What exists is the front end of a language whose first domain is UI components:
 - **Types:** `bool`, `int`, `text`, enums with data columns, records, `list(T)`, `option(T)`,
   `event(T)` (`compiler/src/ast.rs`, [RFC-0008](./design/RFC-0008-types-collections-records.md)).
 - **Toolchain:** `mz check` (with `--agent`, NDJSON diagnostics), `mz fix`, `mz contract`,
-  `mz outline`; a recovering parser, a resolver, a content-addressed IR
-  ([RFC-0003](./design/RFC-0003-ir.md)). About 7,450 lines in `compiler/src`, 335 tests.
-- **Written in Mzizi:** nine primitives (`primitives/`) and two examples (`examples/`).
-- **Open PRs #29–#33 (the backend slice, RFC-0011, in #29):** a `service` with HTTP routes and
-  handlers (`when`, `header`, `respond`), `mz contract` running a service in process, and
-  `mz build` lowering a service to a local Rust + axum package. When they merge, a service is
-  the only thing that lowers to Rust.
+  `mz outline`, and `mz build` for a service only; a recovering parser, a resolver, a
+  content-addressed IR ([RFC-0003](./design/RFC-0003-ir.md)). About 12,640 lines in
+  `compiler/src`, 425 tests (`cargo test --workspace`).
+- **Written in Mzizi:** nine primitives (`primitives/`), two component examples and one
+  service, `examples/registry.mz` (`examples/`).
+- **The backend slice ([RFC-0011](./design/RFC-0011-handlers.md), #29–#33):** a `service` with
+  HTTP routes and handlers (`when`, `header`, `respond`), checked by `mz check` (#30) and run
+  in process by `mz contract` (#31). A `service` lowers to a local Rust + axum package
+  (`mz build`, #32), which CI compiles, tests and serves; no component lowers yet. The
+  `mzizi-be` arm, the probe crate `mzprobe` and backend task B1 exist (#33); no backend
+  episode has run.
 
 What does not exist yet is almost everything a general-purpose program needs: expressions,
 variables, callable functions, loops, error handling, modules, a standard library, and
@@ -103,7 +107,7 @@ Mzizi's two ✅ rows are where it is already different on purpose. Every other r
 | ID  | Capability                                                                             | Status | Evidence                                                                                                                                        | Done when                                                                                                                                  |
 | --- | -------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | P1  | Modules and imports across files; public and private                                   | ❌     | One component per file; `use` declares capabilities only                                                                                        | Code in one file calls code in another; private names are not visible                                                                      |
-| P2  | Standard library: text, math, collections, time, JSON, environment, files, HTTP client | ❌     | JSON response bodies only, in open PR #33                                                                                                       | Each module exists with tests, and is taught to agents through the harness (H1)                                                            |
+| P2  | Standard library: text, math, collections, time, JSON, environment, files, HTTP client | ❌     | JSON response bodies from a `service` only (#31, #32); no library module exists                                                                 | Each module exists with tests, and is taught to agents through the harness (H1)                                                            |
 | P3  | Lowering all code to Rust                                                              | 🟡     | A `service` lowers to a local Rust + axum package (`mz build`, #32), which CI compiles, tests and serves; components and functions do not lower | Every construct in Tier 1 lowers to Rust that `rustc` compiles, tested in CI                                                               |
 | P4  | `mz build` / `mz run` produce a runnable program                                       | 🟡     | `mz build` for a service only (#32); the package builds with Cargo to a native server binary, and there is no `mz run`                          | A general program builds to a native binary and runs                                                                                       |
 | P5  | Errors mapped back to `.mz`                                                            | ❌     | —                                                                                                                                               | A `rustc` error in lowered code is reported at the `.mz` line that caused it, or cannot happen by construction                             |
@@ -135,12 +139,12 @@ Mzizi's two ✅ rows are where it is already different on purpose. Every other r
 
 Phase 0's goal cannot be tested beyond what the language can express.
 
-| Task family                                                                | Needs                 | Status                                                                           |
-| -------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------- |
-| UI components against Rust (Dioxus, Leptos) and TypeScript (React)         | What exists today     | Runnable now. Two pilots on 2026-09-27, against Dioxus only, showed no advantage |
-| Backend handlers (B1 routing) against TypeScript, Python, Go, C++ and Rust | Open PRs #29–#33      | Runnable once the backend stack merges and the other-language arms are added     |
-| Public suites (MultiPL-E, EvalPlus)                                        | C1–C10 and part of P2 | **Blocked: Mzizi has no functions yet**                                          |
-| Aider polyglot, BaxBench                                                   | Tier 1, P1, P2, P8    | Blocked                                                                          |
+| Task family                                                                | Needs                 | Status                                                                                                                                                                                                                               |
+| -------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| UI components against Rust (Dioxus, Leptos) and TypeScript (React)         | What exists today     | Runnable now. Two pilots on 2026-09-27, against Dioxus only, showed no advantage                                                                                                                                                     |
+| Backend handlers (B1 routing) against TypeScript, Python, Go, C++ and Rust | A `service` (#29–#33) | Not yet runnable. The `mzizi-be` arm, `mzprobe` and B1 exist (#33), and both B1 references hold all 59 facts; the runner does not score an episode with probes, and B2–B5 and the other-language arms do not exist. Nothing measured |
+| Public suites (MultiPL-E, EvalPlus)                                        | C1–C10 and part of P2 | **Blocked: Mzizi has no functions yet**                                                                                                                                                                                              |
+| Aider polyglot, BaxBench                                                   | Tier 1, P1, P2, P8    | Blocked                                                                                                                                                                                                                              |
 
 The kill-criterion run has not happened. Nothing in this file is a claim that Mzizi is better
 than any language; it lists what has to exist before that can be measured.
