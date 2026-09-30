@@ -113,7 +113,7 @@ passing case and a deliberately-broken one (a copy of `button.mz` whose `sm` var
 contract, wrong against the reference" shape this harness exists to catch).
 
 **Still open**: this is a prototype proved against one component and one fixture, not a scored
-run over the corpus. How many components a real run covers, how agent runs are invoked and
+run over the reference implementations. How many components a real run covers, how agent runs are invoked and
 sandboxed, how tokens-consumed and iterations-to-clean-compile are measured and reported end to
 end, and the held-out task set itself (below) all remain unresolved.
 

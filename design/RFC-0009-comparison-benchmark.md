@@ -107,7 +107,7 @@ call, so the React guide tells the agent to use `cva`, as the registry's own `.t
 as the Rust guides require a `classes()` method and the Mzizi guide a `class` column. That is
 BM-3's residue. Rendered scoring would remove it: server-render each arm and read `data-slot`,
 classes and elements from the HTML. React, Dioxus and Leptos can all render on the server
-today. Mzizi cannot, because nothing lowers (RFC-0007 G2.1), so rendered scoring waits for the
+today. Mzizi cannot, because no component lowers (RFC-0007 G2.1), so rendered scoring waits for the
 same lowering slice as the backend arm (§6.4).
 
 ### 2.3 Backend tasks: a spec, references, and probes

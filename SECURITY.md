@@ -15,7 +15,9 @@ interesting is downstream of that.
 
 It is also worth stating what the compiler does **not** do today, because it bounds the
 threat model: it does not execute anything. Contract bodies parse but are not evaluated,
-there is no lowering to Rust, no code generation, no runtime and no rendering. Compiling a
+no component lowers to Rust, no runtime and no rendering. `mz build`
+lowers a `service` to a local Rust + axum package, which it writes but does not compile or run;
+there is no Workers, WebAssembly or Containers target. Compiling a
 `.mz` file today runs no code from that file. When contract evaluation and lowering land,
 that changes, and this document changes with them.
 
