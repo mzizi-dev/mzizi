@@ -31,6 +31,8 @@ carry no pull request number.
     `body.<field>` on a body that is not JSON `MZ0605`. Body clauses skip HEAD requests.
   - The summary line gains `contract_tested`. The `MZ0607` placeholder from #30 is gone.
   - Tested by 19 new tests in `compiler/tests/serve.rs`.
+  - `LANGUAGE-TRACKER.md`: "Contracts on everything" says a service's contracts run in
+    process. It stays 🟡: `ensure` is tested, not proven.
 - **`mz check` parses and checks a `service`** (RFC-0011 §1–§5 and §9, #30). The checker
   proves every path through a handler responds exactly once (`MZ0804` when one does not,
   `MZ0805` with an exact fix for a line after `respond`). The other `MZ0801`–`MZ0812` codes
