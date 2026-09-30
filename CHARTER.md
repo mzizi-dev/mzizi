@@ -151,8 +151,8 @@ The charter originally flagged this as the one decision that had to be made befo
   design system already built out in `mzizi-dev/mzizi-registry` (571+ components, partially ported to Rust
   across N7–N11 as of this decision). The agent authors these in Mzizi-lang syntax against the
   existing `.tsx`/`.rs` implementations as ground truth. This is explicitly **not** a port of an
-  external library (shadcn, a generic primitive set, etc.) — Mzizi's own components are the
-  benchmark corpus, full stop.
+  external library (shadcn, a generic primitive set, etc.). Mzizi's own components supply the
+  UI task set, and they are built to support the language.
 - **Defect definition:** a defect is code that **compiles cleanly but is behaviorally wrong** —
   it passes the compiler but fails a contract/behavior test against the reference
   implementation. This mirrors the contract-test pattern already used for the `.tsx` → `.rs`
