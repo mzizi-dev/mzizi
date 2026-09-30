@@ -412,7 +412,7 @@ Updated by each pull request that implements part of this RFC.
    `mz ir` refuse a service with exit status 2, because services have no IR yet (§13.4).
 2. **The evaluator** (§6 and §7). `compiler/src/serve.rs` runs §6's algorithm and the handler
    statements in process, and `mz contract` evaluates a service's clauses by running it. The
-   summary line carries `contract_tested`. `examples/registry.mz` is the corpus example: 22
+   summary line carries `contract_tested`. `examples/registry.mz` is the example service: 22
    clauses, all holding, and its `ensure` clauses tested over 61 generated requests. CI runs it
    through the same `mz check` and `mz contract` loops as the components.
    `compiler/tests/serve.rs` (19 tests) covers each step of §6, the §4.2 decoding rule, the
