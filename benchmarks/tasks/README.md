@@ -184,7 +184,7 @@ do not set `score_slots`, so they score the 13 facts they were scored on in both
 `CardContent` and `CardFooter`. A Dioxus port writes seven components. A Mzizi file holds one
 component (RFC-0001 §7.4), so a Mzizi port has to render the seven slots as regions of one
 view. That is a real property of the language, not an artefact of the task, and the slot set
-is the fact that measures whether the port kept them. The corpus's own `primitives/card.mz` is
+is the fact that measures whether the port kept them. This repo's own `primitives/card.mz` is
 a three-slot simplification (`card`, `card-header`, `card-body`) and scores 3 defects against
 this reference, which is expected: it was never a port of `card.tsx`.
 
