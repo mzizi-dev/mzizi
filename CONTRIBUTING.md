@@ -303,6 +303,14 @@ keeps the RFC from drifting into fiction. An RFC that is pure design is fine too
 `Status`. Either way the branch is merged, not squashed, so the RFC's review history stays
 readable.
 
+## The changelog
+
+A pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
+the benchmarks adds an entry to [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]`.
+[`AGENTS.md`](./AGENTS.md), "Changelog", has the rules, and the `changelog / entry
+required` CI job checks for the entry. Label a pull request `no-changelog` when it
+genuinely has nothing to record.
+
 ## Changing the primitives, the examples, or the compiler
 
 - **`primitives/` and `examples/` are verified source, not samples.** Every `.mz` file there

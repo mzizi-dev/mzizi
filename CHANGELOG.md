@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added
+
+- **`CHANGELOG.md`**, backfilled to 2026-08-23. AGENTS.md and CONTRIBUTING.md now say every
+  pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
+  the benchmarks adds an entry here (owner rule, 2026-09-30).
+
 ## 2026-09-29
 
 ### Added
