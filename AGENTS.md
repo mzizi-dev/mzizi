@@ -126,6 +126,7 @@ the offline check a task author runs.
   [`design/`](./design/) before you draft one. RFC-0005's number is reserved (drafted as
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
   not already used on `main` or claimed by an open PR. Other RFCs may be in flight on branches.
+- A PR that changes what the language can do updates the matching row in `LANGUAGE-TRACKER.md` in the same PR.
 
 ## Site and docs freshness (hard rule)
 

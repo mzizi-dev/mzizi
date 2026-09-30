@@ -21,6 +21,8 @@ component model, the way React is JavaScript's.
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
 **Tests:** 335 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
+**What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
+
 ## The bet
 
 Every language or framework that won, won by being unmistakably better at one thing first — not by
