@@ -9,6 +9,10 @@
 //! mzbench episode submit <episode dir> <candidate file>
 //! mzbench episode finish <episode dir> [--endpoint <url>]
 //! mzbench summarize <results dir>
+//! mzbench bundle-hash <results dir>
+//! mzbench plan --out <results dir> --tasks <task-set dir> --arms "<id> …" --family <f>
+//!             --model-label "<s> …" --seeds "<n> …" --temperature <f> [--max-iters 5]
+//!             [--max-tokens 4096] [--n-ctx <n>] [--held-out true|false] [--repo <dir>]
 //!
 //! common options: --family <ui-port|ui-spec|backend> --repo <dir> --guide <file> --check-cmd <json argv> --score-cmd <json argv>
 //!                 --normalise <file-name|none>
@@ -31,6 +35,7 @@ use mzizi_benchmark_runner::episode::{
 use mzizi_benchmark_runner::exec::{
     CommandTemplate, Normaliser, default_check, default_score, parse_argv_json,
 };
+use mzizi_benchmark_runner::plan::{PlanInput, bundle_hash, render_plan, today_utc};
 use mzizi_benchmark_runner::prompt::{Prompt, build_prompt};
 use mzizi_benchmark_runner::summary::{collect, render};
 use mzizi_benchmark_runner::task::load_task;
@@ -46,6 +51,10 @@ const USAGE: &str = "usage:
   mzbench episode submit <episode dir> <candidate file>
   mzbench episode finish <episode dir> [--endpoint <url>]
   mzbench summarize <results dir>
+  mzbench bundle-hash <results dir>
+  mzbench plan --out <results dir> --tasks <task-set dir> --arms '<id> ...' --family <f>
+              --model-label '<s> ...' --seeds '<n> ...' --temperature <f> [--max-iters 5]
+              [--max-tokens 4096] [--n-ctx <n>] [--held-out true|false] [--repo <dir>]
 common: --family <ui-port|ui-spec|backend> --repo <dir> --guide <file> --check-cmd '<json argv>' --score-cmd '<json argv>'
         --normalise <file-name|none>";
 
@@ -292,12 +301,149 @@ fn cmd_summarize(args: &[String]) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn cmd_bundle_hash(args: &[String]) -> Result<ExitCode, String> {
+    let f = parse_flags(args)?;
+    let pos = f.done(1)?;
+    let [root] = pos.as_slice() else {
+        return Err("bundle-hash <results dir>".into());
+    };
+    println!("{}", bundle_hash(Path::new(root))?);
+    Ok(ExitCode::SUCCESS)
+}
+
+fn git(repo: &Path, args: &[&str]) -> Option<String> {
+    let o = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .output()
+        .ok()?;
+    o.status
+        .success()
+        .then(|| String::from_utf8_lossy(&o.stdout).into_owned())
+}
+
+/// Draft `<out>/PLAN.md` (RFC-0009 §7.2). Refuses to overwrite one: a registered plan is
+/// never rewritten, and a changed one is a new registration.
+fn cmd_plan(args: &[String]) -> Result<ExitCode, String> {
+    let mut f = parse_flags(args)?;
+    let out = PathBuf::from(f.req("out")?);
+    let tasks_dir = PathBuf::from(f.req("tasks")?);
+    let family = TaskFamily::parse(&f.req("family")?)?;
+    let arm_ids = f.req("arms")?;
+    let models: Vec<String> = f
+        .req("model-label")?
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    let seeds = f
+        .req("seeds")?
+        .split_whitespace()
+        .map(|s| {
+            s.parse()
+                .map_err(|_| format!("--seeds: `{s}` is not a number"))
+        })
+        .collect::<Result<Vec<u64>, String>>()?;
+    let temperature = f.req("temperature")?;
+    temperature
+        .parse::<f64>()
+        .map_err(|_| format!("--temperature: `{temperature}` is not a number"))?;
+    let max_iters: u32 = f.num("max-iters", Some(5))?;
+    let max_tokens: u64 = f.num("max-tokens", Some(4096))?;
+    let n_ctx = match f.take("n-ctx") {
+        Some(n) => Some(
+            n.parse()
+                .map_err(|_| format!("--n-ctx: `{n}` is not a number"))?,
+        ),
+        None => None,
+    };
+    let held_out = match f.take("held-out").as_deref() {
+        None | Some("false") => false,
+        Some("true") => true,
+        Some(o) => return Err(format!("--held-out must be true or false, not `{o}`")),
+    };
+    let repo = std::fs::canonicalize(
+        f.take("repo")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_repo),
+    )
+    .map_err(|e| format!("--repo: {e}"))?;
+    f.done(0)?;
+    if models.is_empty() || seeds.is_empty() {
+        return Err("--model-label and --seeds need at least one value".into());
+    }
+    let mut arms = Vec::new();
+    for id in arm_ids.split_whitespace() {
+        let a = ArmConfig::load(&repo, id)?;
+        if !a.runs(family) {
+            return Err(format!(
+                "arm `{id}` does not run the {} family",
+                family.as_str()
+            ));
+        }
+        arms.push(a);
+    }
+    let mut tasks = Vec::new();
+    for e in std::fs::read_dir(&tasks_dir).map_err(|e| format!("--tasks: {e}"))? {
+        let p = e.map_err(|e| e.to_string())?.path();
+        if p.join("task.toml").is_file() {
+            load_task(&p)?.input(family)?;
+            tasks.push(p);
+        }
+    }
+    tasks.sort();
+    if tasks.is_empty() {
+        return Err(format!("no task.toml under {}", tasks_dir.display()));
+    }
+    let plan = out.join("PLAN.md");
+    if plan.exists() {
+        return Err(format!(
+            "{} exists; a registered plan is never rewritten",
+            plan.display()
+        ));
+    }
+    let commit = git(&repo, &["rev-parse", "HEAD"])
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".into());
+    let dirty = git(&repo, &["status", "--porcelain", "--untracked-files=no"])
+        .is_some_and(|s| !s.trim().is_empty());
+    let title = out
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "run".into());
+    let text = render_plan(
+        &repo,
+        &PlanInput {
+            title,
+            date: today_utc(),
+            commit,
+            dirty,
+            family,
+            arms,
+            tasks,
+            held_out,
+            models,
+            seeds,
+            temperature,
+            max_iters,
+            max_tokens,
+            n_ctx,
+        },
+    )?;
+    std::fs::create_dir_all(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+    std::fs::write(&plan, text).map_err(|e| format!("{}: {e}", plan.display()))?;
+    println!("{}", plan.display());
+    Ok(ExitCode::SUCCESS)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.split_first() {
         Some((c, rest)) if c == "run" => cmd_run(rest),
         Some((c, rest)) if c == "episode" => cmd_episode(rest),
         Some((c, rest)) if c == "summarize" => cmd_summarize(rest),
+        Some((c, rest)) if c == "bundle-hash" => cmd_bundle_hash(rest),
+        Some((c, rest)) if c == "plan" => cmd_plan(rest),
         _ => Err(USAGE.to_string()),
     };
     match result {
