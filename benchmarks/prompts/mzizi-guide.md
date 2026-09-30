@@ -1,132 +1,71 @@
 # Writing one Mzizi component
 
-Mzizi (`.mz`) is a small UI language. One file holds one component. It has one form
-per intent: if a construct is not shown here, assume it does not exist. Your file is done
-when `mz check --agent <file>` and `mz contract --agent <file>` both exit 0.
+Mzizi (`.mz`) is a small UI language. One file holds one component. It has one form per
+intent: if a construct is not shown here, assume it does not exist. Your file is checked
+with `mz check --agent`; errors fail it, warnings do not.
 
-## A complete component
+## File shape
 
-```mz
-## A filter chip: a label, with an optional remove control.
-## Tappable parts never go below the 48px touch floor.
-component chip
+Write the parts in this order: doc lines, `use`, `enum` and `record`, `prop`, `view`,
+`contract`.
 
-  enum chip_tone
-    neutral  class "bg-muted text-foreground"
-    accent   class "bg-accent text-accent-foreground"
-    warn     class "bg-amber-100 text-amber-900"
-  end
+- `component <name>` opens the file and `end component <name>` closes it, repeating the
+  name. Every other block (`enum`, `record`, `view`, `contract`, each element, each
+  `when`, each `for each`) closes with a bare `end`. Never `end enum` or `end row`.
+- `##` to end of line is the only comment. `//` and `/* */` are errors.
+- `use motion` if the component animates. Nothing else needs `use`, and there are no
+  imports.
 
-  ## `height` is read from the `h-N` class: N * 4 pixels.
-  enum chip_size
-    snug   class "h-13 px-3 text-xs"
-    roomy  class "h-15 px-4 text-sm"
-  end
+## What is available
 
-  prop tone: chip_tone = neutral
-  prop size: chip_size = snug
-  prop label: text
-  prop removable: bool = false
-  prop on_remove: event(none)
+**Enums are variant tables.** Each variant is one line: its name, then `column value`
+pairs, and every variant has every column (`MZ0303` otherwise). This replaces `cva`,
+class maps and variant `switch`es. Values are strings `"..."` or integers. Do not write a
+`height` column: a variant's height is what its class renders (`h-N` or `size-N` is
+`N * 4` pixels), and a written `height` that disagrees is `MZ0313`.
 
-  view
-    row
-      slot = "chip"
-      class = "inline-flex items-center gap-1 rounded-full {tone.class} {size.class}"
-      text = label
-      when removable
-        control
-          slot = "chip-remove"
-          role = "button"
-          class = "min-h-[48px] min-w-[48px]"
-          text = "Remove"
-          tap = on_remove
-        end
-      end
-    end
-  end
+**Records** group fields, one `field <name>: <type>` per line, closed by `end`.
 
-  contract
-    every chip_size height at_least 48
-    chip_size.snug height is 52
-    every chip_tone class not_empty
-    chip_tone.accent class contains "bg-accent"
-    slot is "chip"
-    when removable shows control "Remove"
-    control "Remove" min_height 48
-  end
+**Props** are `prop <name>: <type>`, optionally `= <default>`, one per line.
 
-end component chip
-```
+| Type             | Default written as         | For                           |
+| ---------------- | -------------------------- | ----------------------------- |
+| an enum name     | a bare variant: `= sm`     | variant / size props          |
+| `text`           | a string: `= "Remove"`     | labels, children text, values |
+| `bool`           | `= true` or `= false`      | flags such as `disabled`      |
+| `int`            | an integer: `= 3`          | counts                        |
+| `event(none)`    | none                       | click-style callbacks         |
+| `event(<type>)`  | none                       | callbacks carrying a value    |
+| `list(<type>)`   | none: omitted means empty  | lists                         |
+| `option(<type>)` | none: omitted means `none` | an optional scalar            |
+| a record name    | none                       | an object                     |
 
-## The parts, in order
+An optional list is `list(T)`, never `option(list(T))`.
 
-Write them in this order: doc lines, `use`, `enum` and `record`, `prop`, `view`, `contract`.
+**The view.** `view ... end` holds exactly one element tree. An element is a bare word on
+its own line, closed by `end`; use `row` for layout and `control` for anything tappable.
+Inside an element, each line is an attribute `name = value` (the `=` is required), a child
+element, a `when` block, a `for each`, or `nothing`. A value is a string, an integer,
+`true`/`false`, a prop name, or a dotted path (`size.class`, `item.title`). A string
+interpolates with `{...}`: `class = "base {size.class}"`. That is the only way to build a
+string: there is no `+`.
 
-- **Shape.** `component <name>` opens the file; `end component <name>` closes it and must
-  repeat the name. Every other block (`enum`, `record`, `view`, `contract`, each element,
-  each `when`, each `for each`) closes with a bare `end`.
-- **Doc comments.** `##` to end of line, before or inside the component. It is the only
-  comment form; `//` and `/* */` are errors.
-- **Names.** Everything you name is `snake_case`. A `camelCase` name is a compile error
-  (`MZ0101`) whose `exact` fix is the snake form: `onRemove` becomes `on_remove`. Map
-  kebab-case the same way: `extra-small` becomes `extra_small`.
-- **Capabilities.** `use motion` if the component animates. Nothing else needs `use`, and
-  there are no imports: other components are used by bare name.
+| Spec says                       | Mzizi                                            |
+| ------------------------------- | ------------------------------------------------ |
+| `data-slot="x"`                 | `slot = "x"`                                     |
+| `data-portal="…"`               | `portal = "…"`                                   |
+| `data-size` is the size in use  | `size = size`                                    |
+| its children as text            | `text = label`                                   |
+| a click handler                 | `tap = on_tap` (`change = on_change`)            |
+| shown only when a flag is set   | `when open` ... `end`                            |
+| one thing or another            | `when a` ... `else` ... `end`                    |
+| for one variant only            | `when v is x` ... `end`                          |
+| once per item of a list         | `for each x in xs`, then `key = x.id`, ... `end` |
+| an optional value, when present | `when x is none`, `nothing`, `else` ... `end`    |
 
-### Enums are variant tables
-
-Each variant is one line: its name, then `column value` pairs. This replaces `cva`,
-`Record<Variant, string>` maps and variant `switch`es; one row holds everything about a
-variant. Every variant must have every column (`MZ0303` otherwise). Values are strings
-`"..."` or integers. Do not write a `height` column: a variant's `height` is the pixels its
-class renders, `h-N` or `size-N` is `N * 4`, and contracts read it from there (`h-10` is
-height 40). A written `height` that disagrees with the class is `MZ0313`. A column may hold
-another enum's variant (`accent gold`); `{node.accent.class}` then reads through both tables.
-
-### Records
-
-A record is a named group of fields, one `field <name>: <type>` per line, closed by `end`.
-The example under "The view" declares one.
-
-### Props
-
-`prop <name>: <type>`, optionally `= <default>`, one per line.
-
-| Type             | Default written as          | For                           |
-| ---------------- | --------------------------- | ----------------------------- |
-| an enum name     | a bare variant: `= neutral` | variant / size props          |
-| `text`           | a string: `= "Remove"`      | labels, children text, values |
-| `bool`           | `= true` or `= false`       | flags such as `disabled`      |
-| `int`            | an integer: `= 3`           | counts                        |
-| `event(none)`    | none                        | `onClick`-style callbacks     |
-| `event(<type>)`  | none                        | callbacks carrying a value    |
-| `list(<type>)`   | none: omitted means empty   | arrays, `T[]`                 |
-| `option(<type>)` | none: omitted means `none`  | an optional scalar, `x?: T`   |
-| a record name    | none                        | an object prop                |
-
-An optional array is `list(T)`, never `option(list(T))`: the empty list is its absence. An
-optional callback is plain `event(...)`. Every type and name is checked; a misspelling is
-an error whose fix is the nearest name.
-
-### The view
-
-`view ... end` holds exactly one tree. An element is a bare word on its own line, closed by
-`end`. Element words are free; use `row` for layout containers and `control` for anything
-tappable. Inside an element, every line is either:
-
-- an attribute, `name = value`, where the `=` is required; or
-- a child element, a `when` block, or `nothing`.
-
-Attribute values are a string, an integer, `true`/`false`, a prop name (`text = label`),
-or a dotted path (`role = variant.announce`, `text = entry.title`). A string may interpolate
-them with `{...}`: `class = "base {tone.class}"`. Interpolation inside a string is the only
-way to build a string; there is no `+`, and no `{...}` outside a string. A list or a whole
-record is never a value; iterate the list, name the field.
-
-Lists render with `for each`, whose first line is its `key`, a path from the item.
-`when x is none` ... `else` ... `end` tests an option or a list. Inside the `else` an option
-is its value; anywhere else, using it is an error. For a list, `is none` means empty.
+Inside the `else` of `when x is none`, an option is its value; anywhere else, using it is
+an error. For a list, `is none` means empty. A list or a whole record is never a value:
+iterate the list, and name the field.
 
 ```mz
 ## A release list: a record, a list of them, an option, and nested `for each`.
@@ -172,76 +111,35 @@ component releases
 end component releases
 ```
 
-| React                              | Mzizi                                         |
-| ---------------------------------- | --------------------------------------------- |
-| `className={cn(base, v[variant])}` | `class = "base {variant.class}"`              |
-| `data-slot="x"`                    | `slot = "x"`                                  |
-| `role="status"`                    | `role = "status"`                             |
-| `{label}` / `children` as text     | `text = label`                                |
-| `onClick={onTap}`                  | `tap = on_tap`                                |
-| `onChange`                         | `change = on_change`                          |
-| `disabled={disabled}`              | `disabled = disabled`                         |
-| `{open && <X/>}`                   | `when open` ... `end`                         |
-| `a ? <X/> : <Y/>`                  | `when a` ... `else` ... `end`                 |
-| `{v === "x" && <X/>}`              | `when v is x` ... `end`                       |
-| `{xs.map(x => <X key={x.id}/>)}`   | `for each x in xs`, `key = x.id`, ... `end`   |
-| `{x && x.length > 0 && <X/>}`      | `when x is none`, `nothing`, `else` ... `end` |
-| `return null`                      | `nothing`                                     |
+Drop attribute spreading, `asChild` and `className` pass-through: none exists. A
+spread is `MZ0106` and an `as_child` prop `MZ0312`.
 
-Drop `...props` spreading, `asChild` and `className` pass-through: none has an equivalent.
-A spread is an error (`MZ0106`) and an `as_child` prop a warning (`MZ0312`); delete the
-line, and keep only what the `as_child = false` branch renders.
+**The contract** is one assertion per line, `<subject> <predicate>`, checked by
+`mz contract` against the file's own enums, attributes and defaults. Subjects:
+`every <enum> <column>`, `<enum>.<variant> <column>`, a root attribute (`slot`), a prop
+with a default, or `<element> "<text>"`. Predicates: `is <value>`, `contains "<s>"`,
+`not_empty`, `at_least <n>`, `in "<a>" "<b>"`, `min_height <n>`. Assert what the spec
+guarantees: the `slot`, key cells, and `every <size enum> height at_least 48` for anything
+tappable.
 
-### The contract
+## Naming rules
 
-One assertion per line, `<subject> <predicate>`, no colon. It is checked against this file's
-own enums, view attributes and prop defaults.
+- Everything you name is `snake_case`. `onRemove` is `MZ0101`, with `on_remove` as its
+  exact fix. Kebab-case maps the same way: `icon-sm` is `icon_sm`.
+- Name each enum exactly as the task says, and keep every variant, class string and
+  default the spec gives, character for character.
+- The root element carries the component's `slot`; sub-parts use `<name>-<part>`.
+- Event attributes are `tap` and `change`. `on_click = on_tap` also compiles, so the
+  checker will not catch that name.
+- `is` is required in a contract (`height is 52`, not `height 52`), and compares as
+  written (`is "52"` fails against `52`). There is no `if` (`MZ0407`, fix: `when`) and no
+  `some`. There is no `match` either, and a `match` line is not always an error, so write
+  `when v is x` blocks.
 
-| Subject                     | Means                                     |
-| --------------------------- | ----------------------------------------- |
-| `every <enum> <column>`     | that column in every variant              |
-| `<enum>.<variant> <column>` | one cell                                  |
-| `<attribute>`               | the outermost view element's attribute    |
-| `<prop>`                    | the prop's default (a prop with one only) |
-| `<element> "<text>"`        | the element carrying that text            |
-| `when <name>`               | the `when` branch that mentions that name |
+## Reading the checker's output
 
-| Predicate               | Holds when                                      |
-| ----------------------- | ----------------------------------------------- |
-| `is <value>`            | exactly equal, as written                       |
-| `contains "<s>"`        | the string contains `s`                         |
-| `not_empty`             | the string is not blank                         |
-| `at_least <n>`          | the number is `n` or more                       |
-| `in "<a>" "<b>"`        | the string is one of those                      |
-| `uses "--token"`        | the string reads `var(--token...)`              |
-| `uses <component>`      | (no subject) the view contains that component   |
-| `shows <element> "<t>"` | (after `when <name>`) that branch renders it    |
-| `min_height <n>`        | the element's `height` or `min-h-[Npx]` is `n`+ |
-
-Assert what the source guarantees: every interactive size clears 48
-(`every <enum> height at_least 48`), the `slot`, and the key cells.
-
-## One form per intent: the traps
-
-- **`=` in attributes.** `class "flex"` without `=` is `MZ0406`; its fix inserts the `=`.
-- **Attributes go on an element.** Nothing but one element tree sits directly inside
-  `view`; `slot = "x"` there is `MZ0408`. Put it inside the root element.
-- **`is` in contracts.** `chip_size.snug height 52` is `MZ0602`; write `height is 52`.
-- **`is` compares as written.** `height is "52"` fails against `height 52`.
-- **No `match`/`case`.** An error in a view. Write `when v is x` blocks.
-- **No `some`, no `when x` on an option.** Presence is `when x is none` / `else`.
-- **No `if`.** `if open` is `MZ0407`, and its `exact` fix is `when open`.
-- **Event attribute names.** Use `tap` and `change`. `on_click = on_tap` also compiles,
-  so the compiler will not catch the wrong name.
-- **No assertion on a prop without a default.** `label is "x"` is `MZ0605` (unevaluable),
-  and unevaluable counts as failure.
-- **Closers.** Only `component` echoes: `end component chip`. Never `end enum`, `end view`
-  or `end row`; write a bare `end`.
-
-## Reading diagnostics
-
-`--agent` prints NDJSON: one diagnostic per line, then one summary line. This file is wrong
-on purpose.
+`--agent` prints NDJSON: one diagnostic per line, then one summary line. This file is
+wrong on purpose:
 
 ```mz
 ## WRONG ON PURPOSE: three mistakes.
@@ -279,9 +177,68 @@ end
 {"summary":true,"errors":3,"warnings":0,"exact_fixable":3,"ms":0}
 ```
 
-Each line has `code`, `severity`, `span` `[line, col, end_line, end_col]`, and `say`, which
-quotes the problem. `fix` is optional: `replace` goes at `span`. Apply an `exact` fix as
-given; check a `guess` fix first. For a closer error, rewrite the whole `end` line as `say`
-spells it. Warnings (`MZ0501`: no contract) do not fail. Errors are independent, so fix them
-all, then run again. `mz contract` runs only on a file that checks clean; `MZ0603` means an
-assertion is false, `MZ0605` means it could not be evaluated.
+`span` is `[line, col, end_line, end_col]` and `say` quotes the problem. A `fix` puts
+`replace` at its `span`: apply an `exact` fix as given, and check a `guess` first. Errors
+are independent, so fix them all, then check again. `mz contract` runs only on a file that
+checks clean: `MZ0603` means an assertion is false, and `MZ0605` that it could not be
+evaluated, which counts as failing (an assertion on a prop with no default is one).
+
+The errors seen most often, and what they mean:
+
+- `MZ0406`: an attribute without `=` (`class "flex"`). The fix inserts it.
+- `MZ0408`: an attribute directly inside `view`. Put it inside the root element.
+- `MZ0204` / `MZ0206` / `MZ0208`: a block left open or closed wrongly. Rewrite the whole
+  `end` line as `say` spells it.
+- `MZ0701`: an unknown type. `say` lists the types there are.
+- `MZ0707`: a name that is not a prop, loop binding or variant in this file.
+
+## Worked example: avatar
+
+The registry's avatar (`n2-primitives/avatar`), which is not one of the tasks:
+
+```mz
+## A person or entity image, with initials as the fallback when no image loads.
+component avatar
+
+  enum avatar_size
+    default  class "size-10"  text_class "text-sm"
+    sm       class "size-8"   text_class "text-xs"
+    lg       class "size-14"  text_class "text-base"
+  end
+
+  prop size: avatar_size = default
+  prop image: option(text)
+  prop initials: text
+  prop alt: text
+
+  view
+    figure
+      slot = "avatar"
+      portal = "https://mzizi.dev/components/avatar"
+      size = size
+      class = "group/avatar relative flex shrink-0 overflow-hidden rounded-full bg-muted {size.class}"
+      when image is none
+        row
+          slot = "avatar-fallback"
+          class = "flex size-full items-center justify-center rounded-full bg-muted text-muted-foreground {size.text_class}"
+          text = initials
+        end
+      else
+        picture
+          slot = "avatar-image"
+          source = image
+          alt = alt
+          class = "aspect-square size-full rounded-full object-cover"
+        end
+      end
+    end
+  end
+
+  contract
+    every avatar_size text_class not_empty
+    avatar_size.sm height is 32
+    slot is "avatar"
+  end
+
+end component avatar
+```
