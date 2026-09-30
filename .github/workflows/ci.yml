@@ -112,7 +112,7 @@ jobs:
       - name: cargo test (harness and runner)
         run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
 
-  # RFC-0011 §8: the corpus service lowered to an axum package, its generated `oneshot`
+  # RFC-0011 §8: the example service lowered to an axum package, its generated `oneshot`
   # tests run, and the server started and asked one question over a real socket. Rust
   # only: the package's dependencies come from crates.io like the runner's, and the
   # request is written with bash's /dev/tcp, so no other toolchain is needed.
@@ -131,7 +131,7 @@ jobs:
             compiler
             target/mz-build/registry
 
-      - name: mz build the corpus service
+      - name: mz build the example service
         working-directory: compiler
         run: cargo run --quiet --bin mz -- build ../examples/registry.mz --out ../target/mz-build/registry
 
