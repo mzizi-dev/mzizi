@@ -616,6 +616,11 @@ pub fn finish_ended(
         "token_source": m.mode.token_source(),
         "transcript_tokens": transcript,
         "transcript_tokens_null_reason": transcript_reason,
+        // The system message alone, with the same tokenizer: the guide budget RFC-0009 §4.2
+        // holds every arm in a family to (within ±5%). `null` when the tokenizer is down.
+        "guide_tokens": fs::read_to_string(st.dir.join("system.txt"))
+            .ok()
+            .and_then(|g| tok.count_tokens(&g).ok()),
         "clean": clean_iter.is_some(),
         "scored": sc.as_ref().is_some_and(|s| s.error.is_none()),
         "score_error": sc.as_ref().and_then(|s| s.error.clone()),
@@ -888,6 +893,8 @@ mod tests {
             + FakeTok.count_tokens(&fb).unwrap()
             + 2;
         assert_eq!(fin["transcript_tokens"], expect);
+        // The guide is "the guide": two whitespace-separated words to FakeTok.
+        assert_eq!(fin["guide_tokens"], 2);
 
         assert!(
             finish(&dir, &FakeTok).is_err(),
@@ -941,6 +948,7 @@ mod tests {
         submit(&dir, &cand(&t.0, "a.mz", "OK")).unwrap();
         let fin = finish(&dir, &DownTok).unwrap();
         assert_eq!(fin["transcript_tokens"], Value::Null);
+        assert_eq!(fin["guide_tokens"], Value::Null);
         assert!(
             fin["transcript_tokens_null_reason"]
                 .as_str()
