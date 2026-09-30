@@ -14,6 +14,11 @@ The largest guide is 2.2% larger than the smallest. Before this rebalancing
 (2026-09-29), the three guides were 3,360 (Mzizi), 2,679 (Leptos) and 2,570 (Dioxus) tokens, a
 31% spread, and there was no React guide.
 
+The `backend` family has one guide so far, `mzizi-be-guide.md`: 2210 tokens, 7861 bytes,
+SHA-256 `2d8b7dac3074e8382175af8bee97b0e97a3f2a7211a33e472aff63b849529486`, counted the same
+way on 2026-09-30. It has no budget yet. The budget is set, and this guide rebalanced to it,
+when the incumbent backend arms' guides are written ([`../arms/mzizi-be/README.md`](../arms/mzizi-be/README.md)).
+
 **How these were counted.** With the Hugging Face `tokenizers` library (Python) and
 `Qwen/Qwen2.5-Coder-7B-Instruct`'s `tokenizer.json` (SHA-256
 `c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539`), on 2026-09-30. That is

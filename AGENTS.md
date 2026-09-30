@@ -50,7 +50,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 292 tests (414 in the workspace)
+cargo test                                                              # 294 tests (425 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -65,7 +65,8 @@ Run before every push. These are the commands in
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), job by job. The `mz` loops are copied
 from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` exits 2 (usage).
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
-then `cargo test` and one request over a socket against the generated package, which fetches
+then `cargo test` and one request over a socket against the generated package, and
+`mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
 `axum` and `tokio` from crates.io), and the lint gate (`lint.yml`: actionlint, JSON validity,
 prettier, markdownlint, yamllint) are not listed here.
 
@@ -92,7 +93,7 @@ cd ..
 # job `benchmarks` — run from the repo root
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner
+cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner -p mzizi-benchmark-probe
 ```
 
 Run the block as a script with `bash -e` (from the repo root), which is how CI runs every

@@ -231,6 +231,21 @@ against its spec. Without it, `button`'s `destructive` renamed to `danger` is a 
 issue there: either the `.tsx` should adopt the mineral names too, or the `.rs` should keep
 the axis keys. It is noted here, not filed.
 
+## Backend tasks (RFC-0009 §2.3–§2.4)
+
+A backend task is `task.toml`, `spec.md` (the only text an agent sees), `probes.toml` (the
+scoreable facts, each one HTTP request) and two references in two languages, each with a
+`start.sh` that serves it on `$PORT`. `mzprobe verify <task>` (`benchmarks/probe`) starts each
+reference and runs every probe; CI runs it for every backend task.
+
+| Task         | Exercises                                                                                     | Probes | Facts | References                                    |
+| ------------ | --------------------------------------------------------------------------------------------- | ------ | ----- | --------------------------------------------- |
+| `b1-routing` | three routes, `HEAD`, `OPTIONS` `204`, `405`, the trailing-slash `308`, a JSON `404`, headers | 20     | 59    | Mzizi (lowered by `mz build`), and plain axum |
+
+B1 restates the API gateway's routing facts as RFC-0009 §2.4 and RFC-0010 §3.2 cite them, at
+`2468b2a`. It is derived from a public repository, so it is a development task, contaminated
+by construction and never gating. Both references passed all 59 facts on 2026-09-30.
+
 ## Survey: all 21 `.rs` files with a `.tsx` sibling
 
 _Scoreable_ means scoreable under the extractor rules above. _Unscored but checkable_ lists

@@ -429,6 +429,17 @@ Updated by each pull request that implements part of this RFC.
    The pins are `axum =0.8.9`, `tokio =1.53.1`, and for tests `tower =0.5.3`,
    `http-body-util =0.1.5` and `serde_json =1.0.151`. The generated package has no lockfile,
    so their own dependencies float, as the runner's do.
+4. **The `mzizi-be` arm, the probe crate and B1** (RFC-0009 §9 step 6's language half).
+   `benchmarks/arms/mzizi-be/` holds the `arm.toml` (in the format `runner/README.md`
+   specifies, which the runner loads), `serve.sh` (lower, build offline, serve a candidate on `$PORT`) and
+   `setup.sh` (warm the cargo cache). Its guide is `benchmarks/prompts/mzizi-be-guide.md`,
+   2,210 tokens; the `backend` family has no budget until its other guides exist.
+   `benchmarks/probe` (`mzprobe`) sends a task's probes and judges each fact, with 9 offline
+   tests. `benchmarks/tasks/b1-routing` is B1: `spec.md`, 20 probes holding 59 facts, and two
+   references, this RFC's service form and plain axum. Both hold all 59 facts, and CI's
+   `lowering` job verifies that. Writing the guide found one cascade, a malformed pattern
+   leaving its `{name}`s unbound, which is fixed. Not done: the runner does not call the
+   probes, so an episode is clean but unscored; no episode has run.
 
 ## 13. Open questions
 
