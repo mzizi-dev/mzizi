@@ -126,7 +126,7 @@ we have agreed with you that it is public. For anything **not** in those categor
 ordinary parser bug on input you wrote yourself, a bad diagnostic, a wrong outline — a
 public issue is the right place and is more useful there.
 
-If GitHub private reporting is unavailable to you, email `security@bundu.org` with the same
+If GitHub private reporting is unavailable to you, email `security@nyuchi.com` with the same
 information. Do not put the details in a public issue.
 
 ## What to expect
