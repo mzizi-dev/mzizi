@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — security reports go to `security@nyuchi.com` (2026-10-03)
+
+- **`SECURITY.md`'s email fallback behind GitHub private reporting is `security@nyuchi.com`**, in place of `security@bundu.org` (owner decision, 2026-10-03: one security contact for every repository). `AGENTS.md` matches.
+
 ### Changed — lint runs once, from the org-required workflow (2026-10-03)
 
 - **Removed `.github/workflows/lint.yml`.** The `mzizi-dev` org ruleset now runs the shared lint on every pull request through `mzizi-dev/.github`'s `org-lint.yml`, publishing the same five `lint / …` checks, so the repo's own caller only ran lint a second time.
