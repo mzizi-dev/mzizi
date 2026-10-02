@@ -199,8 +199,8 @@ in branch protection.
   Worker in TypeScript that serves the registry's files bundled at a pinned commit (no
   database, no origin). `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds
   no database; its files are the data layer. Only the console uses Supabase.
-- Security reports: `security@bundu.org` for this repo (see [`SECURITY.md`](./SECURITY.md));
-  the console's is `security@nyuchi.com`.
+- Security reports: GitHub private reporting first, then `security@nyuchi.com` (see
+  [`SECURITY.md`](./SECURITY.md)), the same address as the console's.
 
 ## Further reading
 
