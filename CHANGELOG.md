@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — lint runs once, from the org-required workflow (2026-10-03)
+
+- **Removed `.github/workflows/lint.yml`.** The `mzizi-dev` org ruleset now runs the shared lint on every pull request through `mzizi-dev/.github`'s `org-lint.yml`, publishing the same five `lint / …` checks, so the repo's own caller only ran lint a second time.
+
 ### Added
 
 - **The `mzizi-be` arm, the probe crate `mzprobe`, and task B1** (RFC-0009 §6.4 and §9
