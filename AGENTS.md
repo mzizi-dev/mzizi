@@ -195,6 +195,13 @@ in branch protection.
 - **Mzizi Roots** is the name for Mzizi's own components in Rust: UI and server components
   for the agentic web. React/TSX components keep working but are deprioritised; where a
   Rust implementation exists, present it first.
+- **The design system** is published as the "Design System" artifact,
+  <https://claude.ai/artifact/G8CCtAbZ8w717uQ3R5itCc>: the brand book, voice, visual foundations, marks and component previews for
+  `mzizi` and the `bundu` ecosystem. Its source of truth is `design-system/` in
+  `mzizi-dev/mzizi-registry` (landing with registry PR #418). That folder's `PUBLISHING.md`
+  says the artifact is built from the folder, file for file, and is never edited on the
+  artifact page, so change the design system there, not in the artifact or in this repo.
+  Nothing in this repository reads it (see "Repo boundaries").
 - The rest of the ecosystem, for reference: `api.mzizi.dev` is `mzizi-api-gateway`, a Hono
   Worker in TypeScript that serves the registry's files bundled at a pinned commit (no
   database, no origin). `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds
