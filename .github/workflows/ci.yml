@@ -13,13 +13,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
     # Not just main. Stacked pull requests target the branch below them in the
     # stack, and a filter of [main] silently gives every layer but the bottom
     # one zero checks — a green PR with nothing run looks identical to a
     # passing one.
-    branches: [main, "claude/**"]
+    branches: [main, staging, "claude/**"]
 
 permissions:
   contents: read
