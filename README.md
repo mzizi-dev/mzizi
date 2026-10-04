@@ -199,6 +199,12 @@ Mzizi org. **The language repo is plain `mzizi`; everything else is
 | [`agent-tools`](https://github.com/mzizi-dev/agent-tools)             | `mcp.mzizi.dev` (`mzizi-mcp`): registry data and skills from files bundled at build time, and the docs as `docs_*` tools federated from `docs.mzizi.dev`.                                                                                                                                                                                | Serves agents the registry and the docs, not the language.                 |
 | Held-out benchmark repository (private, unnamed)                      | Planned, not yet created. It will hold the held-out task set and its expected outputs, which stay private ([CHARTER.md](./CHARTER.md) §6, [RFC-0004](./design/RFC-0004-test-topology.md)). The harness, the runner and the public pilot tasks are in this repo, under `benchmarks/`, and CI runs the harness and runner tests.           | Will run this repo's public harness. This repo never reads from it.        |
 
+The **design system** (the brand book, voice, visual foundations, marks and component
+previews for `mzizi` and the `bundu` ecosystem) is published as the
+[Design System](https://claude.ai/artifact/G8CCtAbZ8w717uQ3R5itCc) artifact. Its source of truth is `design-system/` in
+`mzizi-registry` (landing with registry PR #418), and the artifact is built from that folder,
+file for file. Change the design system there, never on the artifact page.
+
 **The rule that keeps the ecosystem honest** — RFC-0004 §3 applied to code, not just tests:
 
 > Everything else consumes Mzizi. Mzizi consumes nothing else.
