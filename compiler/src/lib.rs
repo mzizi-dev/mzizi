@@ -4,8 +4,9 @@
 //! design target from [RFC-0002](../../design/RFC-0002-runtime-and-prior-art.md): a lexer,
 //! a recursive-descent parser with per-line recovery, a name and type resolver
 //! ([RFC-0008](../../design/RFC-0008-types-collections-records.md)), and the agent-facing
-//! NDJSON diagnostic protocol. Nothing lowers yet — lowering waits on the content-addressed IR
-//! (RFC-0002 §2.1).
+//! NDJSON diagnostic protocol. A `service` lowers to a local Rust + axum package (`mz build`,
+//! RFC-0011 §8); no component lowers yet (RFC-0007 G2.1), and there is no Workers, WebAssembly
+//! or Containers target.
 //!
 //! The point of the prototype is to make the design's two central claims testable:
 //!

@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — two doc lines no longer say nothing lowers (2026-10-04)
+
+- **The compiler crate's doc comment (`compiler/src/lib.rs`) and RFC-0009 §6.4 no longer say that nothing lowers** (#47). The crate doc now says what `mz build` does: a `service` lowers to a local Rust + axum package (RFC-0011 §8), no component lowers (RFC-0007 G2.1), and there is no Workers, WebAssembly or Containers target. RFC-0009 §6.4's paragraph on the missing handler slice is now in the past tense, under its existing 2026-09-30 status note. Docs only: no behaviour changes. `CHARTER.md` §1 still says `mz` "emits no Rust yet"; charter edits wait on the owner (#46).
+
 ### Added — the docs point to the published design system (2026-10-04)
 
 - **`AGENTS.md` and `README.md` link the published Mzizi design system** (the "Design System" artifact, <https://claude.ai/artifact/G8CCtAbZ8w717uQ3R5itCc>). It holds the brand book, voice, visual foundations, marks and component previews for `mzizi` and the `bundu` ecosystem. Both files say its source of truth is `design-system/` in `mzizi-dev/mzizi-registry` (landing with registry PR #418), and that the artifact is built from that folder and never edited on the artifact page. Docs only: nothing here reads it, and CI is unchanged.
