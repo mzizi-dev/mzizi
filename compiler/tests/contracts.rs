@@ -1,4 +1,4 @@
-//! Contract evaluation, measured against the real corpus.
+//! Contract evaluation, measured against the repo's own `.mz` files.
 //!
 //! The charter's Phase 0 defect metric is "code that compiles cleanly but is behaviourally
 //! wrong" (CHARTER.md §6). That sentence names two runs of the compiler, so these tests
@@ -20,7 +20,7 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-/// The primitives plus the corpus examples, sorted for determinism.
+/// The primitives plus the examples in `examples/`, sorted for determinism.
 fn corpus() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for dir in ["primitives", "examples"] {

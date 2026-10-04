@@ -118,8 +118,9 @@ component against its own declarations: its variant tables, its view tree, its p
 defaults. It does not execute anything, and it does not compare against a reference
 implementation — which is what CHARTER.md §6's defect metric actually requires
 ([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means _the
-corpus lexes, parses, lowers to IR, keeps its own promises, and the shipped binary agrees_ —
-it does not mean any component matches the ground truth the benchmark will score against.
+repo's `.mz` files lex, parse, lower to IR, keep their own promises, and the shipped binary
+agrees_ — it does not mean any component matches the ground truth the benchmark will score
+against.
 
 ## Rebase merges only, never squash — and why that is a research decision, not a style preference
 

@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — "corpus" no longer names this repo's own `.mz` files (2026-10-04)
+
+- **CI step names, `CONTRIBUTING.md`, three test-file comments and one test name stop calling `examples/` and `primitives/` "the corpus"** (#51). The `compiler` job's steps are now `mz check every example` and `mz contract every example and every primitive`; only job names are checks, so no check name changes. `compiler/tests/serve.rs`'s `the_corpus_example_evaluates_clean` is now `the_example_service_evaluates_clean`, a rename only: `cargo test --workspace` still runs 425 tests. `compiler/tests/corpus.rs`, the helper and test names in `compiler/tests/contracts.rs`, the RFCs' historical uses and the fuzzing "seed corpus" keep the word. No behaviour changes.
+
 ### Fixed — two doc lines no longer say nothing lowers (2026-10-04)
 
 - **The compiler crate's doc comment (`compiler/src/lib.rs`) and RFC-0009 §6.4 no longer say that nothing lowers** (#47). The crate doc now says what `mz build` does: a `service` lowers to a local Rust + axum package (RFC-0011 §8), no component lowers (RFC-0007 G2.1), and there is no Workers, WebAssembly or Containers target. RFC-0009 §6.4's paragraph on the missing handler slice is now in the past tense, under its existing 2026-09-30 status note. Docs only: no behaviour changes. `CHARTER.md` §1 still says `mz` "emits no Rust yet"; charter edits wait on the owner (#46).
