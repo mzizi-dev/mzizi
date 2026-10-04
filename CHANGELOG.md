@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — the docs point to the published design system (2026-10-04)
+
+- **`AGENTS.md` and `README.md` link the published Mzizi design system** (the "Design System" artifact, <https://claude.ai/artifact/G8CCtAbZ8w717uQ3R5itCc>). It holds the brand book, voice, visual foundations, marks and component previews for `mzizi` and the `bundu` ecosystem. Both files say its source of truth is `design-system/` in `mzizi-dev/mzizi-registry` (landing with registry PR #418), and that the artifact is built from that folder and never edited on the artifact page. Docs only: nothing here reads it, and CI is unchanged.
+
 ### Changed — nhimbe leaves the wordmark list (2026-10-04)
 
 - **`AGENTS.md` no longer lists `nhimbe` among the lowercase wordmarks.** The owner's decision of 4 October 2026 retires the brand. The events platform is Mukoko Events at events.mukoko.com (mukoko-dev/nhimbe#155).
