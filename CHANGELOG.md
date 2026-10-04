@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — nhimbe leaves the wordmark list (2026-10-04)
+
+- **`AGENTS.md` no longer lists `nhimbe` among the lowercase wordmarks.** The owner's decision of 4 October 2026 retires the brand. The events platform is Mukoko Events at events.mukoko.com (mukoko-dev/nhimbe#155).
+
 ### Security — security reports go to `security@nyuchi.com` (2026-10-03)
 
 - **`SECURITY.md`'s email fallback behind GitHub private reporting is `security@nyuchi.com`**, in place of `security@bundu.org` (owner decision, 2026-10-03: one security contact for every repository). `AGENTS.md` matches.

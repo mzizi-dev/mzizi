@@ -190,7 +190,7 @@ in branch protection.
   Copyright notices name the Bundu Foundation as the parent copyright holder; Mzizi is not a
   separate legal entity. Keep that line — CHARTER.md draws it deliberately.
 - Write the wordmark as `Mzizi`, capitalised, never "Mzizi™". The other wordmarks stay
-  lowercase in prose: `nyuchi`, `mukoko`, `shamwari`, `bundu`, `nhimbe`. Code identifiers,
+  lowercase in prose: `nyuchi`, `mukoko`, `shamwari`, `bundu`. Code identifiers,
   such as this repo's name, stay as they are.
 - **Mzizi Roots** is the name for Mzizi's own components in Rust: UI and server components
   for the agentic web. React/TSX components keep working but are deprioritised; where a
