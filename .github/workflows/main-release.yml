@@ -1,0 +1,81 @@
+# Versioning policy (nyuchi/.github#80): every release to `main` is the next
+# MINOR (x.y.z -> x.(y+1).0); merges into `staging` are patches
+# (staging-version.yml); a MAJOR is only ever made by hand, here, with
+# workflow_dispatch and bump: major.
+#
+# Gated on CI: it runs after the `CI` workflow COMPLETES on `main` and only
+# tags when it succeeded, so a red `main` gets no version. The version lives
+# in tags only: nothing is committed back to `main`. The tag and release are
+# pushed with the run's GITHUB_TOKEN, as the org's staging release does (the
+# org RELEASE_BUMP_TOKEN is not used: nothing here listens for tag pushes, so
+# a tag that starts no workflow is what we want). Copied from
+# mukoko-dev/mukoko-circles .github/workflows/main-release.yml.
+name: Main release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Override the bump (major is only ever manual).
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+
+permissions:
+  contents: read
+
+concurrency:
+  group: version-tag-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag the next minor
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Compute the next version
+        id: v
+        uses: nyuchi/.github/.github/actions/next-version@de909ab7468d998ba2cf87416ac2042616eba75d  # main, 2026-10-04
+        with:
+          channel: main
+          bump: ${{ inputs.bump || '' }}
+          manual: ${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: Push the tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          set -euo pipefail
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
+          head="$(git rev-parse HEAD)"
+          # A re-run, or a commit that already has a minor release: nothing.
+          existing="$(git ls-remote --tags "$remote" 'refs/tags/v*' \
+            | awk -v h="$head" '$1 == h && $2 ~ /\.0\^\{\}$/ { print $2; exit }')"
+          if [ -n "$existing" ]; then
+            echo "$head is already released as $existing."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push "$remote" "refs/tags/$TAG"
+          gh release create "$TAG" --verify-tag --latest --title "$TAG" --generate-notes
+          echo "Released $TAG at $head." | tee -a "$GITHUB_STEP_SUMMARY"
