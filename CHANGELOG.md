@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — each release to `main` is tagged as the next minor (2026-10-06)
+
+- **`.github/workflows/main-release.yml` tags each release to `main`** as the next minor (`x.y.z` → `x.(y+1).0`) once the `CI` workflow passes on it, and creates its GitHub release, under the org versioning policy (nyuchi/.github#80). Merges into `staging` stay patches (`staging-version.yml`); a major is only made by hand (`workflow_dispatch`, `bump: major`). `v0.1.0`, the release merged untagged in #58, was tagged on its existing `main` commit (`af39be5`) on 2026-10-06, so the next release is `v0.2.0`. CI only: no behaviour changes.
+
 ### Changed — "corpus" no longer names this repo's own `.mz` files (2026-10-04)
 
 - **CI step names, `CONTRIBUTING.md`, three test-file comments and one test name stop calling `examples/` and `primitives/` "the corpus"** (#51). The `compiler` job's steps are now `mz check every example` and `mz contract every example and every primitive`; only job names are checks, so no check name changes. `compiler/tests/serve.rs`'s `the_corpus_example_evaluates_clean` is now `the_example_service_evaluates_clean`, a rename only: `cargo test --workspace` still runs 425 tests. `compiler/tests/corpus.rs`, the helper and test names in `compiler/tests/contracts.rs`, the RFCs' historical uses and the fuzzing "seed corpus" keep the word. No behaviour changes.
