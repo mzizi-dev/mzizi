@@ -289,10 +289,10 @@ _Status, 2026-09-30: the slice below is designed in RFC-0011 and built, and `mzi
 with B1 as its first task (RFC-0011 §12). Nothing in the family has run, and the runner does
 not yet score an episode with probes._
 
-The `backend` family cannot pass without a `mzizi-be` arm, and Mzizi cannot write a handler today.
-There is no handler declaration (RFC-0007 G2.2), no boundary records (G2.4), no error model
-(G2.5), no handler contract (G2.11, RFC-0010), and nothing lowers, so nothing can answer a probe
-(G2.1). This RFC counts **a measurement slice** of that work as Phase 0: author, check, lower to
+The `backend` family cannot pass without a `mzizi-be` arm. When this section was written, Mzizi
+could not write a handler: there was no handler declaration (RFC-0007 G2.2), no boundary records
+(G2.4), no error model (G2.5), no handler contract (G2.11, RFC-0010), and nothing lowered, so
+nothing could answer a probe (G2.1). This RFC counts **a measurement slice** of that work as Phase 0: author, check, lower to
 axum and run locally, exactly enough for the backend tasks and for rendered UI facts (§2.2). It
 covers no deployment, no Cloudflare and no port of any live service. It is the one decision here
 that widens Phase 0's scope, and it follows from §6.1: the owner's criterion makes the `backend`
