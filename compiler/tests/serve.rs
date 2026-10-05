@@ -2,7 +2,7 @@
 //!
 //! The algorithm's steps each get a test through [`Runtime::handle`], and every contract
 //! code a service can produce (`MZ0605`, `MZ0611`, `MZ0612`) is triggered by a mutation of
-//! the corpus example, which must itself evaluate clean.
+//! the example service, `examples/registry.mz`, which must itself evaluate clean.
 
 use mzizi_lang_compiler::check_contract;
 use mzizi_lang_compiler::parse::{Program, parse_program};
@@ -36,7 +36,7 @@ fn body(r: &Response) -> String {
 }
 
 #[test]
-fn the_corpus_example_evaluates_clean() {
+fn the_example_service_evaluates_clean() {
     let (src, _) = registry();
     let (report, tally) = check_contract(&src, REGISTRY);
     assert_eq!(report.error_count(), 0, "{:#?}", report.diagnostics);
