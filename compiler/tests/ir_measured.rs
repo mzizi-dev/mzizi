@@ -1,8 +1,8 @@
 //! The IR's claims, measured across the real primitive set.
 //!
 //! RFC-0003 asserts structural sharing, outline savings, and stable identity. Each of those
-//! is a number, so each is measured here against the nine primitives plus the corpus
-//! example rather than argued for in prose.
+//! is a number, so each is measured here against the nine primitives plus the examples
+//! in `examples/` rather than argued for in prose.
 
 use std::path::PathBuf;
 

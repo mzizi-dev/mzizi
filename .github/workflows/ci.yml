@@ -8,18 +8,18 @@ name: CI
 # repo root by necessity, so it did not travel. See MIGRATION.md §3.
 #
 # The only intended change is the path prefix: the crate that was
-# `mzizi-lang/compiler` is now `compiler`, and the corpus it checks is now one
-# level up from it rather than two.
+# `mzizi-lang/compiler` is now `compiler`, and the repo's `.mz` files it checks are now
+# one level up from it rather than two.
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
     # Not just main. Stacked pull requests target the branch below them in the
     # stack, and a filter of [main] silently gives every layer but the bottom
     # one zero checks — a green PR with nothing run looks identical to a
     # passing one.
-    branches: [main, "claude/**"]
+    branches: [main, staging, "claude/**"]
 
 permissions:
   contents: read
@@ -58,7 +58,7 @@ jobs:
 
       # The example and every primitive must stay parseable by the shipped binary, not just
       # by the test harness — the charter's rule is that unverified bytes are worthless.
-      - name: mz check every corpus example
+      - name: mz check every example
         working-directory: compiler
         run: |
           for f in ../examples/*.mz; do
@@ -75,10 +75,10 @@ jobs:
           done
 
       # `mz contract` is a second gate, not a duplicate of the first. `mz check` proves the
-      # corpus compiles; this proves it does what it says it does. CHARTER.md §6 keeps those
+      # repo's `.mz` files compile; this proves it does what it says it does. CHARTER.md §6 keeps those
       # two apart deliberately — "a syntax/compile error is not itself a defect for this
       # metric" — and so do these two steps, so a red run says which of the two broke.
-      - name: mz contract the corpus example and every primitive
+      - name: mz contract every example and every primitive
         working-directory: compiler
         run: |
           for f in ../examples/*.mz ../primitives/*.mz; do

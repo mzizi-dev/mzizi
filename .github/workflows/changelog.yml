@@ -13,7 +13,7 @@ on:
     # Labels change the verdict, so a label added or removed re-runs the job.
     types: [opened, synchronize, reopened, labeled, unlabeled]
     # As ci.yml: stacked pull requests target the branch below them.
-    branches: [main, "claude/**"]
+    branches: [main, staging, "claude/**"]
 
 permissions:
   contents: read
