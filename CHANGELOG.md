@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — `AGENTS.md` loads the Mzizi dev skills (2026-10-06)
+
+- **`AGENTS.md` gains "Dev skills, progress reports and the merge gate"**, the canonical rule block from nyuchi/.github#87, after "Track big work in GitHub issues": load the Mzizi dev skills (`digital-hygiene` and `progress-report`), clone only into a directory unique to the agent, run dev work on a 10-minute progress-report loop whose ticks never publish, release, merge or deploy without the owner's approval, and merge only through the merge gate. Docs only: no behaviour changes, and CI is unchanged.
+
 ### Added — each release to `main` is tagged as the next minor (2026-10-06)
 
 - **`.github/workflows/main-release.yml` tags each release to `main`** as the next minor (`x.y.z` → `x.(y+1).0`) once the `CI` workflow passes on it, and creates its GitHub release, under the org versioning policy (nyuchi/.github#80). Merges into `staging` stay patches (`staging-version.yml`); a major is only made by hand (`workflow_dispatch`, `bump: major`). `v0.1.0`, the release merged untagged in #58, was tagged on its existing `main` commit (`af39be5`) on 2026-10-06, so the next release is `v0.2.0`. CI only: no behaviour changes.
