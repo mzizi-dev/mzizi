@@ -54,6 +54,9 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
+          # The previous release tag and CHANGELOG.md at that tag are needed for the notes.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Compute the next version
         id: v
@@ -72,16 +75,33 @@ jobs:
           set -euo pipefail
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GH_REPO}.git"
           head="$(git rev-parse HEAD)"
-          # A re-run, or a commit that already has a minor release: nothing.
+          # A re-run, or a commit that already has a minor release: nothing, unless
+          # its tag was pushed and the release itself was never created.
           existing="$(git ls-remote --tags "$remote" 'refs/tags/v*' \
             | awk -v h="$head" '$1 == h && $2 ~ /\.0\^\{\}$/ { print $2; exit }')"
+          existing="${existing#refs/tags/}"
+          existing="${existing%^\{\}}"
           if [ -n "$existing" ]; then
-            echo "$head is already released as $existing."
-            exit 0
+            if gh release view "$existing" >/dev/null 2>&1; then
+              echo "$head is already released as $existing."
+              exit 0
+            fi
+            TAG="$existing"
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "$TAG"
-          git push "$remote" "refs/tags/$TAG"
-          gh release create "$TAG" --verify-tag --latest --title "$TAG" --generate-notes
+          # Release notes: the CHANGELOG.md entries added since the previous main
+          # release (AGENTS.md, "Changelog"), then GitHub's list of merged pull
+          # requests over the same range.
+          prev="$(git tag -l 'v*.*.0' --merged HEAD --sort=-v:refname | grep -Fvx "$TAG" | head -n 1 || true)"
+          CHANGELOG_URL="https://github.com/${GH_REPO}/blob/${TAG}/CHANGELOG.md" \
+            python3 .github/scripts/release_notes.py "$prev" HEAD > "$RUNNER_TEMP/notes.md"
+          start=()
+          if [ -n "$prev" ]; then start=(--notes-start-tag "$prev"); fi
+          if [ -z "$existing" ]; then
+            git tag -a "$TAG" -m "$TAG"
+            git push "$remote" "refs/tags/$TAG"
+          fi
+          gh release create "$TAG" --verify-tag --latest --title "$TAG" \
+            --notes "$(cat "$RUNNER_TEMP/notes.md")" --generate-notes "${start[@]}"
           echo "Released $TAG at $head." | tee -a "$GITHUB_STEP_SUMMARY"
