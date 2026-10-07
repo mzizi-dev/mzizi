@@ -48,11 +48,17 @@ the type system's internals, and the compiler architecture are later RFCs.
 
 <!-- A sixth amendment note; the separator keeps it distinct. -->
 
-> **RFC-0013 proposes to amend §1.2** (a draft for review; nothing in it is implemented). For
-> function bodies in a `program`, it adds `while` as the one conditional loop, `else when` as part
-> of a `when` block, `match` with exhaustive cases, and `when` / `match` used as the value of a
-> `let`, `var`, assignment or `return`. Views are unchanged. The §1.2 table stands until the owner
-> accepts RFC-0013 (§7 and §20 there).
+> **RFC-0013 proposes to amend §1.2 and §1.5** (a draft for review; nothing in it is
+> implemented). In §1.2, for function bodies in a `program`: it adds `while` as the one
+> conditional loop, `else when` as part of a `when` block, `match` with exhaustive cases, and
+> `when` / `match` used as the value of a `let`, `var`, assignment or `return`. It keeps
+> `map` / `filter` / `fold` beside `for each`, which is the iterator-chain vs loop duality §1.2
+> excludes, and asks the owner about it (RFC-0013 §9.3, §20 Q19). An `else when` chain over one
+> enum's variants, §1.2's `if`-chain over variants, is its `MZ0936`, with a `guess` fix to
+> `match` (RFC-0013 §7.1). In §1.5, interpolation stays the only string-building mechanism, and
+> in a program `{…}` may hold any expression with a text form that has no string literal or
+> braces inside it (RFC-0013 §3.6). Views are unchanged. §1.2 and §1.5 stand until the owner
+> accepts RFC-0013.
 
 ---
 

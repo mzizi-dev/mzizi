@@ -14,13 +14,32 @@ canonical form. **Generics, interfaces and traits are deferred past M1** (owner 
 so is library breadth, which belongs to P2. Modules (P1), state beyond a function's own
 bindings (P8), concurrency (P9) and Rust interop (P6) are not designed here.
 
-> **Proposes to amend** RFC-0001 §1.2 (the one-form table gains `while`, `else when`, `match` in
-> function bodies, and `when` and `match` used as values, §7), RFC-0008 §1 (the closed type set
-> gains `float`, `map(K, V)`, `set(T)` and `result(T, E)`, §2), RFC-0010 §3.1 (its `take` /
-> `give` lines were a placeholder for a function signature, which §6 now designs) and RFC-0011
-> §5 (which left `result(T, E)` and its propagation form to "the first `fn` that can fail", §12).
-> Each of those RFCs carries a note pointing here. None of the amendments takes effect until the
-> owner accepts this RFC.
+> **Proposes to amend**, in full:
+>
+> - **RFC-0001 §1.2**, the one-form table, in function bodies: it gains `while` (listed there as
+>   deliberately absent), `else when`, `match`, and `when` and `match` used as values (§7). It also
+>   admits two forms the table names as deliberately absent. **The iterator-chain vs loop
+>   duality**: `map`, `filter` and `fold` (§9.3) sit beside `for each` and `push`, a duality kept
+>   on purpose and put to the owner (§20, Q19). **`if`-chains over variants**: an `else when` chain
+>   that tests one enum value against its variants is a second spelling of `match`, so it is
+>   `MZ0936`, with a `guess` fix to `match` (§7.1, CL-8).
+> - **RFC-0001 §1.5**, which made `{expr}` interpolation the only string-building mechanism, and
+>   **RFC-0008 §5**, which limits `{…}` to scalars named by a name or a path. In a program, `{…}`
+>   holds any expression with a text form that contains no string literal and no braces (§3.6).
+>   Views keep RFC-0008's rule.
+> - **RFC-0008 §1**, the closed type set, which gains `float`, `map(K, V)`, `set(K)` and
+>   `result(T, E)` (§2).
+> - **RFC-0008 §2**, whose record body holds only `field` lines, anything else being `MZ0308`. A
+>   record in a program may hold `fn` methods after its fields (§11.2), and such a `fn` block is not
+>   `MZ0308`.
+> - **RFC-0010 §3.1**, whose `take` / `give` lines were a placeholder for a function signature,
+>   which §6 now designs.
+> - **RFC-0011 §5**, which left `result(T, E)` and its propagation form to "the first `fn` that
+>   can fail" (§12).
+>
+> Each of those RFCs carries a note pointing here and naming these sections. None of the
+> amendments takes effect until the owner accepts this RFC. RFC-0010 §11's open question 3
+> (relational properties) is not resolved here: §15.1's example avoids one.
 
 ---
 
@@ -35,7 +54,7 @@ because no Mzizi program has computed anything yet.
 
 | ID       | Failure mode                                                                                                                                                                                                                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **CL-1** | **The prior's idiom.** A small model writes the form it saw most in training: `if`, `==`, `elif`, `x += 1`, `len(xs)`, `return Ok(x)`, `x?`, `console.log`, a `{ … }` block. Pilot 2 measured the React version of this. A diagnostic that does not name the idiom costs a round trip.     |
+| **CL-1** | **The prior's idiom.** A small model writes the form it saw most in training: `if`, `==`, `elif`, `x += 1`, `len(xs)`, `return Ok(x)`, `x?`, `console.log`, a `{ … }` block. Pilot 2 found the React version of this. A diagnostic that does not name the idiom costs a round trip.        |
 | **CL-2** | **Arithmetic that is silently wrong.** Wrapping overflow (Rust release builds, C, Go), JavaScript's floats posing as integers, Python's floor division beside Rust's truncation. Each compiles clean and returns a wrong number, which is a charter defect: compiles, behaviourally wrong. |
 | **CL-3** | **The ignored error.** Go's `_ = err`, an exception nothing catches, Rust's `.unwrap()`. The failure path exists, and nothing makes the author decide what it does.                                                                                                                        |
 | **CL-4** | **The aliasing surprise.** In Python and TypeScript, `b = a; b.append(x)` changes `a`. A model that reasons about values gets a program that reasons about references.                                                                                                                     |
@@ -105,18 +124,42 @@ Decisions, and why:
 - **No new keywords.** `program`, `let`, `var`, `return`, `while`, `break`, `continue`, `and`,
   `or`, `try`, `self`, `error`, `ok` and the type names `float`, `map`, `set` and `result` are
   contextual words, as `service`, `route` and `record` are (RFC-0011 §1). Each is special only
-  in a position where nothing else can appear. Inside a program none of them can name a binding,
-  parameter, `fn`, record, enum or variant (`MZ0921`), so a reader never has to ask which meaning
-  a word has. A record field may use one (RFC-0011's `problem` record has a field `error`),
-  because a field is only ever read after a dot. `lex.rs`'s `KEYWORDS`
-  list stays at 23. Whether some of them should become keywords is open (§20, Q12).
+  in a position where nothing else can appear. They fall in three groups, by how far that
+  position reaches:
+  - **The type names `float`, `map`, `set` and `result` are special only in type position**,
+    after a `:` or inside a type constructor, where a binding name cannot stand. They may name a
+    binding, parameter, `fn`, record field or variant, but not a record or enum, whose name
+    stands in type position itself (`MZ0921`): `let result = …` and `let map = …` are
+    legal, because they are among the names a small model writes most, and banning them would be
+    a CL-1 trap that buys no disambiguation. `xs.map(f)` is a method, read after a dot.
+  - **`ok` and `error` may name an enum variant or a record field**, so `enum status` with
+    variants `ok` and `error` is legal. A `match` on a result reads `case ok <name>`, and one on
+    an enum reads `case ok`, and the scrutinee's type says which. `error(e)`, with parentheses,
+    is always the failure value (§12.1), and `ok(v)` is always `MZ0952`, so a bare `ok` or
+    `error` is the variant. In a function that returns a result, though, `return error` with
+    `error` a variant would read as a failure and is a success, so there a bare `ok` or `error`
+    variant is `MZ0953`, with the `exact` fix qualifying it (`return status.error`). They may not
+    name a binding, parameter or `fn`, where the same misreading has no qualified form to fix it
+    to (`MZ0921`).
+  - **The rest** (`program`, `let`, `var`, `return`, `while`, `break`, `continue`, `and`, `or`,
+    `try`, `self`) name nothing in a program: no binding, parameter, `fn`, record, enum or variant
+    (`MZ0921`), because each can begin a line or an expression. A record field may use one
+    (RFC-0011's `problem` record has a field `error`), because a field is only ever read after a
+    dot.
+
+  `lex.rs`'s `KEYWORDS` list stays at 23. Whether some of them should become keywords, and what
+  the remaining bans cost, is open (§20, Q12).
+
 - **Canonical order inside a program:** doc lines, `use`, `enum` and `record`, `fn main`, the
   other `fn`s in source order, `test` blocks (§15.2), `contract`. RFC-0001 §3's order, extended
   as RFC-0011 extended it. `main` comes first so that a reader with a small context window sees
   the entry point before anything else.
 - **A `fn` closes with `end fn <name>`.** RFC-0001 §1.1 spends the name echo where nesting is
   deep, and a function body is the deepest nesting in the language: loops inside branches inside
-  loops. The echo is RFC-0002 §1's error-correcting code, used where it pays. Component `fn`s
+  loops. The echo is RFC-0002 §1's error-correcting code, used where it pays. A bare `end` that
+  closes the `fn` itself, with every inner block already closed, is `MZ0208` (today's code for a
+  top-level block closed without its name), with the `exact` fix `end fn <name>`; an `end fn`
+  with the wrong name is `MZ0207`, as for any echo. Component `fn`s
   still close with a bare `end` today; whether they move to the echo is open (§20, Q4).
 
 ## 2. The types this RFC adds — _C5, C7, C9_
@@ -154,7 +197,10 @@ serialisable and describable across a UniFFI-shaped boundary, the property RFC-0
 - RFC-0008's rules on absence are unchanged and extended: a map or set is never optional, because
   the empty one is its absence (`MZ0703`, `exact` fix to `map(K, V)` or `set(K)`).
 - A `result` is a function's return type, and a `let` may hold one until it is matched. It is
-  never a parameter, field, element or key type (`MZ0950`, §12.3).
+  never a parameter, field, element, key or option type (`MZ0950`, §12.3), and never the success or
+  error type of another result: `result(result(int, e), e)` is `MZ0950`, with no fix. That keeps
+  `return v` in a result function unambiguous (§12.1). The error type cannot be a result anyway,
+  since a result has no text form (§3.8).
 
 ## 3. Expressions and operators — _C1_
 
@@ -177,6 +223,18 @@ so adding them changes no existing file. Hexadecimal, octal, binary, exponent an
 literals are not forms in M1: `0x10` and `1e3` are `MZ0914` with no fix, and `1_000` is
 `MZ0914` with the `exact` fix `1000`.
 
+**How the lexer reads a point after digits.** A float literal is digits, `.`, and at least one
+digit. Digits followed by `.` and a letter or `_` are an `int` literal and a method call:
+`2.pow(10)` is `pow` called on the `int` `2`, and `1.0.to_int()` is `to_int` called on `1.0`.
+Digits followed by `.` and anything else (a space, an operator, the end of the line) are
+`MZ0914` with the `exact` fix appending `0`.
+
+**`int`'s minimum has no literal.** `-` is always the unary operator (§3.4), so
+`-9223372036854775808` is `-` applied to `9223372036854775808`, which does not fit and is
+`MZ0103`. The minimum is written `-9223372036854775807 - 1`, as in C. Folding a `-` into the
+literal was rejected, because it would make `-2.pow(2)` read `(-2).pow(2)`, which is `4`,
+where every incumbent reads `-(2.pow(2))`, which is `-4`.
+
 ### 3.2 Arithmetic
 
 `+`, `-`, `*`, `/` and `%` on two `int`s or two `float`s, with the same type on both sides.
@@ -191,18 +249,32 @@ symbol soup; five arithmetic operators are not that.
 
 ### 3.3 Comparison and equality — _CL-6_
 
-| Operator                 | Means                                                                        |
-| ------------------------ | ---------------------------------------------------------------------------- |
-| `a is b`                 | equality, structural for every type with equality (lists, maps, records)     |
-| `a is not b`             | inequality                                                                   |
-| `a < b`, `<=`, `>`, `>=` | ordering, on `int`, `float`, `text` (by Unicode scalar value) and enums      |
-| `a in xs`                | membership: an element of a list or set, a key of a map, a substring of text |
+| Operator                 | Means                                                                    |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `a is b`                 | equality, structural for every type with equality (lists, maps, records) |
+| `a is not b`             | inequality                                                               |
+| `a < b`, `<=`, `>`, `>=` | ordering, on `int`, `float`, `text` (by Unicode scalar value) and enums  |
+| `a in xs`                | membership: an element of a list or set, or a key of a map               |
 
 **Equality is `is`, not `==`.** `is` is already the equality word in views (`when state is
 offline`), handler conditions (RFC-0011 §3) and contracts (`status is 200`). Adding `==` would be
 a second spelling of one question, and `==` exists in other languages only because `=` was
 taken; in Mzizi `=` never appears inside an expression, so the `if (x = 1)` defect class cannot
 be written. `==` and `===` are `MZ0910` with the `exact` fix `is`; `!=` and `!==` get `is not`.
+
+**A substring test is a method, `s.contains(t)`, not `in`** (§10). In an RFC-0011 handler
+condition, `name in "badge"` is equality membership in a list of literals, and the same text in a
+function body would have meant "is a substring of": the HD-4 hazard of one line with two meanings
+in two sub-grammars. So `in` never takes `text` on its right: `t in s` with `s` a `text` is
+`MZ0962`, with the `exact` fix `s.contains(t)`. The cost is that `x in xs` and `s.contains(t)`
+are two spellings of "is inside", chosen by the type on the right (§20, Q14).
+
+**One spelling each for inequality and emptiness.** `not a is b` is `MZ0910` with the `exact` fix
+`a is not b`. A collection's emptiness is `c is none` (§3.4, RFC-0008 §4): on a list, map or set,
+`c is []`, `c.length() is 0` and `c.is_empty()` are `MZ0962` with the `exact` fix `c is none`,
+and their negations get `c is not none`. A `text` is not a collection and is never `none`, so its
+emptiness is `s is ""`: on a `text`, `s.length() is 0` and `s.is_empty()` are `MZ0962` with the
+`exact` fix `s is ""`, and their negations get `s is not ""`.
 
 Both sides of a comparison have the same type (`MZ0912` otherwise). A function, an event and a
 result have no equality. Comparisons do not chain: `a < b < c` is `MZ0913`, with the `guess` fix
@@ -280,24 +352,41 @@ is unchanged. `str(x)`, `String(x)` and `x.to_string()` are `MZ0962` with the `e
 
 ### 3.8 The text form of a value
 
-`print` and interpolation use one text form per type, which is how the value would be written in
-Mzizi:
+`print` and interpolation use one text form per type. For every value except a `float` written
+with an exponent, `inf` and `nan`, which have no literal (§3.1), the text form is how the value
+would be written in Mzizi:
 
-| Type           | Text form                                                                                                        |
-| -------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `int`          | decimal, `-` when negative                                                                                       |
-| `float`        | the shortest decimal that reads back as the same value, always with a point (`1.0`, `0.1`); `inf`, `-inf`, `nan` |
-| `bool`         | `true`, `false`                                                                                                  |
-| `text`         | itself at the top level; quoted with escapes inside a collection or record                                       |
-| enum           | the variant's name                                                                                               |
-| `option(T)`    | the value, or `none`                                                                                             |
-| list, set      | `[1, 2, 3]`, a set in key order                                                                                  |
-| map            | `["a": 1, "b": 2]`, in key order                                                                                 |
-| record         | `point(x = 1.0, y = 2.0)`, fields in declaration order                                                           |
-| `result(T, E)` | none: printing a result is `MZ0950` (§12.3), because it is an error nobody handled                               |
+| Type           | Text form                                                                                                 |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| `int`          | decimal, `-` when negative                                                                                |
+| `float`        | the algorithm below: `1.0`, `0.1`, `1.0e21`, `1.5e-7`, `inf`, `-inf`, `nan`                               |
+| `bool`         | `true`, `false`                                                                                           |
+| `text`         | itself at the top level; quoted with escapes inside a collection or record                                |
+| enum           | the variant's name                                                                                        |
+| `option(T)`    | none at the top level: `print(x)` and `"{x}"` on an un-narrowed option are `MZ0710` (§8, RFC-0008's TY-6) |
+| inside a value | an option element or field of a list, map or record prints as its value, or `none`                        |
+| list, set      | `[1, 2, 3]`, a set in key order                                                                           |
+| map            | `["a": 1, "b": 2]`, in key order                                                                          |
+| record         | `point(x = 1.0, y = 2.0)`, fields in declaration order                                                    |
+| `result(T, E)` | none: printing a result is `MZ0950` (§12.3), because it is an error nobody handled                        |
 
-The float form has an exponent only where the shortest round-trip form needs one, as Rust's and
-JavaScript's do.
+**The float algorithm.** The generated `MzText` implementation (§14.2) computes it; Rust's
+`Display` (`1` for `1.0`) and `Debug` (`1e20`, `NaN`) are both wrong for it, and neither is used.
+
+1. `nan` is `nan`; positive and negative infinity are `inf` and `-inf`. Zero is `0.0`, and
+   negative zero is `-0.0`.
+2. Otherwise take the shortest decimal digit string that reads back as the same `f64`, with its
+   decimal exponent. Rust's `{:e}` formatting yields exactly that pair (`1.5e-7`, `1e21`), so
+   `MzText` takes the digits and exponent from it and lays them out itself.
+3. When `1e-6 <= |x| < 1e21`, write the digits in plain decimal, with at least one digit after
+   the point: `1.0`, `0.1`, `123456.789`, `0.000001`. That is the range in which JavaScript's
+   `Number.prototype.toString` writes plain notation.
+4. Outside that range, write one digit, a point, the remaining digits or `0`, then `e` and the
+   exponent, with `-` when it is negative and no `+`: `1.0e21`, `1.0e-7`, `1.5e-7`, `5.0e-324`.
+
+Those exponent forms are text, not Mzizi: `1e3` is `MZ0914` as a literal (§3.1), and `parse_float`
+rejects an exponent (§10). A value printed with an exponent therefore does not read back through
+either. That is a known gap, and allowing exponent literals is P2's question.
 
 ## 4. Numbers — _C5, CL-2_
 
@@ -312,7 +401,10 @@ JavaScript's do.
 - **Division truncates toward zero**, and `%` takes the sign of the dividend: `-7 / 2` is `-3`
   and `-7 % 2` is `-1`. That is Rust's, C's, Go's and Java's rule, and the lowered code's (§14). Python floors (`-7 // 2` is `-4`); a Python-trained model will
   be surprised, and the guide has to say so (§20, Q10).
-- **Division or remainder by zero traps**, and so does `int` minimum `/ -1`.
+- **Division or remainder by zero traps**, and so do `int` minimum `/ -1` and `int` minimum
+  `% -1`. The first does not fit in `int`. The second is `0` in arithmetic, but Rust's
+  `checked_rem` returns `None` for it (checked with `rustc`), and the lowering does not
+  special-case it, so it traps as an integer overflow, one rule for both.
 - A constant fault the checker can see, such as `x / 0` with a literal `0` or a literal that
   overflows when folded, is `MZ0915` at check time, so it never reaches a run.
 
@@ -337,16 +429,19 @@ mz: trap MZ0991 at fibonacci.mz:22:12: integer overflow in `fib(n - 1) + fib(n -
 
 The message names the `.mz` file, the line and column of the expression, the operation, and the
 expression's canonical text, so it is P5's "errors mapped back to `.mz`" by construction for this
-class. The exit status is **101**. Under `mz run --agent` the trap is one NDJSON diagnostic with
-code `MZ0991`, the same protocol as `mz check` (RFC-0001 §4). The traps in M1:
+class. The exit status is **101**, and no Rust panic can share it, because the generated `main`
+maps a panic to status 70 (§13.1). Under `mz run --agent` the trap is one NDJSON diagnostic with
+code `MZ0991`, in the same protocol as `mz check` (RFC-0001 §4) but on standard error (§13.1).
+The traps in M1:
 
-| Trap                      | From                                                   |
-| ------------------------- | ------------------------------------------------------ |
-| integer overflow          | `+ - *`, unary `-`, `pow`, `abs` on `int`              |
-| integer division by zero  | `/`, `%` on `int`                                      |
-| index out of range        | `xs[i]`, `s[i]`, `s.slice(a, b)`, `xs.slice(a, b)`     |
-| key not in map            | `m[k]` as a value                                      |
-| float to int out of range | `f.to_int()` on `nan`, `inf`, or a value outside `int` |
+| Trap                      | From                                                                       |
+| ------------------------- | -------------------------------------------------------------------------- |
+| integer overflow          | `+ - *`, unary `-`, `pow`, `abs` on `int`; `int` minimum `/ -1` and `% -1` |
+| integer division by zero  | `/`, `%` on `int`                                                          |
+| negative exponent         | `x.pow(n)` on `int` with `n` below zero                                    |
+| index out of range        | `xs[i]`, `s[i]`, `s.slice(a, b)`, `xs.slice(a, b)`                         |
+| key not in map            | `m[k]` as a value                                                          |
+| float to int out of range | `f.to_int()` on `nan`, `inf`, or a value outside `int`                     |
 
 RFC-0007 G2.5 says no panic may be reachable from surface code. A trap is not a Rust panic: the
 lowering never emits `panic!`, `unwrap` or `expect` (§14.3), and the trap is a function that
@@ -357,8 +452,8 @@ handler (a `500`, presumably) is not decided here (§20, Q2).
 
 **Recursion depth** is bounded by the stack. The lowered program runs `main` on a thread with a
 64 MiB stack (§14.2). Deeper recursion than that aborts the process with Rust's stack-overflow
-message and a signal, not a trap: catching it needs code the lowering does not have. That is a
-limit, stated rather than hidden (§20, Q16).
+message and `SIGABRT`, not a trap, so `mz run` exits 134 (§13.1): catching it needs code the
+lowering does not have. That is a limit, stated rather than hidden (§20, Q16).
 
 ### 4.4 Conversions and numeric methods
 
@@ -368,9 +463,15 @@ limit, stated rather than hidden (§20, Q16).
 | `f.to_int()`                         | `float`        | `int`         | truncates toward zero; traps out of range or `nan` |
 | `f.round()`, `f.floor()`, `f.ceil()` | `float`        | `float`       | `round` takes half away from zero                  |
 | `x.abs()`, `x.min(y)`, `x.max(y)`    | `int`, `float` | the same type | `abs` traps on `int` minimum                       |
-| `x.pow(n)`                           | `int`, `float` | the same type | `n` is an `int` ≥ 0 on `int`; traps on overflow    |
+| `x.pow(n)`                           | `int`, `float` | the same type | `n` is an `int`, ≥ 0 on `int`; see below           |
 | `f.sqrt()`                           | `float`        | `float`       | `nan` below zero, as IEEE                          |
 | `f.is_nan()`                         | `float`        | `bool`        | the only way to ask, since `nan is nan` is `false` |
+
+`pow` on `int` traps on overflow, and a negative `n` is a trap too (a literal one is `MZ0915`).
+`pow` on `float` is `x.powf(n.to_float())`: the exponent converts as `to_float` does, exactly up
+to 2^53 and to the nearest `float` beyond it, so every `int` exponent has a defined result,
+including one outside Rust's `i32`. Rust's `powi` is not used: its precision is unspecified, and
+it takes an `i32`.
 
 That is the whole numeric surface in M1. Trigonometry, logarithms, bit operations and a decimal
 type are P2's `math` module.
@@ -399,9 +500,25 @@ total = total + 1
 - **A binding always has a value.** `let x: int` with nothing after it is `MZ0926`. A `var` whose
   value is decided in branches is declared before them with an initial value, or bound with a
   `when` used as a value (§7.4).
-- Python's first assignment, `x = 1` with no binding, is `MZ0923`, whose `exact` fix inserts
-  the word `let` or, when the function assigns `x` again later, `var`. The checker knows which, so the
-  fix is exact. `const`, `val` and `auto` are `MZ0925` with the fix `let`; Rust's `let mut` and
+- Python's first assignment, `x = 1` with no binding, is `MZ0923`. Its fix inserts the word
+  `let` or, when the function assigns `x` again later, `var`, and it is `exact` only when two
+  things hold: no name in scope is within RFC-0008 §5.2's nearest-name distance of `x`, and `x`
+  is not read after the block holding the assignment ends. Otherwise one of two other repairs
+  is the right one, and the line reports exactly one diagnostic:
+  - **A near name is in scope** (`totl = totl + 1` with `total` bound): `MZ0923`, with
+    RFC-0008 §5.2's nearest-name fix to `total`, `exact` or `guess` by that section's rule. The
+    read of `totl` on the right is part of the same mistake and is not a second `MZ0707`.
+    Inserting `let` would give `let totl = totl + 1`, which still fails.
+  - **`x` is read after the block ends** (Python's assign-in-each-branch, then read): `MZ0920`
+    at the first read after the block, with its `guess` fix declaring a `var` before the block
+    (§5.2). The assignments inside the branches report nothing, since that `var` makes them
+    legal. Inserting `let` in each branch would leave the read unbound, and `mz fix` would loop.
+  - **Both hold**: the near-name case wins, since one misspelling explains every occurrence, and
+    its fix is a `guess`. The later uses of `x`, inside the block or after it, are the same
+    mistake and report nothing more (RFC-0001 §4's one diagnostic per true error); the next
+    `mz check` reports whatever the fix left.
+
+  `const`, `val` and `auto` are `MZ0925` with the fix `let`; Rust's `let mut` and
   `mut` get `var`; Go's `x := e` gets `let x = e`. `+=`, `-=`, `*=`, `/=`, `++` and `--` are
   `MZ0918`, with the `exact` fix `x = x + 1` and so on.
 
@@ -422,14 +539,16 @@ binding.
 ### 5.3 No shadowing
 
 **A name is bound at most once in a function.** A `let`, `var`, parameter or loop binding that
-reuses a name bound in an enclosing block is `MZ0921`. So is one that reuses the name of a `fn`,
-record, enum, variant, built-in type or contextual word (§1). Sibling blocks may bind the same
-name, because neither can see the other.
+reuses a name bound in an enclosing block, or the name of a `fn`, is `MZ0713`: RFC-0008 §3's
+code, which already forbids a view's loop binding from reusing a prop's, `fn`'s or enclosing
+binding's name. Shadowing keeps one code wherever it is written. A name a program reserves (a
+record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word as §1 limits it, or anything starting
+with `mz_`) is a different mistake, a name that is not available at all, and is `MZ0921`.
+Sibling blocks may bind the same name, because neither can see the other.
 
-RFC-0008 §3 already forbids a loop binding from shadowing a prop or another binding (`MZ0713`),
-for the reason that applies here too: with shadowing, `total` can mean two things in one
-function, and patching a function by name (RFC-0003's RB-1) becomes ambiguous. Rust's idiomatic
-`let x = x.trim()` is the cost. It gets `MZ0921` with a `guess` fix renaming the new binding
+The reason is RFC-0008 §3's: with shadowing, `total` can mean two things in one function, and
+patching a function by name (RFC-0003's RB-1) becomes ambiguous. Rust's idiomatic
+`let x = x.trim()` is the cost. It gets `MZ0713` with a `guess` fix renaming the new binding
 (`x_trimmed`), because the right name is the author's.
 
 ## 6. Functions — _C3, CL-7_
@@ -475,8 +594,9 @@ end fn main
 ### 6.2 Return
 
 - **`return <expr>` is the one way to produce a value**, and it may appear on any path, early or
-  last. There is no implicit last-expression value (Rust's), because CL-7 is the cost of making
-  the end of a body mean something.
+  last. In a function that returns a result, §12.1 says when the value is wrapped as success
+  and when it passes through. There is no implicit last-expression value (Rust's), because CL-7
+  is the cost of making the end of a body mean something.
 - **Every path of a function with a return type ends in `return`**, or in a `while true` with no
   `break`, which never exits. A path that reaches `end fn` is `MZ0906`, which
   names the line where the path ends. When the last line of the body is an expression of the
@@ -540,6 +660,16 @@ and replaces a lone `}` with the closer that block needs. `} else {` becomes `el
 The condition is a `bool` expression (§3.4). Narrowing an option works as in RFC-0008 §4, with
 the positive form a function body needs (§8).
 
+**A chain over one enum's variants is a `match`.** A `when` with at least one `else when`, whose
+every condition is `<e> is <variant>` (or `<e> in [<variants>]`) on the same enum-typed path
+`<e>`, is `MZ0936`: it is the `if`-chain over variants that RFC-0001 §1.2 lists as deliberately
+absent, and it loses the exhaustiveness check, so a variant added later is silently skipped
+(CL-8). The fix is a `guess` rewriting the chain to `match <e>`, one `case` per condition and the
+chain's `else`, if it has one, as the `match`'s `else`. It is a guess because a chain without
+`else` that misses variants becomes a `match` that is `MZ0930`, which the author has to finish.
+A single `when e is v`, with or without a plain `else`, is a test of one variant, not a branch over
+variants, and stays legal.
+
 ### 7.2 `match`
 
 ```mz
@@ -570,7 +700,9 @@ end
 - There are no guards and no destructuring of records in M1, as RFC-0001 §1.2 says ("no guards in
   v0"). A `match` on an option is `MZ0711`, naming `when x is none` (§8). `switch` is `MZ0933`
   with the `exact` fix `match`, `default:` gets `else`, and a trailing `:` on a `case` line is
-  deleted. RFC-0001 §4.7's `MZ0410` (`match` in a view) is unchanged: views still have no `match`.
+  deleted. Python's `case _` and Rust's `_ =>` wildcard are `MZ0933` with the `exact` fix `else`,
+  not a name `MZ0708` cannot find. RFC-0001 §4.7's `MZ0410` (`match` in a view) is unchanged:
+  views still have no `match`.
 
 ### 7.3 Loops
 
@@ -655,6 +787,13 @@ enclosing block. That is the guard-clause shape every incumbent writes (`if x is
 and it is still a property of lines the reader can see: the `when`, its one branch, and its last
 line.
 
+**Assigning to a narrowed `var`.** Inside the region where a `var` `x` (or a path through one)
+is narrowed, `x = v` with `v` of type `T` keeps it narrowed: the lowering writes both the
+variable and the narrowed copy (`x = Some(v.clone()); mz_n1 = v;`, §14.2), so a later read in the
+region sees `v`. Assigning `none`, or an `option(T)`, inside the region would end the narrowing
+on a line the reader cannot see from the `when`, so it is `MZ0710`, with no fix; the author ends
+the region first.
+
 An option is never used un-narrowed (`MZ0710`). A value of type `T` is wrapped implicitly where
 an `option(T)` is expected, so there is still no `some(…)` to write (RFC-0008 §5). `x.or(d)`, the
 value or a default, is the one option method in M1, because it is the shape most narrowing
@@ -688,20 +827,20 @@ is the Wave 1 C7 work's obligation (§18.2).
 
 The set M1 needs, all methods (§3.7):
 
-| Operation                | On             | Returns          | Notes                                                                       |
-| ------------------------ | -------------- | ---------------- | --------------------------------------------------------------------------- |
-| `c.length()`             | list, map, set | `int`            | `len`, `size`, `count`, `.length` are `MZ0962`, `exact`                     |
-| `c is none`              | list, map, set | `bool`           | emptiness, as RFC-0008 §4 already rules; `.is_empty()` is `MZ0962`, `exact` |
-| `x in c`                 | list, set, map | `bool`           | element, or key; `.contains(x)`, `.includes(x)`, `.has(x)` are `MZ0962`     |
-| `xs[i]`, `xs.get(i)`     | list           | `T`, `option(T)` | §3.7; `[i]` traps out of range                                              |
-| `m[k]`, `m.get(k)`       | map            | `V`, `option(V)` | `[k]` traps on a missing key                                                |
-| `xs.slice(a, b)`         | list           | `list(T)`        | from `a` up to `b`; traps out of range                                      |
-| `m.keys()`, `m.values()` | map            | `list`           | in key order                                                                |
-| `s.to_list()`            | set            | `list(T)`        | in key order                                                                |
-| `xs.map(f)`              | list           | `list(U)`        | `f(x: T): U`                                                                |
-| `xs.filter(f)`           | list           | `list(T)`        | `f(x: T): bool`                                                             |
-| `xs.fold(init, f)`       | list           | `A`              | `f(acc: A, x: T): A`, left to right                                         |
-| `xs.join(sep)`           | `list(text)`   | `text`           |                                                                             |
+| Operation                | On             | Returns          | Notes                                                                      |
+| ------------------------ | -------------- | ---------------- | -------------------------------------------------------------------------- |
+| `c.length()`             | list, map, set | `int`            | `len`, `size`, `count`, `.length` are `MZ0962`, `exact`                    |
+| `c is none`              | list, map, set | `bool`           | emptiness (RFC-0008 §4); `is []`, `length() is 0`, `.is_empty()`: `MZ0962` |
+| `x in c`                 | list, set, map | `bool`           | element, or key; `.contains(x)`, `.includes(x)`, `.has(x)` are `MZ0962`    |
+| `xs[i]`, `xs.get(i)`     | list           | `T`, `option(T)` | §3.7; `[i]` traps out of range                                             |
+| `m[k]`, `m.get(k)`       | map            | `V`, `option(V)` | `[k]` traps on a missing key                                               |
+| `xs.slice(a, b)`         | list           | `list(T)`        | from `a` up to `b`; traps out of range                                     |
+| `m.keys()`, `m.values()` | map            | `list`           | in key order                                                               |
+| `s.to_list()`            | set            | `list(T)`        | in key order                                                               |
+| `xs.map(f)`              | list           | `list(U)`        | `f(x: T): U`                                                               |
+| `xs.filter(f)`           | list           | `list(T)`        | `f(x: T): bool`                                                            |
+| `xs.fold(init, f)`       | list           | `A`              | `f(acc: A, x: T): A`, left to right                                        |
+| `xs.join(sep)`           | `list(text)`   | `text`           |                                                                            |
 
 Mutation, on a `var` only (`MZ0960` otherwise, with the `exact` fix `let` → `var` when the
 binding is a `let`):
@@ -752,6 +891,16 @@ is: user code still has no type parameters. JavaScript's `reduce(f, init)` is `M
 `guess` fix `fold(init, f)` (a guess, because JavaScript's `reduce` without an initial value has
 no Mzizi equivalent).
 
+**This is the duality RFC-0001 §1.2 excluded, kept on purpose.** `xs.map(square)` and a
+`for each` that pushes `square(x)` onto a `var` build the same list, so two forms exist for one
+intent. They are kept because the C7 row names "map, filter, fold" as the operations it asks
+for; because code in every incumbent uses both shapes, so a model trained on it writes both (a
+prediction, not a measurement); and because neither form can express the other's common case in one line: a loop
+that prints, breaks or returns early is not a `map`, and a three-stage pipeline is three loops.
+No diagnostic steers between them, since neither is a defect. Whether that is worth the second
+form, or whether M1 keeps loops only and leaves `map` / `filter` / `fold` to P2, is the owner's
+(§20, Q19).
+
 ## 10. Text operations — _C6_
 
 `text` is UTF-8. **Lengths, indices and slices count Unicode scalar values**, Python's choice, so
@@ -763,8 +912,8 @@ all methods:
 | ------------------------------------ | --------------- | ----------------------------------------------------------- |
 | `s.length()`                         | `int`           | scalar values, not bytes                                    |
 | `s[i]`, `s.slice(a, b)`              | `text`          | traps out of range (§4.3)                                   |
-| `t in s`                             | `bool`          | substring (§3.3)                                            |
-| `s.find(t)`                          | `option(int)`   | the first index, or `none`                                  |
+| `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                      |
+| `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`       |
 | `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                             |
 | `s.split(sep)`                       | `list(text)`    | `sep` is not empty; `s.split("")` is `MZ0915` when literal  |
 | `s.chars()`                          | `list(text)`    | one element per scalar value                                |
@@ -782,6 +931,8 @@ fixed decimal places, padding and number formatting are P2's. Regular expression
 C6's "Done when" asks for these "in the standard library (P2) with tests". They are built-in
 methods with a fixed lowering table (§14.2), and that table is the seed of P2's `text` module:
 when modules exist (P1), the module is where they are documented, not a second implementation.
+Whether built-in methods with tests meet C6's "Done when", or C6 waits for P2, is the owner's to
+decide (§20, Q20). Until then the C6 row does not turn ✅ on built-in methods alone.
 
 ## 11. Records and methods — _C8_
 
@@ -793,6 +944,10 @@ A missing, unknown, repeated or ill-typed field is `MZ0808`, the code RFC-0011 �
 literals, so one kind of mistake keeps one code. The record's name is used like a call, and the
 `=` reads as it does in a view attribute, "is set to"; Python's keyword arguments have the same
 shape. Canonical form writes the fields in declaration order (§17).
+
+That makes two spellings of a record value: this one, and RFC-0011's `problem error "x"` in a
+handler. Handlers are not changed here; whether they move to the parenthesised form, with an
+`exact` fix, when they adopt §3's expressions is part of §20 Q14.
 
 A record is a value. `var q = p` copies `p`, and `q.x = 3.0` changes `q` only (§14.1). Assigning
 to a field needs a `var` (`MZ0960`). There is no `with` or spread update: RFC-0001 §4.7 already
@@ -816,7 +971,9 @@ end
 ```
 
 - **A method is a `fn` inside a `record` block**, after its fields. It is called on a value,
-  `p.norm()`, and has the same signature, body, return and contract rules as any `fn` (§6).
+  `p.norm()`, and has the same signature, body, return and contract rules as any `fn` (§6). This
+  amends RFC-0008 §2, whose record body holds only `field` lines: in a program, a `fn … end fn`
+  block after the fields is not `MZ0308`. A `fn` before a field, or any other line, still is.
 - **The receiver is `self`, always written, never declared.** `self.x` reads a field; `self` in
   the parameter list (Python's) is `MZ0970` with the `exact` fix deleting it, and TypeScript's
   `this.x` gets the `exact` fix `self.x`. `self` outside a method is `MZ0970`.
@@ -870,6 +1027,21 @@ end fn parse_age
   failure side only, because `result(text, text)` must still be unambiguous. Rust's `Ok(v)` and
   `return ok(v)` are `MZ0952` with the `exact` fix `v`; `Err(e)` gets `error(e)`; `throw e` and
   `raise e` get `return error(e)`, `exact` when `e` has the error type.
+- **`return r`, where `r`'s type is the function's own result type, returns `r` as it is**: its
+  success as success, its error as error. `return parse_age(a)` in a function returning
+  `result(int, parse_problem)` passes the callee's result through, which is what Rust's
+  `return parse_age(a)` does and what a reader expects. It lowers to `return r;`, never to
+  `return Ok(r);` (§14.2). The rule is decided by types, and is never ambiguous: the success type
+  `T` can never itself be a result (§2), so a value of the function's result type cannot also be
+  a `T` to wrap. A result whose type differs from the function's (another success or error type)
+  is `MZ0950`, as §12.3 says.
+- **`return try r`, where `try r` is the whole returned value and `r`'s type is the function's
+  own result type, is `MZ0954`**, with the `exact` fix deleting `try`. It unwraps a success only to wrap it again, and an error propagates either way,
+  so both lines are the same program and the pass-through is the one form. (Rust's clippy flags
+  `Ok(r?)` for the same reason.) `return try r + 1` is not that case, and neither is a `try r`
+  whose success type differs from the function's (`return try g()` with `g` returning
+  `result(int, e)` in a function returning `result(option(int), e)`, where the `int` is then
+  wrapped as an option); both are legal.
 - `E` is any type with a text form (§3.8). An enum is the expected choice, because a `match` on
   it is exhaustive, and its columns can carry the message. `result(none, E)` is a function that
   produces nothing but can fail; it returns success with a bare `return`, or by reaching
@@ -919,14 +1091,16 @@ end fn total_age
 - used where its success type is expected (`let n = parse_age(s)` then `n + 1`);
 - printed or interpolated, since a result has no text form (§3.8);
 - compared, passed as an argument, stored in a field or a collection, or returned from a function
-  whose return type is not a result.
+  whose return type is not that same result type (§12.1's pass-through needs the exact type);
+- written as the success or error type of another result (§2).
 
 A `let` may hold a result, so that the `match` can follow on its own line; the `let` is then the
 value that must be matched or propagated before its block ends.
 
 `MZ0950`'s fix is a `guess` inserting `try` where the enclosing function returns a result with the
 same error type, and absent otherwise: propagating changes what the function does, so it is never
-`exact`. This is C9's "an unhandled error is a diagnostic". `.unwrap()` and `.expect(…)` are
+`exact`. A returned result of the function's own type is not `MZ0950` at all (§12.1), so the fix
+never offers `return try r`. This is C9's "an unhandled error is a diagnostic". `.unwrap()` and `.expect(…)` are
 `MZ0952` with no fix: there is no way to turn an error into a halt on purpose, because a trap is
 for faults the author did not foresee (§4.3), not for errors the type system already named.
 
@@ -967,20 +1141,59 @@ mz build <file.mz> --out <dir> write the program's Cargo package, as for a servi
    `rustc` rejects is a compiler bug, by construction (P5): `mz run` reports it as `MZ0990`, with
    the `.mz` construct it came from and `rustc`'s first message, and exits 3.
 4. **Run.** It runs the binary with the terminal's standard input, output and error, and exits
-   with the program's own status. Under `--agent`, the summary line gains `"ran": true` or
-   `false` and `"exit": <status>`.
+   with the program's own status, or 128 plus the signal's number when a signal killed it, the
+   shell's convention. Under `--agent`, the summary line gains `"ran": true` or `false`,
+   `"exit": <status>`, and `"signal": <n>` when a signal killed the program.
+
+**Standard output belongs to the program.** Everything `mz run` itself writes goes to standard
+error, in both modes: the diagnostics of step 1, the loop summary line, `MZ0990`, and the lines
+the generated program writes for a trap (`MZ0991`), for `main`'s error (`MZ0992`) and for a
+runtime failure (`MZ0993`). **This is a change from `mz check --agent`, which writes its NDJSON to
+standard output** (`main.rs` today). `mz run --agent` uses the same NDJSON objects and the same
+summary line, on the other stream, so that a program's printed output and the diagnostics never
+interleave on one stream. Standard error may also carry lines that are not NDJSON: Rust's own
+message before a stack-overflow abort, or the panic message before `MZ0993`. The benchmark
+runner calls only `mz check --agent` today and needs no change until it calls `mz run`. When it
+does, it has to read diagnostics from standard error, keep the lines that parse as JSON objects
+with a `code` key, and score standard output as the program's output.
+
+**The generated `main`** (§14.2) is the only Rust code that runs before or after the program's
+own, and it handles every outcome without `unwrap` or `expect`:
+
+1. It spawns `mz_main` on a thread with `std::thread::Builder::new().stack_size(64 << 20)`, and
+   matches the `io::Result` that `spawn` returns. On `Err`, it writes
+   `mz: runtime MZ0993: could not start the program's thread: <the error>` to standard error and
+   exits **70**.
+2. It matches `join()`. `Ok` carries what `mz_main` returned: nothing, or `Ok(())`, exits 0, and
+   `Err(e)` writes §12.5's line and exits 1. A trap never returns here, since `mz_trap` exits
+   the process itself (§14.3).
+3. `join()` returning `Err` means the thread panicked. The lowering emits no `panic!`, `unwrap`,
+   `expect` or indexing (§14.3), so a panic comes from the standard library or the runtime, and
+   is a compiler or runtime bug by the same reasoning as `MZ0990`. The generated `main` writes
+   `mz: runtime MZ0993: the program panicked; this is a bug in mz, not in the program` and exits
+   **70**, `EX_SOFTWARE` in BSD's `sysexits.h`. Rust's panic hook has already written its own
+   message to standard error. No panic can exit 101, because a panic on the spawned thread does
+   not end the process.
+4. A failure Rust handles by aborting is a signal death, which no generated code can catch:
+   stack overflow (§4.3) and allocation failure both raise `SIGABRT`, so `mz run` exits 134.
 
 **Every exit status of `mz run` means one thing**, so a script without `--agent` can still tell
 them apart:
 
-| Status | Means                                                                       |
-| ------ | --------------------------------------------------------------------------- |
-| 0      | the program ran and `main` ended                                            |
-| 1      | the program ran and `main` returned an error (§12.5)                        |
-| 2      | a usage or I/O problem: bad arguments, an unreadable file, no `cargo`       |
-| 3      | the program did not compile: `mz check` errors, or `MZ0990`; it did not run |
-| 101    | the program ran and trapped (§4.3)                                          |
-| 141    | the program ran and its standard output was closed (§14.2, `print`)         |
+| Status | Means                                                                         |
+| ------ | ----------------------------------------------------------------------------- |
+| 0      | the program ran and `main` ended                                              |
+| 1      | the program ran and `main` returned an error (§12.5)                          |
+| 2      | a usage or I/O problem: bad arguments, an unreadable file, no `cargo`         |
+| 3      | the program did not compile: `mz check` errors, or `MZ0990`; it did not run   |
+| 70     | the runtime failed: a Rust panic or a thread that would not start (`MZ0993`)  |
+| 101    | the program ran and trapped (§4.3)                                            |
+| 128+n  | a signal `n` killed the program: 134 for stack overflow or allocation failure |
+| 141    | the program ran and its standard output was closed (§14.2, `print`)           |
+
+141 is also 128 plus `SIGPIPE`'s 13, and the overlap is deliberate: Rust programs ignore
+`SIGPIPE`, so the lowered program exits 141 itself on a closed pipe, and a shell reading the
+status sees the meaning it already knows.
 
 `mz run` departs here from the other commands, where 1 means "errors": 1 belongs to the program,
 because a program that fails conventionally exits 1. A program has no way to choose its own exit
@@ -1019,44 +1232,55 @@ remedy, and is not in M1 (§20, Q15). Nothing in this RFC claims the lowered cod
 
 ### 14.2 What each construct emits
 
-| Mzizi                                 | Rust                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `program p`                           | a package `mz-p`: `Cargo.toml` (edition 2024, no dependencies, its own `[workspace]`) and `src/main.rs` |
-| `fn main`                             | `fn mz_main()` (or `-> Result<(), E>`), run by a generated `main` on a thread with a 64 MiB stack       |
-| `fn f(a: int): int`                   | `fn f(a: i64) -> i64`                                                                                   |
-| `int`, `float`, `bool`, `text`        | `i64`, `f64`, `bool`, `String`                                                                          |
-| `list(T)`, `option(T)`                | `Vec<T>`, `Option<T>`                                                                                   |
-| `map(K, V)`, `set(K)`                 | `std::collections::BTreeMap<K, V>`, `BTreeSet<K>`                                                       |
-| `result(T, E)`, `result(none, E)`     | `Result<T, E>`, `Result<(), E>`                                                                         |
-| `enum` with columns                   | a fieldless `enum` and one `match` accessor per column (RFC-0001 §5)                                    |
-| `record`                              | a `struct` with the same fields in the same order                                                       |
-| record methods                        | an `impl` block; each method takes `&self`                                                              |
-| `point(x = 1.0, y = 2.0)`             | `Point { x: 1.0, y: 2.0 }`                                                                              |
-| `let` / `var` / assignment            | `let` / `let mut` / `=`                                                                                 |
-| `a + b` on `int`                      | `mz_add(a, b, &AT_12_9)`: `checked_add`, and a trap when it is `None` (§14.3)                           |
-| `a + b` on `float`                    | `a + b`                                                                                                 |
-| `a / b`, `a % b` on `int`             | `checked_div`, `checked_rem` through the same trap helper                                               |
-| `is`, `is not`, `<`, …                | `==`, `!=`, `<`, … (on text, `<` compares by scalar value, which `String`'s `Ord` does)                 |
-| `and`, `or`, `not`                    | `&&`, `\|\|`, `!`                                                                                       |
-| `x in xs` / `k in m` / `t in s`       | `xs.contains(&x)` / `m.contains_key(&k)` / `s.contains(t.as_str())`                                     |
-| `"a {x} b"`                           | `format!("a {} b", mz_text(&x))`, through one generated `MzText` trait (§3.8)                           |
-| `print(v)`                            | `mz_print(&v)`: `writeln!` on a locked standard output, its result checked (exit 141 on a closed pipe)  |
-| `when` / `else when` / `else`         | `if` / `else if` / `else`                                                                               |
-| `when` as a value                     | `let x = if c { a } else { b };`                                                                        |
-| `match` on an enum or `bool`          | `match`, with no `_` arm when the cases are exhaustive, so `rustc` re-checks exhaustiveness             |
-| `match` on `int` / `text`             | `match` / `match s.as_str()`, with `else` as `_`                                                        |
-| `match` on a result                   | `match r { Ok(name) => …, Err(name) => … }`                                                             |
-| `for each x in xs`                    | `for x in xs.clone()`                                                                                   |
-| `range(a, b)` as a loop source        | `a..b`, with no list built                                                                              |
-| `while` / `break` / `continue`        | `while` / `break` / `continue`                                                                          |
-| `return v` in a result function       | `return Ok(v);`                                                                                         |
-| `return error(e)`                     | `return Err(e);`                                                                                        |
-| `try e`                               | `e?`                                                                                                    |
-| `xs[i]`, `m[k]`, `s[i]`               | generated helpers that return the element or trap, never Rust indexing                                  |
-| `xs.map(f)`                           | `xs.iter().cloned().map(f).collect::<Vec<_>>()`                                                         |
-| `xs.fold(init, f)`                    | `xs.iter().cloned().fold(init, f)`                                                                      |
-| `s.length()`, `s[i]`, `s.slice(a, b)` | `chars()`-based helpers, counting scalar values (§10)                                                   |
-| `example` clauses                     | one `#[test]` each in a `#[cfg(test)]` module (RFC-0010 §5)                                             |
+| Mzizi                                             | Rust                                                                                                                                                                         |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `program p`                                       | a package `mz-p`: `Cargo.toml` (edition 2024, no dependencies, its own `[workspace]`) and `src/main.rs`                                                                      |
+| `fn main`                                         | `fn mz_main()` (or `-> Result<(), E>`), run by the generated `main` of §13.1 on a 64 MiB thread                                                                              |
+| `fn f(a: int): int`                               | `fn f(a: i64) -> i64`                                                                                                                                                        |
+| `int`, `float`, `bool`, `text`                    | `i64`, `f64`, `bool`, `String`                                                                                                                                               |
+| `list(T)`, `option(T)`                            | `Vec<T>`, `Option<T>`                                                                                                                                                        |
+| `map(K, V)`, `set(K)`                             | `std::collections::BTreeMap<K, V>`, `BTreeSet<K>`                                                                                                                            |
+| `result(T, E)`, `result(none, E)`                 | `Result<T, E>`, `Result<(), E>`                                                                                                                                              |
+| `enum` with columns                               | a fieldless `enum` and one `match` accessor per column (RFC-0001 §5)                                                                                                         |
+| `record`                                          | a `struct` with the same fields in the same order                                                                                                                            |
+| record methods                                    | an `impl` block; each method takes `&self`                                                                                                                                   |
+| `point(x = 1.0, y = 2.0)`                         | `Point { x: 1.0, y: 2.0 }`                                                                                                                                                   |
+| `let` / `var` / assignment                        | `let` / `let mut` / `=`                                                                                                                                                      |
+| `a + b` on `int`                                  | `mz_add(a, b, &AT_12_9)`: `checked_add`, and a trap when it is `None` (§14.3)                                                                                                |
+| `a + b` on `float`                                | `a + b`                                                                                                                                                                      |
+| `a / b`, `a % b` on `int`                         | `checked_div`, `checked_rem` through the same trap helper                                                                                                                    |
+| `is`, `is not`, `<`, …                            | `==`, `!=`, `<`, … (on text, `<` compares by scalar value, which `String`'s `Ord` does)                                                                                      |
+| `and`, `or`, `not`                                | `&&`, `\|\|`, `!`                                                                                                                                                            |
+| `x in xs` / `k in m` / `s.contains(t)`            | `xs.contains(&x)` / `m.contains_key(&k)` / `s.contains(t.as_str())`                                                                                                          |
+| `"a {x} b"`                                       | `format!("a {} b", mz_text(&x))`, through one generated `MzText` trait (§3.8)                                                                                                |
+| `print(v)`                                        | `mz_print(&v)`: `writeln!` on a locked standard output, its result checked (exit 141 on a closed pipe)                                                                       |
+| `when` / `else when` / `else`                     | `if` / `else if` / `else`                                                                                                                                                    |
+| `when` as a value                                 | `let x = if c { a } else { b };`                                                                                                                                             |
+| `match` as a value                                | `let x = match k { K::A => a, _ => b };`, `_` only for the `else` case                                                                                                       |
+| a `T` where `option(T)` is expected               | `Some(e)`                                                                                                                                                                    |
+| `when p is none … else …`, `p` a name or path     | `match p.clone() { None => { … } Some(mut mz_n1) => { … } }`: inside the narrowed branch, every read of `p` lowers to `mz_n1`                                                |
+| `when p is not none … [else …]`                   | `if let Some(mut mz_n1) = p.clone() { … } else { … }`, reads of `p` again lowered to `mz_n1`                                                                                 |
+| a guard, `when p is none` that exits              | `let Some(mut mz_n1) = p.clone() else { <the guard's body, which ends in return, break or continue> };`, then as above to the block's end                                    |
+| `x.or(d)`                                         | `{ let mz_d = <d>; match x.clone() { Some(mz_v) => mz_v, None => mz_d } }`: `d` is evaluated first; `mz_` names cannot collide (§14.2)                                       |
+| `match` on an enum or `bool`                      | `match`, with no `_` arm when the cases are exhaustive, so `rustc` re-checks exhaustiveness                                                                                  |
+| `match` on `int` / `text`                         | `match` / `match s.as_str()`, with `else` as `_`                                                                                                                             |
+| `match` on a result                               | `match r { Ok(name) => …, Err(name) => … }`                                                                                                                                  |
+| `for each x in xs`                                | `for x in xs.clone()`                                                                                                                                                        |
+| `range(a, b)` as a loop source                    | `a..b`, with no list built                                                                                                                                                   |
+| `while` / `break` / `continue`                    | `while` / `break` / `continue`                                                                                                                                               |
+| `return v` in a result function                   | `return Ok(v);`, when `v` has the success type                                                                                                                               |
+| `return r`, `r` of the function's own result type | `return r;`: passed through, never wrapped (§12.1)                                                                                                                           |
+| `return error(e)`                                 | `return Err(e);`                                                                                                                                                             |
+| `try e`                                           | `e?`                                                                                                                                                                         |
+| `xs[i]`, `m[k]`, `s[i]`                           | generated helpers that return the element or trap, never Rust indexing                                                                                                       |
+| `xs.map(f)`                                       | `xs.iter().cloned().map(f).collect::<Vec<_>>()`                                                                                                                              |
+| `xs.filter(f)`                                    | `xs.iter().cloned().filter(\|x\| f(x.clone())).collect::<Vec<_>>()`: Rust's `filter` passes `&T`                                                                             |
+| `xs.fold(init, f)`                                | `xs.iter().cloned().fold(init, f)`                                                                                                                                           |
+| `s.length()`, `s[i]`, `s.slice(a, b)`             | `chars()`-based helpers, counting scalar values (§10)                                                                                                                        |
+| `s.find(t)`                                       | a helper walking `s.char_indices()`, testing `s.get(b..)` with `starts_with`; it returns the scalar index, never `str::find`'s byte offset                                   |
+| `x.pow(n)` on `int`                               | a helper over `checked_pow`, which takes a `u32`: it traps on `n < 0` or overflow, and above `u32::MAX` answers `x` of `0`, `1` and `-1` by rule (every other `x` overflows) |
+| `x.pow(n)` on `float`                             | `x.powf(n as f64)`: `as` from `i64` to `f64` rounds to nearest, which is `to_float` (§4.4)                                                                                   |
+| `example` clauses                                 | one `#[test]` each in a `#[cfg(test)]` module (RFC-0010 §5)                                                                                                                  |
 
 Names:
 
@@ -1098,7 +1322,7 @@ fn add(a: int, b: int): int
   return a + b
   contract
     example a 2 b 3 returns is 5
-    ensure when a at_least 0 then returns at_least b
+    example a 0 b 0 returns is 0
   end
 end fn add
 ```
@@ -1107,6 +1331,21 @@ The `contract` block is not a statement, so it may follow the last `return` with
 `MZ0907`. A program's own `contract` block takes one more subject, **`output`**: the text `main` writes to
 standard output. `example output is "…"` and `example output contains "…"` run `main` with no
 input. RFC-0010 §8's `MZ0613` applies to a program with no evaluated clause, as a warning.
+
+An `ensure` that compares `returns` with a parameter (`returns at_least b`) is a relational
+property, which RFC-0010 §11 leaves open (its question 3, pending G1.3). This RFC does not settle
+it, so the example above uses `example` clauses only.
+
+**In-process evaluation is bounded.** `mz contract` evaluates a clause by running `main` or the
+`fn` in process, and a program may loop forever (`while true` with no `break` is legal, §6.2), so
+the evaluator counts steps: each statement executed and each call made is one. A clause that
+spends **10,000,000 steps** without finishing fails with `MZ0994`, which names the clause and the
+bound, and evaluation moves to the next clause. Call depth is bounded too, at **10,000** nested
+calls, and exceeding it is `MZ0994` as well; the evaluator runs each clause on a thread whose stack
+is sized for that depth, so a deep recursion fails the clause instead of aborting `mz`. The bound is a constant of the evaluator, not a
+setting, so a clause passes or fails the same way on every machine; a timer would not. `mz run`
+has no bound: a program that runs forever is the author's to stop. The number is a proposal for
+Wave 0 to confirm against `examples/`.
 
 ### 15.2 `mz test` — _T4, Wave 2_
 
@@ -1144,67 +1383,71 @@ the core language.** `diagnostic.rs` and every RFC were checked for codes in use
 `MZ08xx` are taken, and nothing uses `MZ09xx`. The tens digit groups the codes. When `MZ09xx`
 fills, the next family is `MZ10xx`.
 
-| Code     | Tool       | Means                                                                                                                                                                                        |
-| -------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MZ0901` | `mz check` | a `program` line without a name, or a block a program cannot hold (`view`, `prop`, `route`, `emit`)                                                                                          |
-| `MZ0902` | `mz check` | no `fn main`, a second one, `main` with parameters, or a return type other than nothing or `result(none, E)`                                                                                 |
-| `MZ0903` | `mz check` | a malformed signature: `->` (`exact` `:`), `def` / `function` / `func` (`exact` `fn`), `()` on no parameters (`exact`), `: none` / `: void` (`exact`), an untyped parameter, a default value |
-| `MZ0904` | `mz check` | two `fn`s, or a `fn` and a record or enum, with one name; a parameter named twice                                                                                                            |
-| `MZ0905` | `mz check` | a call with the wrong number or types of arguments, or a named argument                                                                                                                      |
-| `MZ0906` | `mz check` | a path through a function with a return type that reaches `end fn` without `return`; `exact` fix when the last line is a value of that type                                                  |
-| `MZ0907` | `mz check` | a statement after `return`, `break` or `continue` that can never run; `exact` fix deletes it                                                                                                 |
-| `MZ0908` | `mz check` | a `return` that does not fit its function: a value where none is returned, none where one is, or the wrong type                                                                              |
-| `MZ0909` | `mz check` | a `fn` used as a value outside `map` / `filter` / `fold`, a function argument whose signature does not fit, or a lambda                                                                      |
-| `MZ0910` | `mz check` | an operator spelt from another language: `==` `===` `!=` `!==` `&&` `\|\|` `!`, `x not in y`, `at_least` in an expression — `exact` fixes                                                    |
-| `MZ0911` | `mz check` | a comment Mzizi lacks: `//`, `#`, `/* … */` on one line — `exact` fix `##`                                                                                                                   |
-| `MZ0912` | `mz check` | operands of the wrong type: `int` with `float` (`exact` on a literal), `+` on text (`exact` to interpolation on names and literals), unlike types compared                                   |
-| `MZ0913` | `mz check` | a chained comparison (`guess`), or `and` mixed with `or` without parentheses (`exact`)                                                                                                       |
-| `MZ0914` | `mz check` | a malformed number: `1.`, `.5`, `1_000` (`exact`), `0x10`, `1e3`                                                                                                                             |
-| `MZ0915` | `mz check` | a fault visible in constants: division by a literal `0`, a literal negative index (`guess`), a folded overflow, `split("")`                                                                  |
-| `MZ0916` | `mz check` | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                 |
-| `MZ0918` | `mz check` | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                 |
-| `MZ0920` | `mz check` | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                      |
-| `MZ0921` | `mz check` | a binding that shadows one in scope, or reuses a `fn`, record, enum, variant, built-in or contextual word; or any name starting with `mz_`                                                   |
-| `MZ0922` | `mz check` | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                |
-| `MZ0923` | `mz check` | assignment to an unbound name — `exact` fix inserts `let` or `var`                                                                                                                           |
-| `MZ0924` | `mz check` | a warning: a `var` never reassigned or mutated — `exact` fix `let`                                                                                                                           |
-| `MZ0925` | `mz check` | a binding form from another language: `const` `val` `auto` (`let`), `let mut` `mut` (`var`), `x := e` — `exact`                                                                              |
-| `MZ0926` | `mz check` | a binding with no value                                                                                                                                                                      |
-| `MZ0930` | `mz check` | a `match` that misses a case: enum variants (named), `ok` or `error`, or `else` on `int` / `text`                                                                                            |
-| `MZ0931` | `mz check` | a case that can never be reached: listed twice, after `else`, or `else` when every variant is covered (`exact` fix deletes it)                                                               |
-| `MZ0932` | `mz check` | a `when` or `match` used as a value where it cannot be, without `else` or exhaustiveness, with a branch that is not one value line, or with branches of different types                      |
-| `MZ0933` | `mz check` | a conditional spelt from another language: `elif`, `else if` (`else when`), `switch` (`match`), `default:` (`else`) — `exact`                                                                |
-| `MZ0934` | `mz check` | a loop spelt from another language: `for x in xs`, `for (const x of xs)`, `loop`, `range(n)` (`exact`), C-style `for`, `do … while`                                                          |
-| `MZ0935` | `mz check` | `break` or `continue` outside a loop                                                                                                                                                         |
-| `MZ0937` | `mz check` | block punctuation from another language: a trailing `:` or `{`, a `}` (`exact`: the closer the open block needs), `} else {`                                                                 |
-| `MZ0950` | `mz check` | an unhandled `result`: discarded, used as its success type, printed or compared; `guess` fix inserts `try`                                                                                   |
-| `MZ0951` | `mz check` | `try` that cannot propagate: not in a result function, a different error type, or not on a result                                                                                            |
-| `MZ0952` | `mz check` | an error idiom from another language: `Ok(v)` / `ok(v)` (`v`), `Err(e)` (`error(e)`), `throw` / `raise`, postfix `?` (`try`) — `exact`; a `try` block, `.unwrap()`, `.expect()` with no fix  |
-| `MZ0953` | `mz check` | `error(e)` outside a result function, or with an `e` of the wrong type                                                                                                                       |
-| `MZ0960` | `mz check` | a mutation of something that is not a `var` — `exact` fix `var` when it is a `let`                                                                                                           |
-| `MZ0961` | `mz check` | a bracket literal that cannot be typed: `[]` with no context, mixed element types, entries mixed with elements, a repeated map key                                                           |
-| `MZ0962` | `mz check` | an operation spelt from another language: `len(x)`, `.len()`, `.size()`, `.length`, `.append`, `.is_empty()`, `.contains`, `.strip()`, `str(x)` — `exact` on names and paths                 |
-| `MZ0963` | `mz check` | a tuple — name a record                                                                                                                                                                      |
-| `MZ0964` | `mz check` | a map key or set element type with no order                                                                                                                                                  |
-| `MZ0970` | `mz check` | a method declaration problem: `self` as a parameter (`exact`), `this.` (`exact` `self.`), a method named like a field, `self` outside one                                                    |
-| `MZ0971` | `mz check` | assignment to `self` or a field of it in a method                                                                                                                                            |
-| `MZ0972` | `mz check` | a declaration deferred past M1: type parameters, `class`, `interface`, `trait`, `impl`                                                                                                       |
-| `MZ0980` | `mz check` | a print spelt from another language: `print(a, b)` (`exact` to one interpolated text), `console.log`, `println!`, `fmt.Println`, `puts`, `print x`                                           |
-| `MZ0990` | `mz run`   | the lowered code did not compile: a compiler bug, reported with the `.mz` construct and `rustc`'s first message                                                                              |
-| `MZ0991` | `mz run`   | a trap (§4.3): integer overflow, division by zero, an index or key out of range, a float out of `int`'s range                                                                                |
-| `MZ0992` | `mz run`   | `main` returned an error (§12.5)                                                                                                                                                             |
+| Code     | Tool          | Means                                                                                                                                                                                                                                                        |
+| -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MZ0901` | `mz check`    | a `program` line without a name, or a block a program cannot hold (`view`, `prop`, `route`, `emit`)                                                                                                                                                          |
+| `MZ0902` | `mz check`    | no `fn main`, a second one, `main` with parameters, or a return type other than nothing or `result(none, E)`                                                                                                                                                 |
+| `MZ0903` | `mz check`    | a malformed signature: `->` (`exact` `:`), `def` / `function` / `func` (`exact` `fn`), `()` on no parameters (`exact`), `: none` / `: void` (`exact`), an untyped parameter, a default value                                                                 |
+| `MZ0904` | `mz check`    | two `fn`s, or a `fn` and a record or enum, with one name; a parameter named twice                                                                                                                                                                            |
+| `MZ0905` | `mz check`    | a call with the wrong number or types of arguments, or a named argument                                                                                                                                                                                      |
+| `MZ0906` | `mz check`    | a path through a function with a return type that reaches `end fn` without `return`; `exact` fix when the last line is a value of that type                                                                                                                  |
+| `MZ0907` | `mz check`    | a statement after `return`, `break` or `continue` that can never run; `exact` fix deletes it                                                                                                                                                                 |
+| `MZ0908` | `mz check`    | a `return` that does not fit its function: a value where none is returned, none where one is, or the wrong type                                                                                                                                              |
+| `MZ0909` | `mz check`    | a `fn` used as a value outside `map` / `filter` / `fold`, a function argument whose signature does not fit, or a lambda                                                                                                                                      |
+| `MZ0910` | `mz check`    | an operator spelt from another language: `==` `===` `!=` `!==` `&&` `\|\|` `!`, `x not in y`, `not a is b`, `at_least` in an expression — `exact` fixes                                                                                                      |
+| `MZ0911` | `mz check`    | a comment Mzizi lacks: `//`, `#`, `/* … */` on one line — `exact` fix `##`                                                                                                                                                                                   |
+| `MZ0912` | `mz check`    | operands of the wrong type: `int` with `float` (`exact` on a literal), `+` on text (`exact` to interpolation on names and literals), unlike types compared                                                                                                   |
+| `MZ0913` | `mz check`    | a chained comparison (`guess`), or `and` mixed with `or` without parentheses (`exact`)                                                                                                                                                                       |
+| `MZ0914` | `mz check`    | a malformed number: `1.`, `.5`, `1_000` (`exact`), `0x10`, `1e3`; a `.` after digits is a method call only before a letter or `_` (§3.1)                                                                                                                     |
+| `MZ0915` | `mz check`    | a fault visible in constants: division by a literal `0`, a literal negative index (`guess`), a literal negative `int` exponent, a folded overflow, `split("")`                                                                                               |
+| `MZ0916` | `mz check`    | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                                                                                 |
+| `MZ0918` | `mz check`    | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                                                                                 |
+| `MZ0920` | `mz check`    | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                                                                                      |
+| `MZ0921` | `mz check`    | a name a program reserves: a record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word where §1 bans it, or any name starting with `mz_` (shadowing is `MZ0713`)                                                        |
+| `MZ0922` | `mz check`    | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                                                                                |
+| `MZ0923` | `mz check`    | assignment to an unbound name: inserts `let` or `var` (`exact` only with no near name and no read after the block), or the nearest name; `MZ0920` instead when read after the block (§5.1)                                                                   |
+| `MZ0924` | `mz check`    | a warning: a `var` never reassigned or mutated — `exact` fix `let`                                                                                                                                                                                           |
+| `MZ0925` | `mz check`    | a binding form from another language: `const` `val` `auto` (`let`), `let mut` `mut` (`var`), `x := e` — `exact`                                                                                                                                              |
+| `MZ0926` | `mz check`    | a binding with no value                                                                                                                                                                                                                                      |
+| `MZ0930` | `mz check`    | a `match` that misses a case: enum variants (named), `ok` or `error`, or `else` on `int` / `text`                                                                                                                                                            |
+| `MZ0931` | `mz check`    | a case that can never be reached: listed twice, after `else`, or `else` when every variant is covered (`exact` fix deletes it)                                                                                                                               |
+| `MZ0932` | `mz check`    | a `when` or `match` used as a value where it cannot be, without `else` or exhaustiveness, with a branch that is not one value line, or with branches of different types                                                                                      |
+| `MZ0933` | `mz check`    | a conditional spelt from another language: `elif`, `else if` (`else when`), `switch` (`match`), `default:`, `case _`, `_ =>` (`else`) — `exact`                                                                                                              |
+| `MZ0934` | `mz check`    | a loop spelt from another language: `for x in xs`, `for (const x of xs)`, `loop`, `range(n)` (`exact`), C-style `for`, `do … while`                                                                                                                          |
+| `MZ0935` | `mz check`    | `break` or `continue` outside a loop                                                                                                                                                                                                                         |
+| `MZ0936` | `mz check`    | an `else when` chain over one enum's variants (§7.1, CL-8): `guess` fix to `match`                                                                                                                                                                           |
+| `MZ0937` | `mz check`    | block punctuation from another language: a trailing `:` or `{`, a `}` (`exact`: the closer the open block needs), `} else {`                                                                                                                                 |
+| `MZ0950` | `mz check`    | an unhandled `result`: discarded, used as its success type, printed or compared, returned where the type differs; a result inside a result; `guess` fix inserts `try`                                                                                        |
+| `MZ0951` | `mz check`    | `try` that cannot propagate: not in a result function, a different error type, or not on a result                                                                                                                                                            |
+| `MZ0952` | `mz check`    | an error idiom from another language: `Ok(v)` / `ok(v)` (`v`), `Err(e)` (`error(e)`), `throw` / `raise`, postfix `?` (`try`) — `exact`; a `try` block, `.unwrap()`, `.expect()` with no fix                                                                  |
+| `MZ0953` | `mz check`    | `error(e)` outside a result function, or with an `e` of the wrong type; a bare `ok` or `error` variant in a result function (`exact`: qualify it)                                                                                                            |
+| `MZ0954` | `mz check`    | `return try r` with `try r` the whole value and `r` of the function's own result type: `exact` fix deletes `try` (§12.1)                                                                                                                                     |
+| `MZ0960` | `mz check`    | a mutation of something that is not a `var` — `exact` fix `var` when it is a `let`                                                                                                                                                                           |
+| `MZ0961` | `mz check`    | a bracket literal that cannot be typed: `[]` with no context, mixed element types, entries mixed with elements, a repeated map key                                                                                                                           |
+| `MZ0962` | `mz check`    | an operation spelt another way: `len(x)`, `.len()`, `.size()`, `.length`, `.append`, `.strip()`, `str(x)`; `.contains` on a collection; `t in s` on text (`s.contains(t)`); `is []`, `length() is 0`, `.is_empty()` (`is none`) — `exact` on names and paths |
+| `MZ0963` | `mz check`    | a tuple — name a record                                                                                                                                                                                                                                      |
+| `MZ0964` | `mz check`    | a map key or set element type with no order                                                                                                                                                                                                                  |
+| `MZ0970` | `mz check`    | a method declaration problem: `self` as a parameter (`exact`), `this.` (`exact` `self.`), a method named like a field, `self` outside one                                                                                                                    |
+| `MZ0971` | `mz check`    | assignment to `self` or a field of it in a method                                                                                                                                                                                                            |
+| `MZ0972` | `mz check`    | a declaration deferred past M1: type parameters, `class`, `interface`, `trait`, `impl`                                                                                                                                                                       |
+| `MZ0980` | `mz check`    | a print spelt from another language: `print(a, b)` (`exact` to one interpolated text), `console.log`, `println!`, `fmt.Println`, `puts`, `print x`                                                                                                           |
+| `MZ0990` | `mz run`      | the lowered code did not compile: a compiler bug, reported with the `.mz` construct and `rustc`'s first message                                                                                                                                              |
+| `MZ0991` | `mz run`      | a trap (§4.3): integer overflow, division by zero, a negative `int` exponent, an index or key out of range, a float out of `int`'s range                                                                                                                     |
+| `MZ0992` | `mz run`      | `main` returned an error (§12.5)                                                                                                                                                                                                                             |
+| `MZ0993` | `mz run`      | the runtime failed: the lowered program panicked, or its thread could not start; exit 70 (§13.1)                                                                                                                                                             |
+| `MZ0994` | `mz contract` | an in-process evaluation spent its 10,000,000 steps, or went 10,000 calls deep, without finishing (§15.1)                                                                                                                                                    |
 
-`MZ0917`, `MZ0919`, `MZ0927`–`MZ0929`, `MZ0936`, `MZ0938`–`MZ0949`, `MZ0954`–`MZ0959`,
-`MZ0965`–`MZ0969`, `MZ0973`–`MZ0979`, `MZ0981`–`MZ0989` and `MZ0993`–`MZ0999` are left free, for
+`MZ0917`, `MZ0919`, `MZ0927`–`MZ0929`, `MZ0938`–`MZ0949`, `MZ0955`–`MZ0959`,
+`MZ0965`–`MZ0969`, `MZ0973`–`MZ0979`, `MZ0981`–`MZ0989` and `MZ0995`–`MZ0999` are left free, for
 the waves to claim within their group.
 
 **Existing codes reused, so one kind of mistake keeps one code wherever it is made:** `MZ0101`
-(a camelCase name, now also in function bodies), `MZ0103` (an `int` literal too large), `MZ0104`
+(a camelCase name, now also in function bodies), `MZ0103` (an `int` literal too large, including `int`'s minimum written as one, §3.1), `MZ0104`
 (a character Mzizi does not use, for what is left after the operators above), `MZ0105` (a type
 spelt with symbols), `MZ0106` (a spread), `MZ0407` (`if`, now also in function bodies), `MZ0701`
-(an unknown type), `MZ0704` (a duplicate record, field or enum), `MZ0707` (a name bound nowhere),
+(an unknown type), `MZ0704` (a duplicate record, field or enum), `MZ0207` and `MZ0208` (an `end fn` with the wrong name, or a bare `end` closing a `fn`, §1), `MZ0308` (a record body line that is neither a field nor, in a program, a method), `MZ0707` (a name bound nowhere),
 `MZ0708` (no such field, variant, column, **or method**: the nearest-name fix covers methods too),
-`MZ0710` (an un-narrowed option), `MZ0711` (a value of the wrong kind, including `for each` over
+`MZ0710` (an un-narrowed option, now also in `print` and `{…}`), `MZ0713` (shadowing, now also in function bodies, §5.3), `MZ0711` (a value of the wrong kind, including `for each` over
 a map), `MZ0712` (a condition that is not a `bool`: truthiness), `MZ0714` (a malformed `{…}`),
 `MZ0808` (a record literal), `MZ0613` (no evaluated contract clause), and RFC-0010's contract
 codes.
@@ -1282,27 +1525,28 @@ These names are proposals; the pull request fixes them and says so here.
 recursion, `when` / `else` as statements, `return`, `print` of text literals with `{name}` and
 `{call(…)}` interpolation, integer traps (§4.3), the lowering, `mz run`, `mz build` for a program,
 and CI running `examples/*.mz` programs through `mz run` against `.expected` files. Codes:
-`MZ0901`–`MZ0908`, `MZ0910`, `MZ0912` (`int` and `bool`), `MZ0915`, `MZ0920`–`MZ0925`,
-`MZ0980`, `MZ0990`, `MZ0991`.
+`MZ0901`–`MZ0908`, `MZ0910`, `MZ0912` (`int` and `bool`), `MZ0915`, `MZ0916`, `MZ0920`–`MZ0926`,
+`MZ0980`, `MZ0990`, `MZ0991`, `MZ0993` (the generated `main`, §13.1) and `MZ0994` (the evaluator's
+step bound, §15.1), with `MZ0713` and `MZ0208` reused in function bodies.
 
 | Row | Done when (`LANGUAGE-TRACKER.md`), and the test that shows it                                                                                                                                             |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | C10 | `mz run hello.mz` prints output: `examples/hello.mz` prints `hello, world`, and CI's run of it matches `examples/hello.expected`                                                                          |
 | C3  | one function calls another with arguments and returns a typed value; recursion works: an example in Wave 0's subset (§1's `fib`, without loops) prints `fib(9) is 34`, and `MZ0905` / `MZ0906` have tests |
-| C2  | a value can be named and reused; the resolver reports use before binding: `let` in the example, and `MZ0920` and `MZ0921` triggered by tests                                                              |
+| C2  | a value can be named and reused; the resolver reports use before binding: `let` in the example, and `MZ0920`, `MZ0713` and `MZ0921` triggered by tests                                                    |
 
 C1 and C5 become 🟡 after this slice (integers only). The P3, P4 and P10 rows gain evidence, and
 stay 🟡 or 📝 until Tier 1 lowers whole.
 
 ### 18.2 Wave 1 (parallel, on the foundation)
 
-| PR      | Builds                                                                                                                                                                               | Done when, and its test                                                                                                                                                                                |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| C1 + C5 | `float` and §4 whole, interpolation of any expression, §3.8's text forms, the rest of §3.5, `MZ0911`, `MZ0913`, `MZ0914`, `MZ0918`                                                   | C1: an example computes and prints a value from an expression, and `mz check` types it. C5: `float` exists, and tests pin overflow (exit 101, `MZ0991`), integer and float division by zero, and `nan` |
-| C4      | `else when`, `match` and exhaustiveness, `when` / `match` as values, `for each` and `while` in function bodies, `break`, `continue`, early `return`                                  | all four work in a function body, and a non-exhaustive `match` is `MZ0930`; `MZ0930`–`MZ0937` each have a test                                                                                         |
-| C9      | `result`, `error(…)`, `try`, `case ok` / `case error`, `main` returning a result, `MZ0950`–`MZ0953`, `MZ0992`. Rebases on C4 for `match`                                             | a function returns an error that its caller handles with `match` and another propagates with `try`, and an unhandled error is `MZ0950`                                                                 |
-| C7      | bracket literals, `map`, `set`, indexing, §9.2's operations, `in`, `map` / `filter` / `fold`, `range`, `MZ0960`–`MZ0964`; `MZ0105` moves to the type parser with its tests unchanged | `map(K, V)` exists, and an example builds a list and a map and transforms them in a function                                                                                                           |
-| C8      | record construction (`MZ0808`), methods, `self`, `MZ0970`–`MZ0972`                                                                                                                   | **a record has a method**. The row stays 🟡: its generic-function and interface clauses are deferred (§11.3, §20 Q8)                                                                                   |
+| PR      | Builds                                                                                                                                                                                         | Done when, and its test                                                                                                                                                                                |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C1 + C5 | `float` and §4 whole, interpolation of any expression, §3.8's text forms, the rest of §3.5, `MZ0911`, `MZ0913`, `MZ0914`, `MZ0918`                                                             | C1: an example computes and prints a value from an expression, and `mz check` types it. C5: `float` exists, and tests pin overflow (exit 101, `MZ0991`), integer and float division by zero, and `nan` |
+| C4      | `else when`, `match` and exhaustiveness, the variant-chain check (`MZ0936`), `when` / `match` as values, `for each` and `while` in function bodies, `break`, `continue`, early `return`        | all four work in a function body, and a non-exhaustive `match` is `MZ0930`; `MZ0930`–`MZ0937` each have a test                                                                                         |
+| C9      | `result`, `error(…)`, `try`, `case ok` / `case error`, `main` returning a result, `MZ0950`–`MZ0954`, `MZ0992`. Rebases on C4 for `match`                                                       | a function returns an error that its caller handles with `match` and another propagates with `try`, and an unhandled error is `MZ0950`                                                                 |
+| C7      | bracket literals, `map`, `set`, indexing, §9.2's operations, `in`, `map` / `filter` / `fold`, `range`, `MZ0909`, `MZ0960`–`MZ0964`; `MZ0105` moves to the type parser with its tests unchanged | `map(K, V)` exists, and an example builds a list and a map and transforms them in a function                                                                                                           |
+| C8      | record construction (`MZ0808`), methods, `self`, `MZ0970`–`MZ0972`                                                                                                                             | **a record has a method**. The row stays 🟡: its generic-function and interface clauses are deferred (§11.3, §20 Q8)                                                                                   |
 
 All five touch `expr.rs`. The order they merge in is the owner's; each rebases on whatever merged
 before it, and none rewrites another's codes.
@@ -1378,17 +1622,36 @@ owner's yes, no or change before the wave that builds it.**
     clusters (what a person counts).
 12. **Contextual words or keywords.** The words of §1 are contextual, as RFC-0011's were, so
     `KEYWORDS` stays at 23. `and`, `or`, `let`, `var`, `return`, `while`, `try` and `self` could
-    be keywords instead; for a reader the difference is nil, for the lexer it is simpler.
+    be keywords instead; for a reader the difference is nil, for the lexer it is simpler. And
+    the bans §1 keeps have a cost RFC-0011 did not pay: no binding or `fn` may be named `ok` or
+    `error`, and no record or enum `map`, `set`, `float` or `result`, so a model that writes
+    `let error = …` or `record result` gets `MZ0921`. §1 already allows the type names as
+    bindings and `ok` / `error` as variants, the commonest cases. Are the remaining bans worth
+    their round trip?
 13. **The positive option form in views.** A function body narrows on `when x is not none` (§8).
     Should views accept it too, amending RFC-0008 §4?
 14. **Handler conditions.** RFC-0011's handler conditions stay a sub-grammar. Should handlers take
     §3's expressions once they exist, and should `at_least` / `at_most` then retire from them?
+    Two divergences wait on the answer. `in` with one text literal on its right is equality
+    membership in a handler and, in a function body, a diagnostic pointing to `s.contains(t)`
+    (§3.3); and a record value is `problem error "x"` in a handler and `problem(error = "x")` in
+    a program (§11.1). Should handlers move to the program forms, each with an `exact` fix?
 15. **Copies.** Value semantics lowers to clones (§14.1). When does a copy-on-write
     representation become worth its complexity: before the public suites run, or after?
 16. **Recursion depth.** A 64 MiB stack, and an abort past it (§4.3). Is a depth limit that traps
     worth the code it needs in the lowering?
-17. **The file name.** RFC-0001 §7.4 leans to a component's name matching its file name. Should
-    `program hello` have to live in `hello.mz`?
+17. **The file name.** RFC-0007 D3 already proposes "one top-level declaration per file,
+    name-identical", generalising RFC-0001 §7.4, and §1 cites it. This RFC applies it to a
+    program, so `program hello` lives in `hello.mz`. The owner is asked only to confirm that D3
+    covers programs.
 18. **Program-level constants.** A program has no constants: a value used in several functions is
     a zero-parameter `fn` (§6.1). Is that enough for M1, or should `let` be legal at program
     level (RFC-0007 G1.5's derived values)?
+19. **`map`, `filter` and `fold` beside loops.** They are a second form for what `for each` and
+    `push` already do, the iterator-chain vs loop duality RFC-0001 §1.2 excluded (§9.3). Keep
+    both in M1, as this RFC does, or keep loops only and leave the three to P2, which would
+    leave C7's "map, filter, fold" unmet in M1?
+20. **C6 and P2.** C6's "Done when" says the text operations exist "in the standard library (P2)
+    with tests". §10 builds them as built-in methods with tests, before P2 exists. Do built-in
+    methods meet C6, or does C6 wait for P2? If the first, the tracker's wording should change
+    to say so, by the owner's decision, before C6 turns ✅.
