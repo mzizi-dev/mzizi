@@ -10,31 +10,43 @@ It runs `ui-spec` only. Handed `spec.tsx`, which is a registry React component, 
 copying the answer (RFC-0009 BM-1), so `arm.toml` does not list `ui-port`, and the runner
 refuses to start that episode.
 
-## Pinned versions: provisional
+## Pinned versions: from the registry lockfile
 
-| Package                    | Pin      | Why it is here                                   |
-| -------------------------- | -------- | ------------------------------------------------ |
-| `typescript`               | `5.9.3`  | the checker, `tsc`                               |
-| `react`                    | `19.3.0` | the framework                                    |
-| `@types/react`             | `19.3.0` | React's types, which `strict` checks JSX against |
-| `class-variance-authority` | `0.7.1`  | `cva`, the registry's variant system             |
-| `clsx`                     | `2.1.1`  | used by `cn()`                                   |
-| `tailwind-merge`           | `3.7.0`  | used by `cn()`                                   |
+Source: `mzizi-dev/mzizi-registry` at commit `3afeb752253a86b5488867078c2238d2cf62b4f0`,
+read on 2026-10-07.
 
-**These are not yet the registry's pins.** RFC-0009 §1 says the React arm pins from
-`mzizi-dev/mzizi-registry`'s lockfile at the task commit (`3afeb752`), as the Dioxus arm
-does. That lockfile could not be read when this arm was built (2026-09-30). The versions
-above are exact, and are what the npm registry served that day: the latest release of each
-package, except `typescript`. There `7.0.2` is the latest, but it is the native port, and
-RFC-0009 §3 documents the output shape of the JavaScript `tsc`, so `5.9.3` (the last 5.x
-release) is pinned instead. Before a gating run these pins must be replaced with the
-registry lockfile's versions, and this section rewritten as the Dioxus arm's is:
-[`../../READINESS.md`](../../READINESS.md), "What remains", item 1.
+- `pnpm-lock.yaml` has one importer (`.`, the registry's root `package.json`). It declares
+  `typescript`, `react` and `@types/react` exactly (`6.0.3`, `19.2.8`, `19.2.18`) and
+  `class-variance-authority`, `clsx` and `tailwind-merge` by caret range (`^0.7.1`,
+  `^2.1.1`, `^3.6.0`).
+- The lockfile resolves each of the six to one version, the ones in the table, and
+  `@types/react` to `csstype 3.2.3`.
+- The registry's `tsconfig.json` has `strict: true`, `jsx: react-jsx`,
+  `moduleResolution: bundler`, and `@/*` paths with no `baseUrl`.
 
-`sandbox/package-lock.json` is `npm install`'s resolution of those six pins: seven
-packages, each with its `integrity` hash, and `csstype` (a dependency of `@types/react`)
-is the seventh. `setup.sh` installs it with `npm ci`, which fails rather than change the
-lockfile.
+| Package                    | Pin       | Why it is here                                   |
+| -------------------------- | --------- | ------------------------------------------------ |
+| `typescript`               | `6.0.3`   | the checker, `tsc`                               |
+| `react`                    | `19.2.8`  | the framework                                    |
+| `@types/react`             | `19.2.18` | React's types, which `strict` checks JSX against |
+| `class-variance-authority` | `0.7.1`   | `cva`, the registry's variant system             |
+| `clsx`                     | `2.1.1`   | used by `cn()`                                   |
+| `tailwind-merge`           | `3.6.0`   | used by `cn()`                                   |
+
+`sandbox/package.json` pins all six exactly. `sandbox/package-lock.json` is `npm install`'s
+resolution of them: seven packages, `csstype` the seventh. Each of the seven has the same
+version and the same `integrity` hash as in the registry's `pnpm-lock.yaml`. `setup.sh`
+installs it with `npm ci`, which fails rather than change the lockfile. The versions were
+copied in by hand. Nothing here reads the registry, and CI never fetches them (`AGENTS.md`,
+"Repo boundaries").
+
+`typescript` 6.0 is still the JavaScript `tsc`, whose output shape RFC-0009 §3 documents
+(7.0 is the native port). It deprecates `baseUrl` (TS5101), so `sandbox/tsconfig.json` has
+none, as the registry's has none. `paths` resolve from the `tsconfig.json`'s directory.
+
+These pins replaced provisional ones on 2026-10-07: `typescript` `5.9.3`, `react` and
+`@types/react` `19.3.0`, `tailwind-merge` `3.7.0`, the npm registry's versions on
+2026-09-30, when the registry lockfile could not be read.
 
 ## Support stubs: `cn()` only
 
@@ -75,6 +87,9 @@ candidate.tsx(2,72): error TS2304: Cannot find name 'y'.
 ```
 
 tsc exits 2 on that file. `check.sh` exits 1, because the diagnostics name the candidate.
+
+With `typescript` `6.0.3` (2026-10-07), `../../prompts/verify-guide.sh` on the React guide
+still matches both of its wrong-on-purpose blocks' output byte for byte.
 
 **Not a CI requirement.** Node is needed only on the machine that runs benchmark episodes.
 The runner's tests use in-process fakes, and CI never runs `setup.sh` or `check.sh`
