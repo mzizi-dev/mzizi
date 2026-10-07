@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — a survey of the top 10 languages, feature by feature (2026-10-07)
+
+- **`design/LANGUAGE-SURVEY.md`** surveys Python, JavaScript, TypeScript, Java, C#, Go, C, C++, Rust and Swift, checked against the TIOBE Index (September 2026) and the Stack Overflow Developer Survey (2025), and names the languages they rank that it does not cover (SQL, PHP, R, Visual Basic, Kotlin). It lists 63 deduplicated features (9 adopt, 38 improve, 3 already-has, 13 reject), each with a one-line Mzizi design, a one-line Rust lowering and its tracker row; says what RFC-0013 (Tier 1) and the future Tier 2 and Tier 3 RFCs must decide; maps each "do better" goal to an RFC-0009 task family or a proposed new task; and lists the agent failure modes reported for each language with the design choice aimed at each. Refs #69. **Design only:** nothing in it is implemented, and it measures nothing. Linked from `design/ROADMAP.md`.
+
 ### Security — deep nesting no longer crashes `mz`, and a file name can no longer write into `mz build`'s output (2026-10-07)
 
 - **Nesting is capped at 64 blocks, with the new error `MZ0411`.** The parser and every pass after it recurse once per nested block. 5,000 nested view elements or handler `when`/`if` blocks aborted `mz check`, `contract`, `outline`, `ir` and `build` with a stack overflow, which SECURITY.md lists as a vulnerability. The first block past that depth now gets `MZ0411`, once per file, and every such block is skipped by counting block openers against `end`s, without recursion. The skip classifies lines with the same rules the parser uses (`view_line_kind`, `handler_line_kind`), so it stops where the parser would: at the matching `end`, a declaration word, `end component`/`end service`, or the next `route`. Blocks it skipped that are still open when it stops go back on the parser's block stack, so the `MZ0204` that follows names every one and its fix inserts exactly the missing `end`s. Measured with the release binary: 100,000 nested rows gave one `MZ0411` in 211 ms, where 5,000 had aborted. The repo's deepest file nests 9 levels. RFC-0001 §4.7 gains item 8.
