@@ -19,6 +19,8 @@
 //! - [`sha256`] — SHA-256 without a dependency.
 //! - [`summary`] — `summarize`'s aggregation and markdown rendering.
 
+#![forbid(unsafe_code)]
+
 pub mod arm;
 pub mod endpoint;
 pub mod episode;

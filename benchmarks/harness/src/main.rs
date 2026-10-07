@@ -21,6 +21,8 @@
 //! reference's (`mzizi_benchmark_harness::slot_fact`); `mzbench` passes it for a task whose
 //! `task.toml` sets `score_slots = true`.
 
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 

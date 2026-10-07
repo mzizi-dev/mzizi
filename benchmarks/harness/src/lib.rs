@@ -33,6 +33,7 @@
 //! fixed shapes. What it does not recognise, it does not read — and a reference fact the
 //! candidate cannot be shown to satisfy is a defect, never a silent pass (RFC-0006 FM-12).
 
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 use std::collections::{BTreeMap, BTreeSet};

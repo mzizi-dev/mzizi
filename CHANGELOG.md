@@ -17,6 +17,26 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — deep nesting no longer crashes `mz`, and a file name can no longer write into `mz build`'s output (2026-10-07)
+
+- **Nesting is capped at 64 blocks, with the new error `MZ0411`.** The parser and every pass after it recurse once per nested block. 5,000 nested view elements or handler `when`/`if` blocks aborted `mz check`, `contract`, `outline`, `ir` and `build` with a stack overflow, which SECURITY.md lists as a vulnerability. The first block past that depth now gets `MZ0411`, once per file, and every such block is skipped by counting block openers against `end`s, without recursion. The skip classifies lines with the same rules the parser uses (`view_line_kind`, `handler_line_kind`), so it stops where the parser would: at the matching `end`, a declaration word, `end component`/`end service`, or the next `route`. Blocks it skipped that are still open when it stops go back on the parser's block stack, so the `MZ0204` that follows names every one and its fix inserts exactly the missing `end`s. Measured with the release binary: 100,000 nested rows gave one `MZ0411` in 211 ms, where 5,000 had aborted. The repo's deepest file nests 9 levels. RFC-0001 §4.7 gains item 8.
+- **`mz build` escapes the source file's name in the comments it writes.** The `.mz` file's name goes into a `//!` comment in the generated `main.rs` and a `#` comment in its `Cargo.toml`. A file whose name was `x`, a newline, `fn injected() {}`, a newline and `.mz` put `fn injected() {}` into `main.rs` as code; a `[dependencies…]` line would have gone into `Cargo.toml` the same way. Control characters, invisible and bidirectional format characters, and `\` itself are now written as escapes, so the comment reads back one way (`x\nfn injected() {}\n.mz`) and holds none of the bidi overrides rustc rejects in comments. Other text, `café` included, is written as it is. The same escaping now applies to each contract `example`'s text, which `mz build` writes into a `///` comment above its generated test. `compiler/tests/lower.rs` holds it.
+- **`compiler/tests/robustness.rs`** (8 tests, no dependencies) holds the compiler to SECURITY.md's "terminates with a diagnostic on every input". It runs `check`, `contract`, `fix` and its re-check, the NDJSON writer, `outline`, the IR and service lowering over:
+  - 480 seeded random edits of the repo's `.mz` files;
+  - 300 runs of random grammar tokens;
+  - 200 runs of random bytes;
+  - nesting up to 10,000 deep;
+  - 1 MiB lines.
+
+  Each runs on its own thread, with a 1 MiB stack (the smallest main thread `mz` gets, on Windows) and a deadline, and a failure prints its seed. Each case's label is written to `robustness-last-case-<test>.txt` in Cargo's test temp directory before it runs, so a stack-overflow abort still names it. Three further tests hold the skip to the parser's rules. Nesting full of attributes, strings, doc lines, `else`, `nothing` and `match` leaves no error after the skipped block. A short deep block before `end component` is reported once (`MZ0204`), as under the cap, with a fix that inserts exactly the missing `end`s. A deep handler, even one short an `end`, does not swallow the next route. A one-off run with 100 times as many cases on three other seeds (about 144,000 edited files and 150,000 token and byte cases) found no panic or hang.
+
+- **The compiler and the three benchmark crates are `#![forbid(unsafe_code)]`**, library and binary. None had `unsafe` code; now none can gain it without removing the attribute. The runtime `mz build` emits already was.
+- Tests: 306 in the compiler crate (was 297), 437 in the workspace (was 428), in 19 suites.
+
+### Changed — the crate descriptions say what the crates do today (2026-10-07)
+
+- **`compiler/Cargo.toml`'s `description`** said the crate was a "front end — lexer, recovering parser, and the agent NDJSON diagnostic protocol". It now lists what `mz` has: the name and type resolver, exact fixes, contract evaluation, the content-addressed IR, and lowering of a `service` to a local Rust + axum package. It also says no component lowers yet. **`benchmarks/runner/Cargo.toml`'s** named only the Mzizi and Dioxus arms. It now names the five arms under `benchmarks/arms`, and says backend episodes are not yet scored with probes. Metadata only: no behaviour changes, and nothing is published (`publish = false`).
+
 ### Security — the workflows are pinned, audited and kept current (2026-10-07)
 
 - **Every action in `.github/workflows` is pinned to a commit SHA**, with the ref it was read from in a comment: `actions/checkout` v5.1.0, `dtolnay/rust-toolchain` stable and `Swatinem/rust-cache` v2.9.2 (#62). Every checkout that does not push sets `persist-credentials: false`. Before this, 11 `uses:` lines in `ci.yml` and `changelog.yml` were mutable tags, which the org's Semgrep rule fails as soon as a pull request touches the file.
