@@ -28,16 +28,35 @@ like that will be measured.
 
 For each program in [`programs/`](programs/), three binaries:
 
-| Variant          | What it is                                                                                                                                                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mzizi`          | `mz build programs/<name>.mz --out …`, then `cargo build --release --offline`. Every `int` operation is a call to a checked helper that traps (exit 101), and the package sets `overflow-checks = true` as well. |
-| `rust_unchecked` | [`rust/src/bin/<name>.rs`](rust/src/bin/), built with `cargo build --release`: Rust's release defaults, so overflow wraps, unchecked.                                                                            |
-| `rust_checked`   | The same source, built with `--profile release-checked` ([`rust/Cargo.toml`](rust/Cargo.toml)): `release` plus `overflow-checks = true`, so overflow panics (exit 101), the same safety as Mzizi.                |
+| Variant          | What it is                                                                                                                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mzizi`          | `mz build programs/<name>.mz --out …`, then `cargo build --release --offline`. Every `int` operation is a call to a checked helper that traps (exit 101), and the package sets `overflow-checks = true` as well.                                                          |
+| `rust_unchecked` | [`rust/src/bin/<name>.rs`](rust/src/bin/), built with `cargo build --release`: Rust's release defaults, so overflow wraps, unchecked.                                                                                                                                     |
+| `rust_checked`   | The same source, built with `--profile release-checked` ([`rust/Cargo.toml`](rust/Cargo.toml)): `release` plus `overflow-checks = true`, so overflow on `+`, `-`, `*` and unary `-` panics (exit 101), as it traps (exit 101) in Mzizi. The differences are listed below. |
 
 The Rust references are hand-written, std only, and follow the Mzizi program's algorithm,
 recursion included, because the foundation slice has no loops (RFC-0013 §18.1); a loop would
 measure a different program. Each runs its work on a thread with a 64 MiB stack, as the
 lowered Mzizi program does. The two Rust variants differ only in the one profile setting.
+
+`rust_checked` matches Mzizi on integer overflow, not on everything. Read from
+`compiler/src/run.rs` (the lowered program's runtime) and checked against `rustc`:
+
+- **Overflow on `+`, `-`, `*` and unary `-`.** Both stop with exit status 101, by different
+  routes. Mzizi checks each operation explicitly, writes one line
+  (`mz: trap MZ0991 at <file>:<line>:<col>: integer overflow in …`) and calls
+  `process::exit(101)`. `rust_checked` panics on its worker thread, unwinds, and the main
+  thread's `join` fails, which panics again and exits 101. `rust_unchecked` wraps.
+- **Division or remainder by zero, and `int` minimum `/ -1`.** Rust panics here in both
+  profiles, because `overflow-checks` does not govern these, so `rust_unchecked` is checked
+  too. Mzizi traps. All three exit 101.
+- **`int` minimum `% -1`.** Mzizi returns 0 (`wrapping_rem`; RFC-0013 §4.1 defines it). Rust
+  panics in both profiles.
+- **A failed write to standard output** (a closed pipe). Mzizi's `print` exits 141. Rust's
+  `println!` panics, so the reference exits 101.
+
+None of the four programs reaches any of these cases. Their outputs are compared byte for byte,
+and only runs that succeed are timed.
 
 | Program       | What it stresses                                                                                    |
 | ------------- | --------------------------------------------------------------------------------------------------- |
@@ -67,9 +86,12 @@ only, so nothing is downloaded. Each build gets its own empty target directory, 
 (`perf.json`, `perf.md`, and the build directories under `build/`). It needs Linux tools:
 bash 4 or later, GNU `date` (for `%N`) and coreutils; it stops with exit 2 without them.
 
-The exit status is 0 when every program's three outputs match, 1 when any differs or a
-binary exits non-zero (such a program is reported and not timed), 2 on a usage error or a
-missing tool, and 3 when a build fails.
+The exit status is 0 when every program's three outputs match and every timed run succeeds.
+It is 1 when an output differs, or when a binary, `mz check` or GNU `time` exits non-zero at
+any point. That program is reported and not timed, the others still are, and `perf.json` and
+`perf.md` are still written. It is 2 on a usage error, a missing tool, or a program name that
+is not lower-case letters, digits and `_` (names are checked before anything is built). It is
+3 when a build fails.
 
 A new program needs three files: `programs/<name>.mz`, `programs/<name>.expected` and
 `rust/src/bin/<name>.rs`. Cargo finds the binary by its file name, so no manifest changes.
@@ -112,6 +134,7 @@ One JSON document, schema `mzizi-perf/1`:
     {
       "name": "fib",
       "output_identical": true,
+      "error": null,
       "mz_check_ms": 4.16,
       "variants": {
         "mzizi": {
@@ -130,8 +153,11 @@ One JSON document, schema `mzizi-perf/1`:
 ```
 
 `mode` is `measure` or `check-only`. In `check-only` mode `runs` and `mz_check_ms` are `null`,
-and each variant has only `build_ms`; so does a program whose `output_identical` is `false`,
-in either mode, because it is not timed. `max_rss_kb` and `machine.max_rss_tool` are `null`
+and each variant has only `build_ms`. So does a failed program, in either mode, because it is
+not timed. Its `error` says what failed first, for example `"rust_checked exited 101"` or
+`"mzizi printed something other than fib.expected"`; `error` is `null` otherwise.
+`output_identical` is `false` when the failure was in the output check, and `true` when
+the outputs matched and a later timed run failed. `max_rss_kb` and `machine.max_rss_tool` are `null`
 without GNU `time`. Every time is in milliseconds, to two decimals.
 
 `perf.md` is the same results as one Markdown table, headed by the machine line. It adds two

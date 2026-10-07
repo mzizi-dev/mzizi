@@ -141,9 +141,12 @@ and run `cargo deny check` from the repository root.
 
 ### What CI does not check
 
-The `lowering` job gates one lowered package: `mz build` of `examples/registry.mz`, which it
-compiles, tests and serves. No component lowers, and there is no runtime and no rendering, so
-there is nothing more there to gate.
+The `lowering` job gates one lowered service: `mz build` of `examples/registry.mz`, which it
+compiles, tests and serves. It also runs `mz run` on every example program and diffs its output
+against `examples/<name>.expected`, and runs `benchmarks/perf/run.sh --check-only`, which
+builds each perf-suite program and its two Rust references and checks that all three print the
+committed `.expected`; it times nothing. No component lowers, and there is no runtime and no
+rendering, so there is nothing more there to gate.
 
 Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
 component against its own declarations: its variant tables, its view tree, its prop

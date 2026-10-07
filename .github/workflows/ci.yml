@@ -200,9 +200,11 @@ jobs:
       # hand-written Rust references, overflow unchecked and checked), and all three must
       # print the committed .expected. Correctness only: nothing is timed, because a shared
       # runner is too noisy to gate on. Every package is std only and built --offline, and
-      # the debug `mz` from the step above is reused, since nothing here times it.
+      # the debug `mz` from the step above is reused, since nothing here times it. Its 12
+      # throwaway target directories go under RUNNER_TEMP, outside ./target, so the Rust
+      # cache does not save them.
       - name: perf suite builds and agrees (benchmarks/perf, --check-only)
-        run: MZ=target/debug/mz benchmarks/perf/run.sh --check-only
+        run: MZ=target/debug/mz benchmarks/perf/run.sh --check-only --out "$RUNNER_TEMP/perf"
 
   secrets:
     name: secret scan
