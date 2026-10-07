@@ -1,0 +1,102 @@
+name: Supply chain
+
+# The dependency audit from issue #62 (shift-left security). `cargo deny` asks whether
+# what a fresh build fetches today is acceptable: no RustSec advisory, an allowed
+# license, crates.io as the only source (deny.toml).
+#
+# The org's required workflows already run Semgrep, dependency review and a lockfile
+# audit on every pull request, so this does not repeat them. Their audit runs only
+# when a lockfile changes, and this repo gitignores Cargo.lock, so it never audits
+# here: this job is the Rust audit for this repo. With no lockfile it resolves the
+# newest versions the manifests allow, and it runs weekly because an advisory can be
+# published against a crate this repo already uses with no change here at all.
+#
+# It needs no secret. It reaches outside crates.io for its binary and the RustSec
+# advisory database, both on GitHub, as the `secret scan` job fetches gitleaks.
+# Actions are pinned to commit SHAs (the org Semgrep rule
+# github-actions-mutable-action-tag); the comment names the ref each SHA was read from.
+#
+# `workflow audit` runs zizmor over .github/workflows: template injection, unpinned or
+# impostor actions, credentials left on disk, over-broad permissions and dangerous
+# triggers. Semgrep checks one of those; zizmor checks the workflow model as a whole.
+# Its online audits read the action repositories with the run's read-only token.
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main, staging, "claude/**"]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+
+      # The release binary, checked against the SHA-256 the release publishes, as the
+      # `secret scan` job installs gitleaks: no `cargo install` compile on every run.
+      - name: Install cargo-deny
+        env:
+          VERSION: "0.20.2"
+        run: |
+          set -euo pipefail
+          base="https://github.com/EmbarkStudios/cargo-deny/releases/download/${VERSION}"
+          file="cargo-deny-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -sSL --fail -o "/tmp/${file}" "${base}/${file}"
+          curl -sSL --fail -o "/tmp/${file}.sha256" "${base}/${file}.sha256"
+          echo "$(cat "/tmp/${file}.sha256")  /tmp/${file}" | sha256sum --check
+          tar -xzf "/tmp/${file}" -C /tmp
+          sudo install "/tmp/cargo-deny-${VERSION}-x86_64-unknown-linux-musl/cargo-deny" /usr/local/bin/
+          cargo-deny --version
+
+      - name: cargo deny check (workspace)
+        run: cargo-deny --config deny.toml check
+
+      # B1's Rust reference is its own workspace root, so the run above does not see
+      # it. It pins the same axum and tokio as `mz build`'s generated package
+      # (compiler/src/lower.rs, PINS), so this run also covers most of what the
+      # `lowering` job builds.
+      - name: cargo deny check (B1 reference, axum + tokio)
+        run: >-
+          cargo-deny
+          --manifest-path benchmarks/tasks/b1-routing/reference-rust/Cargo.toml
+          --config deny.toml
+          check
+
+  workflow-audit:
+    name: workflow audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        env:
+          VERSION: "1.30.1"
+        # A venv, not `pip --user`: the runner's system Python is externally managed.
+        run: |
+          python3 -m venv /tmp/zizmor
+          /tmp/zizmor/bin/pip install --quiet "zizmor==${VERSION}"
+
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: /tmp/zizmor/bin/zizmor --format plain .github/workflows

@@ -16,9 +16,10 @@ the design, not the state: `mz build` lowers a `service` to a local Rust + axum 
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
-network access it needs is to crates.io, for the index, the benchmark runner's two pinned
+network access its builds need is to crates.io, for the index, the benchmark runner's two pinned
 crates, and the pinned `axum` and `tokio` that CI's `lowering` job builds a generated service
-against (see "Build, test, run"). See "Repo boundaries" below before adding any dependency that would break that.
+against (see "Build, test, run"). Two CI tools also come from GitHub releases: gitleaks for
+the `secret scan` job, and cargo-deny with the RustSec advisory database for `supply chain`. See "Repo boundaries" below before adding any dependency that would break that.
 
 ## The one rule that overrides the others
 
@@ -50,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 294 tests (425 in the workspace)
+cargo test                                                              # 297 tests (428 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -67,8 +68,11 @@ from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` e
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
 `mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
-`axum` and `tokio` from crates.io), and the lint gate (`lint.yml`: actionlint, JSON validity,
-prettier, markdownlint, yamllint) are not listed here.
+`axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
+`cargo deny check` against [`deny.toml`](./deny.toml), and zizmor over the workflows), the org's required workflows (Semgrep,
+dependency review, a lockfile audit and a release version check, which run on every pull
+request from outside this repo), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
+yamllint) are not listed here.
 
 ```bash
 # job `compiler` — run from compiler/
@@ -226,3 +230,12 @@ Any substantial build, migration, investigation or multi-step task gets a GitHub
 - Post progress, decisions and a hand-off note (what's done, what's left, branch names) as issue comments — at each merge and before a session or agent finishes.
 - Work spanning repos gets a tracking issue that links the per-repo issues.
 - Never put secrets, credential status or exploitable detail in issues on public repos.
+
+## Dev skills, progress reports and the merge gate
+
+Load the Mzizi **dev skills** before starting work: `mzizi_get_skills category=dev` on the Mzizi MCP (`mcp.mzizi.dev`), or `@nyuchi/mzizi-skills` from npm. They are `digital-hygiene` and `progress-report`.
+
+- **Digital hygiene.** Check free disk before starting, clone only under `$TMPDIR`, share build caches, and audit, then delete, your clones once the work merges (`digital-hygiene` skill).
+- **Clone isolation.** Clone only into a directory unique to you; never touch another agent's.
+- **Progress reports.** All dev work runs on a 10-minute progress-report loop (`progress-report` skill): measured bars, what changed, and a final "Needs you:" line. Report ticks never publish, release, merge or deploy without the owner's approval.
+- **Merge gate.** Merge only when the work is complete, CI is green, it's verified at runtime, and `/code-review` has run with findings resolved.

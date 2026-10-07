@@ -1,7 +1,7 @@
 # Writing one registry component in TypeScript with React
 
 You are writing one registry component as a single `.tsx` file, in TypeScript with
-**React 19.3** and **`class-variance-authority` 0.7.1**. Your file is checked with
+**React 19.2** and **`class-variance-authority` 0.7.1**. Your file is checked with
 `tsc --noEmit` under `strict: true`, as one file of a small project. Type errors fail it.
 
 ## File shape
