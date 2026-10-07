@@ -20,6 +20,8 @@
 //! This crate does not start anything the task does not name: [`verify`] runs each
 //! reference's own `start.sh`, and [`serve_and_probe`] runs whatever command it is given.
 
+#![forbid(unsafe_code)]
+
 use std::collections::BTreeMap;
 use std::io::Read as _;
 use std::net::{SocketAddr, TcpListener, TcpStream};

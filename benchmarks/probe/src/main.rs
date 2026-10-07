@@ -9,6 +9,8 @@
 //! Output is one NDJSON line per fact, then a summary line. Exit status: 0 when every fact
 //! held, 1 when one did not (or the server never started), 2 for a usage or setup error.
 
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;

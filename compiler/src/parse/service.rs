@@ -510,6 +510,13 @@ impl Parser {
                 return (out, Stop::Abrupt(self.peek_span()));
             }
             let span = self.peek_span();
+            // Past the nesting cap a `when` (or `if`) is skipped whole: see `skip_too_deep`.
+            if stack.len() >= super::MAX_NESTING
+                && self.handler_line_kind() == super::LineKind::Opens
+            {
+                self.skip_too_deep(stack, span, true);
+                continue;
+            }
             match self.peek().clone() {
                 Tok::Keyword("end") => {
                     self.parse_end(stack);
