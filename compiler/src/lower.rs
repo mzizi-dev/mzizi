@@ -53,6 +53,11 @@ fn pin(name: &str) -> &'static str {
 
 /// Lower a checked service. `source` is the file name it came from, for the header.
 pub fn lower(service: &Service, source: &str) -> Package {
+    // `source` is the `.mz` file's name, written into a `//!` comment in `main.rs` and a
+    // `#` comment in `Cargo.toml`. A file name can hold a newline, which would end either
+    // comment and put the rest of the name into the generated code, so it is escaped
+    // (`comment_safe`).
+    let source = &comment_safe(source);
     let mut fixtures = Vec::new();
     for r in &service.routes {
         files_in(&r.handler.body, &mut fixtures);
@@ -129,6 +134,30 @@ serde_json = "{sj}"
         hbu = pin("http-body-util"),
         sj = pin("serde_json"),
     )
+}
+
+/// `s` with its control characters (a newline above all), its invisible and
+/// bidirectional format characters, and `\\` itself written as escapes, so the result
+/// reads back one way and can sit inside a `//` or `#` comment and stay there: no newline
+/// to end the comment, and no bidirectional override for rustc to reject
+/// (`text_direction_codepoint_in_comment`) or for a reviewer to misread. Other text,
+/// `café` included, is written as it is.
+fn comment_safe(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        let unsafe_here = c == '\\'
+            || c.is_control()
+            || matches!(
+                c,
+                '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}'
+            );
+        if unsafe_here {
+            out.extend(c.escape_default());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// A Rust string literal for `s`.
@@ -507,7 +536,7 @@ fn tests(service: &Service) -> String {
         writeln!(
             out,
             "\n    /// `{}`\n    #[tokio::test]\n    async fn example_line_{}() {{\n        let got = send({}, {}).await;\n        assert!(holds(&got, {}), \"{{}}: {{}}\", {}, describe(&got));\n    }}",
-            written.replace('`', "'"),
+            comment_safe(&written.replace('`', "'")),
             clause.span.start_line,
             lit(method.http()),
             lit(target),

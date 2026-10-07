@@ -40,9 +40,10 @@ What exists is the front end of a language whose first domain is UI components:
 - **Types:** `bool`, `int`, `text`, enums with data columns, records, `list(T)`, `option(T)`,
   `event(T)` (`compiler/src/ast.rs`, [RFC-0008](./design/RFC-0008-types-collections-records.md)).
 - **Toolchain:** `mz check` (with `--agent`, NDJSON diagnostics), `mz fix`, `mz contract`,
-  `mz outline`, and `mz build` for a service only; a recovering parser, a resolver, a
-  content-addressed IR ([RFC-0003](./design/RFC-0003-ir.md)). About 12,640 lines in
-  `compiler/src`, 428 tests (`cargo test --workspace`).
+  `mz outline`, and `mz build` for a service only; a recovering parser (blocks nest at most
+  64 deep, past which one `MZ0411`; RFC-0001 §4.7 item 8), a resolver, a
+  content-addressed IR ([RFC-0003](./design/RFC-0003-ir.md)). About 12,916 lines in
+  `compiler/src`, 437 tests (`cargo test --workspace`).
 - **Written in Mzizi:** nine primitives (`primitives/`), two component examples and one
   service, `examples/registry.mz` (`examples/`).
 - **The backend slice ([RFC-0011](./design/RFC-0011-handlers.md), #29–#33):** a `service` with

@@ -23,6 +23,8 @@
 //! §1.6's "`mz check` runs them as part of the loop" is narrowed by RFC-0006 §7 for that
 //! reason.
 
+#![forbid(unsafe_code)]
+
 use std::process::ExitCode;
 use std::time::Instant;
 

@@ -21,6 +21,8 @@
 //! Exit status: 0 success (`submit`: CLEAN), 1 `submit` recorded ERRORS, 2 refused / usage /
 //! setup error.
 
+#![forbid(unsafe_code)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
