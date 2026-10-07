@@ -110,19 +110,22 @@ in a test fixture.
 ### The supply chain
 
 [`.github/workflows/supply-chain.yml`](./.github/workflows/supply-chain.yml) checks
-dependencies, not code (#62):
+dependencies, not code (#62). **`cargo deny`** runs `cargo deny check` with
+[`deny.toml`](./deny.toml) over the workspace and over B1's Rust reference, which pins the
+same `axum` and `tokio` as `mz build`'s generated package. Any RustSec advisory fails it, so
+does a license `deny.toml` does not allow, and so does a source other than crates.io.
+`Cargo.lock` is gitignored, so it checks the versions a fresh build would fetch, and it also
+runs weekly: an advisory can land against a crate this repo already uses with no change here.
+A pull request that adds a crate with a new license widens `deny.toml`'s `allow` list in the
+same pull request.
 
-- **`cargo deny`** runs `cargo deny check` with [`deny.toml`](./deny.toml) over the workspace
-  and over B1's Rust reference, which pins the same `axum` and `tokio` as `mz build`'s
-  generated package. Any RustSec advisory fails it, so does a license `deny.toml` does not
-  allow, and so does a source other than crates.io. `Cargo.lock` is gitignored, so it checks
-  the versions a fresh build would fetch, and it also runs weekly: an advisory can land
-  against a crate this repo already uses with no change here. A pull request that adds a
-  crate with a new license widens `deny.toml`'s `allow` list in the same pull request.
-- **`dependency review`** runs on pull requests only and fails one that adds a dependency
-  with a known vulnerability of any severity.
+The org's required workflows also run on every pull request, from outside this repo:
+Semgrep over the changed files, dependency review, a lockfile audit and a release version
+check. Their audit runs only when a lockfile changes, and `Cargo.lock` is gitignored here, so
+`cargo deny` is this repo's Rust audit. Semgrep fails a workflow step whose action is not
+pinned to a commit SHA, so pin new `uses:` lines the way `supply-chain.yml` does.
 
-To run the first locally, install [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
+To run `cargo deny` locally, install [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
 and run `cargo deny check` from the repository root.
 
 ### What CI does not check
