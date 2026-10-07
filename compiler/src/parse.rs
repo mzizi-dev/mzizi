@@ -50,6 +50,7 @@ pub fn parse_program(src: &str, file: &str) -> (Option<Program>, Vec<Diagnostic>
         diags: Vec::new(),
         unwinding: false,
         service: None,
+        skipped: Vec::new(),
     };
     let component = p.parse_file();
     let program = match p.service.take() {
@@ -64,6 +65,11 @@ pub fn parse_program(src: &str, file: &str) -> (Option<Program>, Vec<Diagnostic>
                 .diags
                 .iter()
                 .any(|m| matches!(m.code, "MZ0801" | "MZ0601") && m.span == d.span)
+    });
+    diags.retain(|d| {
+        !p.skipped
+            .iter()
+            .any(|&(from, to)| (from..=to).contains(&d.span.start_line))
     });
     diags.append(&mut p.diags);
     (program, diags)
@@ -125,6 +131,9 @@ struct Parser {
     unwinding: bool,
     /// The service, when the file holds one rather than a component (RFC-0011).
     service: Option<Service>,
+    /// Line ranges the parser skipped whole as one error (a `match` block, `MZ0410`); the
+    /// lexer's diagnostics inside them are dropped.
+    skipped: Vec<(u32, u32)>,
 }
 
 impl Parser {
@@ -1312,7 +1321,13 @@ impl Parser {
         }
 
         let tag = match self.peek().clone() {
-            Tok::Keyword(k) if matches!(k, "when" | "match" | "for") => {
+            // `match` is a reserved word but not a construct (#54): one diagnostic for the
+            // whole block, which is left out of the tree.
+            Tok::Keyword("match") => {
+                self.skip_match(span);
+                return None;
+            }
+            Tok::Keyword(k) if matches!(k, "when" | "for") => {
                 self.bump();
                 k.to_string()
             }
@@ -1411,6 +1426,52 @@ impl Parser {
             line: span.start_line,
         });
         self.element_body(stack, tag, span, attrs)
+    }
+
+    /// `match` used to be accepted silently as an element named `match` with its subject as
+    /// an unchecked tail (#54). The per-variant form is one `when v is x` block per arm, so
+    /// there is no single replacement to offer, `exact` or `guess`: the diagnostic names the
+    /// form and carries no fix. Its arms come in whatever shape the writer knows (`case x`
+    /// blocks with or without `end`, Rust's `x => …`, an `else`), so none of them is parsed:
+    /// every line indented past `match` is skipped, then its `end`, and the lexer's
+    /// diagnostics on those lines are dropped (`skipped`), so the block is one error.
+    fn skip_match(&mut self, span: Span) {
+        self.bump();
+        // The subject is quoted back when it is one name, the usual `match size`.
+        let subject = match (self.peek(), self.tokens.get(self.pos + 1).map(|t| &t.kind)) {
+            (Tok::Ident(name), Some(Tok::Newline | Tok::Eof | Tok::Doc(_))) => name.clone(),
+            _ => "v".to_string(),
+        };
+        let mut end = span;
+        while !matches!(self.peek(), Tok::Newline | Tok::Eof | Tok::Doc(_)) {
+            end = self.peek_span();
+            self.bump();
+        }
+        self.diags.push(Diagnostic::error(
+            "MZ0410",
+            &self.file,
+            Span {
+                end_line: end.end_line,
+                end_col: end.end_col,
+                ..span
+            },
+            format!(
+                "Mzizi has no `match` — write one `when {subject} is x … end` block per variant, with `else` for the rest"
+            ),
+        ));
+        let mut last = span.start_line;
+        self.recover_line();
+        while !matches!(self.peek(), Tok::Eof) && self.peek_span().start_col > span.start_col {
+            last = self.peek_span().start_line;
+            self.recover_line();
+        }
+        if matches!(self.peek(), Tok::Keyword("end"))
+            && self.peek_span().start_col == span.start_col
+        {
+            last = self.peek_span().start_line;
+            self.recover_line();
+        }
+        self.skipped.push((span.start_line, last));
     }
 
     /// An element's lines after its tag line: attributes, children and `else`, to `end`.
