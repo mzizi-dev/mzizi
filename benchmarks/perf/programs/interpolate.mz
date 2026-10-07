@@ -1,0 +1,36 @@
+## Performance suite (benchmarks/perf): text built by `{…}` interpolation and compared with
+## `is`. For each i from 1 to 200,000 it builds one label by two routes, compares the two,
+## and counts. The time is mostly allocation and formatting, not arithmetic. The last line
+## is the checksum the runner compares.
+program interpolate
+
+  fn main
+    let n = 200000
+    print(label(7, n))
+    print(nest(3, 4))
+    print("checksum {score(1, n, n)}")
+  end fn main
+
+  fn label(i: int, n: int): text
+    return "item {i} of {n}: square {i * i}, cube {i * i * i}, odd {i % 2 is 1}"
+  end fn label
+
+  fn nest(i: int, depth: int): text
+    when depth is 0
+      return "<{i}>"
+    end
+    return "[{depth}:{nest(i, depth - 1)}]"
+  end fn nest
+
+  fn score(lo: int, hi: int, n: int): int
+    when lo is hi
+      when "{label(lo, n)} {nest(lo, 3)}" is "item {lo} of {n}: square {lo * lo}, cube {lo * lo * lo}, odd {lo % 2 is 1} [3:[2:[1:<{lo}>]]]"
+        return lo % 7 + 1
+      end
+      return 0
+    end
+    let mid = (lo + hi) / 2
+    return score(lo, mid, n) + score(mid + 1, hi, n)
+  end fn score
+
+end program interpolate

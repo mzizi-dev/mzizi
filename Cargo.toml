@@ -18,4 +18,7 @@ exclude = [
   "benchmarks/arms/leptos",
   # A backend task's Rust reference is its own package and workspace root (RFC-0009 §2.3).
   "benchmarks/tasks/b1-routing/reference-rust",
+  # The performance suite's hand-written Rust references, its own workspace root
+  # (benchmarks/perf/README.md). CI's `benchmarks` job formats and lints it separately.
+  "benchmarks/perf/rust",
 ]

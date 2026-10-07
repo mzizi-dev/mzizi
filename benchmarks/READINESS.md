@@ -128,6 +128,14 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
    both hold all 59 of its facts. Still open: the runner does not score an episode with
    probes, B2–B5 and the incumbent backend arms do not exist, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
 
+### Not part of the run: runtime performance
+
+[`perf/`](perf/README.md) times the Rust that `mz` lowers a program to against hand-written
+Rust, overflow unchecked and checked. It is measured, not gated: CI checks that each program
+builds three ways and prints the same output, and times nothing. It says nothing about the kill
+criterion, which is about how well models write Mzizi, and none of its numbers is a claim that
+Mzizi is faster.
+
 ## The command
 
 For the `ui-spec` gating run, once items 1–4 are done, on the machine that serves the headline

@@ -120,6 +120,13 @@ jobs:
       - name: cargo clippy -D warnings (workspace)
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Its own workspace root, excluded from the repository's, so `--all` and `--workspace`
+      # above miss it.
+      - name: cargo fmt and clippy (benchmarks/perf/rust, the perf suite's Rust references)
+        run: |
+          cargo fmt --manifest-path benchmarks/perf/rust/Cargo.toml -- --check
+          cargo clippy --offline --manifest-path benchmarks/perf/rust/Cargo.toml --all-targets -- -D warnings
+
       - name: cargo test (harness, runner and probe)
         run: cargo test -p mzizi-benchmark-harness -p mzizi-benchmark-runner -p mzizi-benchmark-probe
 
@@ -188,6 +195,14 @@ jobs:
             target/debug/mz run "$program" > actual.txt
             diff -u "$expected" actual.txt
           done
+
+      # benchmarks/perf: each program built three ways (lowered by `mz build`, and two
+      # hand-written Rust references, overflow unchecked and checked), and all three must
+      # print the committed .expected. Correctness only: nothing is timed, because a shared
+      # runner is too noisy to gate on. Every package is std only and built --offline, and
+      # the debug `mz` from the step above is reused, since nothing here times it.
+      - name: perf suite builds and agrees (benchmarks/perf, --check-only)
+        run: MZ=target/debug/mz benchmarks/perf/run.sh --check-only
 
   secrets:
     name: secret scan

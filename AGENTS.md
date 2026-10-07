@@ -61,7 +61,14 @@ cargo run --bin mz -- ir              ../primitives/card.mz
 cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
 cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
 cargo run --bin mz -- run            ../examples/fib.mz                  # lower a program, build it, run it
+cd .. && benchmarks/perf/run.sh                                         # perf suite: Mzizi vs hand-written Rust, measured
+benchmarks/perf/run.sh --check-only                                     # what CI runs: build and compare output, no timing
 ```
+
+`benchmarks/perf/` times lowered programs against hand-written Rust on the machine it runs
+on ([`benchmarks/perf/README.md`](./benchmarks/perf/README.md)). Its numbers describe that
+machine only and are never a claim that Mzizi is faster; CI gates its correctness, never its
+timing.
 
 Run before every push. These are the commands in
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), job by job. The `mz` loops are copied
@@ -69,8 +76,8 @@ from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` e
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
 `mzprobe verify` of the backend task B1 against its Mzizi and axum references, and `mz run`
-of every example program with its output diffed against `examples/<name>.expected`; it
-fetches `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
+of every example program with its output diffed against `examples/<name>.expected`, and
+`benchmarks/perf/run.sh --check-only`; it fetches `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
 `cargo deny check` against [`deny.toml`](./deny.toml), and zizmor over the workflows), the org's required workflows (Semgrep,
 dependency review, a lockfile audit and a release version check, which run on every pull
 request from outside this repo), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
