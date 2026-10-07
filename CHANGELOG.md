@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — the crate descriptions say what the crates do today (2026-10-07)
+
+- **`compiler/Cargo.toml`'s `description`** said the crate was a "front end — lexer, recovering parser, and the agent NDJSON diagnostic protocol". It now lists what `mz` has: the name and type resolver, exact fixes, contract evaluation, the content-addressed IR, and lowering of a `service` to a local Rust + axum package. It also says no component lowers yet. **`benchmarks/runner/Cargo.toml`'s** named only the Mzizi and Dioxus arms. It now names the five arms under `benchmarks/arms`, and says backend episodes are not yet scored with probes. Metadata only: no behaviour changes, and nothing is published (`publish = false`).
+
 ### Security — the workflows are pinned, audited and kept current (2026-10-07)
 
 - **Every action in `.github/workflows` is pinned to a commit SHA**, with the ref it was read from in a comment: `actions/checkout` v5.1.0, `dtolnay/rust-toolchain` stable and `Swatinem/rust-cache` v2.9.2 (#62). Every checkout that does not push sets `persist-credentials: false`. Before this, 11 `uses:` lines in `ci.yml` and `changelog.yml` were mutable tags, which the org's Semgrep rule fails as soon as a pull request touches the file.
