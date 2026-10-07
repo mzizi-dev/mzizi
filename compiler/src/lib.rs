@@ -24,6 +24,7 @@
 //! assert_eq!(report.error_count(), 0);
 //! ```
 
+#![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 pub mod ast;
