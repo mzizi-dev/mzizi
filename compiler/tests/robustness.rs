@@ -5,8 +5,8 @@
 //! No fuzzing crate: the compiler takes no dependencies, so the inputs come from a small
 //! seeded generator. Each case runs every entry point an untrusted file reaches (`check`,
 //! `check_contract`, `apply_exact_fixes` and its re-check, the NDJSON writer, and, when a
-//! tree comes back, `outline`, the IR and service lowering), on a thread with a deadline,
-//! so a hang fails the test rather than the CI job. A failing case prints its seed and its
+//! tree comes back, `outline`, the IR, service lowering and program lowering), on a thread
+//! with a deadline, so a hang fails the test rather than the CI job. A failing case prints its seed and its
 //! input, so it reproduces.
 
 use std::path::PathBuf;
@@ -60,6 +60,11 @@ fn exercise(src: &str) {
         && report.error_count() == 0
     {
         let _ = mzizi_lang_compiler::lower::lower(&service, file);
+    }
+    if let (Some(Program::Program(program)), report) = check_program(src, file)
+        && report.error_count() == 0
+    {
+        let _ = mzizi_lang_compiler::run::lower(&program, file);
     }
 }
 
@@ -508,4 +513,128 @@ fn long_and_odd_lines_terminate() {
     run("a NUL file", "\u{0}".repeat(10_000));
     run("a BOM and nothing", "\u{feff}".to_string());
     run("empty", String::new());
+}
+
+/// A `program` whose `fn main` holds `body`.
+fn deep_program(body: &str) -> String {
+    format!("program deep\n\n  fn main\n{body}  end fn main\n\nend program deep\n")
+}
+
+/// A program's expressions and `when` blocks under the same cap (`MZ0411`): 100,000
+/// nested parentheses, `not`s, prefix `-`s, `+`s and `<`s on one line, and 5,000 nested
+/// `when`s, each give exactly one diagnostic, `MZ0411`. Before the cap a debug build
+/// aborted at 2,000 parentheses and at 3,000 `when`s.
+#[test]
+fn a_deep_program_is_one_mz0411() {
+    let n = 100_000;
+    let cases = [
+        (
+            "100,000 nested parentheses",
+            format!("{}1{}", "(".repeat(n), ")".repeat(n)),
+        ),
+        ("100,000 `not`s", format!("{}true", "not ".repeat(n))),
+        ("100,000 prefix `-`s", format!("{}1", "- ".repeat(n))),
+        ("100,000 `+`s", format!("1{}", " + 1".repeat(n))),
+        ("100,000 chained `<`s", format!("1{}", " < 1".repeat(n))),
+        (
+            "100,000 nested parentheses in an interpolation",
+            format!("\"{{{}1{}}}\"", "(".repeat(n), ")".repeat(n)),
+        ),
+    ];
+    for (label, value) in cases {
+        let src = deep_program(&format!("    let x = {value}\n    print(\"{{x}}\")\n"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "{label}");
+        run(label, src);
+    }
+    let src = deep_program(&format!(
+        "{}    print(\"in\")\n{}    print(\"after\")\n",
+        "    when true\n".repeat(5_000),
+        "    end\n".repeat(5_000)
+    ));
+    let codes: Vec<_> = check(&src, "case.mz")
+        .diagnostics
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["MZ0411"], "5,000 nested `when`s");
+    run("5,000 nested `when`s", src);
+}
+
+/// A kind of expression nesting: its name, and the expression `n` levels of it deep.
+type Shape = (&'static str, fn(usize) -> String);
+
+/// The deepest programs the cap lets through check clean and lower on the 1 MiB stack, so
+/// the checker's and the lowering's walks stay within the stack too. A program's blocks
+/// and expressions share one budget of 32 levels: the program, the `fn` and the `let`'s
+/// expression take three, and the other 29 are split between nested `when`s and one kind
+/// of expression nesting, each around a `+` chain that makes the operator tree 64 deep
+/// (with `not`, the chain is one shorter and `> 0` is the 64th level). One level more,
+/// of the shape or of `when`s, is `MZ0411`.
+#[test]
+fn the_deepest_program_under_the_cap_checks_and_lowers() {
+    let shapes: [Shape; 4] = [
+        ("parentheses", |n| {
+            format!("{}{}{}", "(".repeat(n), chain(), ")".repeat(n))
+        }),
+        ("calls", |n| {
+            format!("{}{}{}", "f(".repeat(n), chain(), ")".repeat(n))
+        }),
+        ("prefix `-`", |n| format!("{}({})", "- ".repeat(n), chain())),
+        ("`not`", |n| {
+            format!("{}({} > 0)", "not ".repeat(n), chain_of(62))
+        }),
+    ];
+    for (name, shape) in shapes {
+        // The parentheses a prefix operator's operand needs are one level of their own.
+        let room = if name == "parentheses" || name == "calls" {
+            29
+        } else {
+            28
+        };
+        // The `print("{x}")` beside the `let` takes three levels: the statement's
+        // expression, the call's argument and the `{x}`.
+        for whens in [0, 13, 27] {
+            let value = shape(room - whens);
+            let src = deep_main(whens, &value);
+            let errors: Vec<_> = check(&src, "case.mz")
+                .diagnostics
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .map(|d| format!("{} {}", d.code, d.say))
+                .collect();
+            assert_eq!(errors, Vec::<String>::new(), "{whens} `when`s, {name}");
+            let (program, _) = check_program(&src, "case.mz");
+            assert!(matches!(program, Some(Program::Program(_))));
+            run(&format!("{whens} `when`s around {name}"), src);
+            // One level more of the shape is past the cap; one more `when`, too.
+            let over = deep_main(whens, &shape(room - whens + 1));
+            assert_eq!(count(&over, "MZ0411"), 1, "{whens} `when`s, {name} + 1");
+            let over = deep_main(whens + 1, &value);
+            assert_eq!(count(&over, "MZ0411"), 1, "{} `when`s, {name}", whens + 1);
+        }
+    }
+}
+
+/// `1 + 1 + …`, 64 levels deep: the longest chain the cap lets through.
+fn chain() -> String {
+    chain_of(63)
+}
+
+/// `1` and `n` more `+ 1`s: a tree `n + 1` levels deep.
+fn chain_of(n: usize) -> String {
+    format!("1{}", " + 1".repeat(n))
+}
+
+/// `fn main` holding `whens` nested `when`s around `let x = value`, and an `fn f`.
+fn deep_main(whens: usize, value: &str) -> String {
+    format!(
+        "program deep\n\n  fn main\n{}      let x = {value}\n      print(\"{{x}}\")\n{}  end fn main\n\n  fn f(n: int): int\n    return n\n  end fn f\n\nend program deep\n",
+        "    when true\n".repeat(whens),
+        "    end\n".repeat(whens)
+    )
 }
