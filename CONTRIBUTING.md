@@ -363,6 +363,19 @@ through. Each release to `main` publishes the entries added since the previous r
 release notes (`.github/scripts/release_notes.py`), so write the entry for someone reading
 the release.
 
+Install the pre-commit hook once per clone, before your first commit (agents too):
+
+```bash
+scripts/install-hooks.sh   # sets core.hooksPath to .githooks
+```
+
+It refuses a commit when neither the staged changes nor the branch's earlier commits (since
+it left `origin/staging` or `origin/main`, whichever is nearer) touch `CHANGELOG.md`, and runs
+`cargo fmt --all -- --check` when Rust under `compiler/` or `benchmarks/` is staged.
+`MZ_NO_CHANGELOG=1` skips the changelog check, the local twin of the `no-changelog` label.
+The hook is fast on purpose; the six gates below are still what you run before pushing.
+`scripts/test-pre-commit.sh` tests it.
+
 ## Changing the primitives, the examples, or the compiler
 
 - **`primitives/` and `examples/` are verified source, not samples.** Every `.mz` file there
