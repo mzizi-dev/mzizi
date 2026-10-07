@@ -8,7 +8,7 @@ headline model's tokenizer. The `ui` family's budget is **2750 tokens**.
 | `mzizi`  | `mzizi-guide.md`  | 2695   | -2.0%          | 9900  | `58b5632cb648b21913084d64201483eb9d18a011ec997f811c74107ab8860a32` |
 | `dioxus` | `dioxus-guide.md` | 2750   | +0.0%          | 11087 | `d0365266c049c9da157d71bffe9184cefb73c7d6ba00dd75d39e07fe7a0d0208` |
 | `leptos` | `leptos-guide.md` | 2722   | -1.0%          | 10931 | `2628d31ad3bf59ddd533dec22afe00766f436f065df896d829b4972c1facf6e8` |
-| `react`  | `react-guide.md`  | 2691   | -2.1%          | 10298 | `6a9ea65dfdc62a04e7fa0a0138023e085ea920c32cd786d6dc0748f3ee138c4d` |
+| `react`  | `react-guide.md`  | 2691   | -2.1%          | 10298 | `25de0e58048284151db25d26f18768ebfa97f7697bb6bdb21187f8ffd171dfb7` |
 
 The largest guide is 2.2% larger than the smallest. Before this rebalancing
 (2026-09-29), the three guides were 3,360 (Mzizi), 2,679 (Leptos) and 2,570 (Dioxus) tokens, a
