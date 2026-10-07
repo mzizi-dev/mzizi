@@ -21,6 +21,10 @@ pub enum Tok {
     Str(String),
     /// An integer literal.
     Int(i64),
+    /// An integer literal too large for `int`, already reported as `MZ0103`. Lexed only in a
+    /// `program`, whose parser reads it as an error value rather than a missing one, so the
+    /// line gets no second diagnostic. A component or a service drops the literal, as before.
+    BadInt,
     /// A doc comment's text, `##` stripped.
     Doc(String),
     /// `:`
@@ -332,12 +336,13 @@ const OPERATORS: &[&str] = &[
 ];
 
 /// Whether `src` holds a `program` (RFC-0013 §1): its first line that is neither blank nor
-/// a doc comment starts with the word `program`. Only then does the lexer read operators
-/// and string escapes, so a component or a service lexes exactly as it did before.
+/// a comment starts with the word `program`. Only then does the lexer read operators and
+/// string escapes, so a component or a service lexes exactly as it did before. A comment
+/// here is `##`, or a `//` or `#` line, which a program reports as `MZ0911`.
 pub fn is_program(src: &str) -> bool {
     src.lines()
         .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("##"))
+        .find(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with("//"))
         .is_some_and(|l| {
             // `Program` too, which the lexer repairs to `program` for the parser: `Program t`
             // is one `MZ0101`, not a program lexed without its operators.
@@ -350,16 +355,19 @@ pub fn is_program(src: &str) -> bool {
 /// so the parser always receives a full token stream to recover against. A `program` file
 /// ([`is_program`]) also lexes operators and string escapes.
 pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
-    lex_with(src, file, is_program(src))
+    let program = is_program(src);
+    lex_with(src, file, program, program)
 }
 
 /// Tokenize a piece of a program on its own — the inside of a `{…}` interpolation — with
 /// a program's operators. Spans are relative to the piece: line 1, column 1 is its start.
 pub fn lex_fragment(text: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
-    lex_with(text, file, true)
+    lex_with(text, file, true, false)
 }
 
-fn lex_with(src: &str, file: &str, program: bool) -> (Vec<Token>, Vec<Diagnostic>) {
+/// `program`: lex a program's operators and escapes. `comments`: also read a line that
+/// starts with `//` or `#` as `MZ0911` (a whole program file, not an interpolation).
+fn lex_with(src: &str, file: &str, program: bool, comments: bool) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut tokens = Vec::new();
     let mut diags = Vec::new();
 
@@ -422,6 +430,52 @@ fn lex_with(src: &str, file: &str, program: bool) -> (Vec<Token>, Vec<Diagnostic
 
             if ch.is_whitespace() {
                 i += 1;
+                continue;
+            }
+
+            // In a program, a line that starts with another language's comment, `//` or
+            // `#`: one `MZ0911`, whose exact fix writes `##`, and the line reads as the
+            // doc comment it becomes (RFC-0013 §16).
+            if comments
+                && tokens.len() == line_first_token
+                && ((ch == '#' && bytes.get(i + 1) != Some(&'#'))
+                    || (ch == '/' && bytes.get(i + 1) == Some(&'/')))
+            {
+                // The whole marker: `#`, or `//` with any more `/`s and a `!` (`///`, `//!`).
+                let mut marker = 1;
+                if ch == '/' {
+                    while bytes.get(i + marker) == Some(&'/') {
+                        marker += 1;
+                    }
+                    if bytes.get(i + marker) == Some(&'!') {
+                        marker += 1;
+                    }
+                }
+                let written: String = bytes[i..i + marker].iter().collect();
+                let at = Span::single(line_no, col, marker as u32);
+                // Exact only when the marker is followed by a space or nothing. `#!` may be a
+                // shebang, and `#[inline]` or `#define` is code, which `##` would turn into a
+                // comment: there the fix is a guess.
+                let confidence = if bytes.get(i + marker).is_none_or(|c| c.is_whitespace()) {
+                    Confidence::Exact
+                } else {
+                    Confidence::Guess
+                };
+                diags.push(
+                    Diagnostic::error(
+                        "MZ0911",
+                        file,
+                        at,
+                        format!("`{written}` does not start a comment in Mzizi — write `##`"),
+                    )
+                    .with_fix(at, "##", confidence),
+                );
+                let text: String = bytes[i + marker..].iter().collect();
+                tokens.push(Token {
+                    kind: Tok::Doc(text.trim().to_string()),
+                    span: Span::single(line_no, col, (bytes.len() - i) as u32),
+                });
+                i = bytes.len();
                 continue;
             }
 
@@ -551,12 +605,20 @@ fn lex_with(src: &str, file: &str, program: bool) -> (Vec<Token>, Vec<Diagnostic
                         kind: Tok::Int(v),
                         span: Span::single(line_no, col, len),
                     }),
-                    Err(_) => diags.push(Diagnostic::error(
-                        "MZ0103",
-                        file,
-                        Span::single(line_no, col, len),
-                        format!("`{text}` does not fit in an int"),
-                    )),
+                    Err(_) => {
+                        diags.push(Diagnostic::error(
+                            "MZ0103",
+                            file,
+                            Span::single(line_no, col, len),
+                            format!("`{text}` does not fit in an int"),
+                        ));
+                        if program {
+                            tokens.push(Token {
+                                kind: Tok::BadInt,
+                                span: Span::single(line_no, col, len),
+                            });
+                        }
+                    }
                 }
                 i = j;
                 continue;

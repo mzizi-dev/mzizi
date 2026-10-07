@@ -2300,6 +2300,7 @@ fn describe(tok: &Tok) -> String {
         Tok::Ident(name) => format!("`{name}`"),
         Tok::Str(s) => format!("string `\"{s}\"`"),
         Tok::Int(v) => format!("`{v}`"),
+        Tok::BadInt => "an integer too large for `int`".to_string(),
         Tok::Doc(_) => "a doc comment".to_string(),
         Tok::Colon => "`:`".to_string(),
         Tok::Equals => "`=`".to_string(),

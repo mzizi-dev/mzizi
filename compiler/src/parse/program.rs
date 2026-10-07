@@ -16,6 +16,16 @@ use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, canonica
 use crate::lex::{Tok, Token, lex_fragment};
 use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
 
+use super::MAX_NESTING;
+
+/// How deep a program's blocks and expressions may nest, together: the program, the `fn`,
+/// each `when` (and `else when`), and in an expression each `(`, call, `not` and prefix
+/// `-`. Half the cap a component or service gets ([`MAX_NESTING`]), because each of these
+/// levels costs the parser and the checker several frames: measured in a debug build, a
+/// level took 12 to 16 KiB of stack, and the robustness tests hold every case to the
+/// 1 MiB stack `mz` gets on Windows. Real programs nest under 10. Past it, `MZ0411`.
+const PROGRAM_NESTING: usize = 32;
+
 /// Whether the token stream starts with `program`.
 pub(super) fn starts_program(tokens: &[Token]) -> bool {
     tokens
@@ -31,7 +41,20 @@ pub(super) fn parse(
     lex_diags: &mut Vec<Diagnostic>,
     file: &str,
 ) -> Option<Program> {
+    // A keyword written as a function's name (`fn nothing`) is reported once, at the `fn`;
+    // its calls, which may come first, are read as an error value and say nothing more.
+    let mut keyword_fns: Vec<String> = (0..tokens.len().saturating_sub(1))
+        .filter(|&i| i == 0 || matches!(tokens[i - 1].kind, Tok::Newline))
+        .filter_map(|i| match (&tokens[i].kind, &tokens[i + 1].kind) {
+            (Tok::Keyword("fn"), Tok::Keyword(k)) => Some(k.to_string()),
+            _ => None,
+        })
+        .collect();
+    keyword_fns.sort();
+    keyword_fns.dedup();
     let mut p = P {
+        keyword_names: keyword_fns.clone(),
+        keyword_fns: keyword_fns.len(),
         toks: tokens,
         pos: 0,
         file: file.to_string(),
@@ -40,6 +63,8 @@ pub(super) fn parse(
         suppress: Vec::new(),
         failed: false,
         skipped_stray: false,
+        nest: 0,
+        too_deep: false,
     };
     let program = p.program();
     lex_diags.retain(|d| {
@@ -101,6 +126,19 @@ struct P {
     failed: bool,
     /// Whether any statement stood outside every `fn`.
     skipped_stray: bool,
+    /// How deep the parser is, in [`PROGRAM_NESTING`]'s levels: the open blocks (the
+    /// program, the `fn`, each `when`), then each expression, `(`, call argument list,
+    /// `not` and prefix `-` being read. Past the cap a `when` is skipped whole and the
+    /// rest of an expression's line is not read, both without recursion (`MZ0411`).
+    nest: usize,
+    /// Whether `MZ0411` has been reported: once per file, as for components and services.
+    too_deep: bool,
+    /// Keywords written as a name, already reported (`MZ0903`): the first
+    /// [`P::keyword_fns`] are functions' names, file-wide; the rest are the current
+    /// function's parameters. A use of one reads as an error value, with no second error.
+    keyword_names: Vec<String>,
+    /// How many of [`P::keyword_names`] are functions' names.
+    keyword_fns: usize,
 }
 
 fn join(a: Span, b: Span) -> Span {
@@ -547,11 +585,24 @@ impl P {
     /// stands for).
     fn function(&mut self) -> Option<FnDecl> {
         let fn_at = self.bump().span;
+        self.keyword_names.truncate(self.keyword_fns);
         let (name, name_span) = match self.peek().clone() {
             Tok::Ident(n) => {
                 let s = self.span();
                 self.bump();
                 (n, s)
+            }
+            Tok::Keyword(k) => {
+                // Read on with the keyword as the name, so the body is checked and a call
+                // to it is not a second error.
+                let s = self.span();
+                self.err(
+                    "MZ0903",
+                    s,
+                    format!("`{k}` is a keyword, so it cannot name a function — rename it"),
+                );
+                self.bump();
+                (k.to_string(), s)
             }
             other => {
                 self.err(
@@ -568,6 +619,8 @@ impl P {
         let ret = self.return_type(&name);
         self.trailing_block_punctuation();
         self.finish_line(&format!("the signature of `fn {name}`"));
+        // The program and this `fn` are the first two open blocks.
+        self.nest = 2;
         let (body, stop) = self.stmts(false, &name);
         let end_span = match stop {
             Stop::End(closer) => closer,
@@ -642,6 +695,21 @@ impl P {
                     let s = self.span();
                     self.bump();
                     (n, s)
+                }
+                Tok::Keyword(k) if matches!(self.peek_at(1), Tok::Colon) => {
+                    // `match: int`: one error here. The parameter still counts, so a call
+                    // is not also short an argument, and its uses in the body are silent.
+                    let s = self.span();
+                    self.err(
+                        "MZ0903",
+                        s,
+                        format!(
+                            "`{k}` is a keyword, so it cannot name a parameter of `fn {fn_name}` — rename it"
+                        ),
+                    );
+                    self.keyword_names.push(k.to_string());
+                    self.bump();
+                    (k.to_string(), s)
                 }
                 other => {
                     let at = self.span();
@@ -979,7 +1047,19 @@ impl P {
         let at = self.span();
         let tok = self.peek().clone();
         let w = word(&tok).map(str::to_string);
+        // `match(1)` where `fn match` was declared (and reported): a call, read as a value,
+        // not the block the keyword would open. The words every statement starts with keep
+        // their meaning.
+        let keyword_call = matches!(&tok, Tok::Keyword(k)
+            if self.keyword_name(k)
+                && matches!(self.peek_at(1), Tok::LParen)
+                && !matches!(*k, "let" | "var" | "return" | "when" | "else" | "end" | "fn"));
         let kind = match w.as_deref() {
+            _ if keyword_call => {
+                let value = self.expr();
+                self.finish_line("a call");
+                StmtKind::Expr(value)
+            }
             Some("let" | "var") => self.binding(w.as_deref() == Some("var"), None)?,
             Some("const" | "val" | "auto") if matches!(self.peek_at(1), Tok::Ident(_)) => {
                 let w = w.clone().unwrap_or_default();
@@ -1311,6 +1391,23 @@ impl P {
 
     /// `when cond` … [`else` …] `end`. The cursor is on `when` (or the `if` it stands for).
     fn when(&mut self, at: Span, fn_name: &str) -> Option<Stmt> {
+        if self.nest >= PROGRAM_NESTING {
+            // Past the cap the `when` is skipped whole by counting block openers against
+            // `end`s, without recursion, so input of any depth costs no stack.
+            let line_end = self.line_end_span();
+            self.report_too_deep(join(at, line_end), "this block");
+            self.failed = true;
+            self.skip_block();
+            return None;
+        }
+        self.nest += 1;
+        let stmt = self.when_block(at, fn_name);
+        self.nest -= 1;
+        stmt
+    }
+
+    /// [`P::when`] under the nesting cap.
+    fn when_block(&mut self, at: Span, fn_name: &str) -> Option<Stmt> {
         self.bump();
         let cond = self.expr();
         self.trailing_block_punctuation();
@@ -1389,11 +1486,67 @@ impl P {
     // ---------------------------------------------------------------- expressions
 
     fn expr(&mut self) -> Expr {
-        self.or_expr()
+        if self.nest >= PROGRAM_NESTING {
+            let at = self.span();
+            return self.too_deep_expr(at);
+        }
+        self.nest += 1;
+        let e = self.or_expr();
+        self.nest -= 1;
+        e
+    }
+
+    /// `MZ0411`, once per file, as for components and services.
+    fn report_too_deep(&mut self, span: Span, what: &str) {
+        if self.too_deep {
+            return;
+        }
+        self.too_deep = true;
+        self.diags.push(Diagnostic::error(
+            "MZ0411",
+            &self.file,
+            span,
+            format!(
+                "blocks and expressions nest more than {PROGRAM_NESTING} deep here, or an expression's operators nest more than {MAX_NESTING} deep (the program, the `fn` and each `when` are a level, and so is each expression read inside another: a statement's value, a `(`, a call's arguments, an interpolation, a `not`, a prefix `-`); {what}, and everything else past that depth in this file, is not read"
+            ),
+        ));
+    }
+
+    /// `MZ0411` for an expression at `at`. The rest of the line is passed over without
+    /// recursion and is not read, so input of any depth costs no stack, and every walk of
+    /// the tree after the parser (the checker, the lowering, the canonical text) stays
+    /// within a bounded depth.
+    fn too_deep_expr(&mut self, at: Span) -> Expr {
+        let span = join(at, self.line_end_span());
+        self.report_too_deep(span, "the rest of this line");
+        self.failed = true;
+        while !self.at_line_end() {
+            self.bump();
+        }
+        self.skipped.push((at.start_line, at.start_line));
+        self.error_expr(at)
+    }
+
+    /// One more link in a binary chain: `lhs` is the chain so far, `height` its height (0
+    /// until first measured, so an expression with no operator is never walked), and `rhs`
+    /// the new right operand. True, with `MZ0411` reported and the line passed over, once
+    /// the tree would be more than [`MAX_NESTING`] deep: `1 + 1 + …` builds a tree as deep
+    /// as it is long, and the walks after the parser recurse once per level.
+    fn chain_too_deep(&mut self, height: &mut usize, lhs: &Expr, rhs: &Expr, op_at: Span) -> bool {
+        if *height == 0 {
+            *height = depth(lhs);
+        }
+        *height = (*height).max(depth(rhs)) + 1;
+        if *height <= MAX_NESTING {
+            return false;
+        }
+        self.too_deep_expr(op_at);
+        true
     }
 
     fn or_expr(&mut self) -> Expr {
         let mut lhs = self.and_expr();
+        let mut height = 0;
         loop {
             let at = self.span();
             if self.is_word("or") {
@@ -1405,12 +1558,16 @@ impl P {
                 return lhs;
             }
             let rhs = self.and_expr();
+            if self.chain_too_deep(&mut height, &lhs, &rhs, at) {
+                return self.error_expr(join(lhs.span, rhs.span));
+            }
             lhs = binary(BinOp::Or, at, lhs, rhs);
         }
     }
 
     fn and_expr(&mut self) -> Expr {
         let mut lhs = self.not_expr();
+        let mut height = 0;
         loop {
             let at = self.span();
             if self.is_word("and") {
@@ -1422,6 +1579,9 @@ impl P {
                 return lhs;
             }
             let rhs = self.not_expr();
+            if self.chain_too_deep(&mut height, &lhs, &rhs, at) {
+                return self.error_expr(join(lhs.span, rhs.span));
+            }
             lhs = binary(BinOp::And, at, lhs, rhs);
         }
     }
@@ -1462,7 +1622,12 @@ impl P {
                     ),
                 );
             }
+            if self.nest >= PROGRAM_NESTING {
+                return self.too_deep_expr(at);
+            }
+            self.nest += 1;
             let operand = self.not_expr();
+            self.nest -= 1;
             return Expr {
                 span: join(at, operand.span),
                 kind: ExprKind::Unary {
@@ -1534,6 +1699,10 @@ impl P {
             return lhs;
         };
         let rhs = self.add_expr();
+        let mut height = 0;
+        if self.chain_too_deep(&mut height, &lhs, &rhs, op_at) {
+            return self.error_expr(join(lhs.span, rhs.span));
+        }
         let first = binary(op, op_at, lhs, rhs);
         let mut links = vec![first];
         while let Some((op, op_at)) = self.cmp_op() {
@@ -1542,7 +1711,13 @@ impl P {
                 _ => unreachable!("links are binary"),
             };
             let rhs = self.add_expr();
-            links.push(binary(op, op_at, middle, rhs));
+            // `a < b < c < …` is repaired to `a < b and b < c and …`, a tree one level
+            // deeper per link, over the deepest link.
+            let link = binary(op, op_at, middle, rhs);
+            if self.chain_too_deep(&mut height, &links[0], &link, op_at) {
+                return self.error_expr(join(links[0].span, link.span));
+            }
+            links.push(link);
         }
         if links.len() == 1 {
             return links.pop().expect("one link");
@@ -1570,6 +1745,7 @@ impl P {
 
     fn add_expr(&mut self) -> Expr {
         let mut lhs = self.mul_expr();
+        let mut height = 0;
         loop {
             let op = match self.peek() {
                 Tok::Op("+") => BinOp::Add,
@@ -1578,12 +1754,16 @@ impl P {
             };
             let at = self.bump().span;
             let rhs = self.mul_expr();
+            if self.chain_too_deep(&mut height, &lhs, &rhs, at) {
+                return self.error_expr(join(lhs.span, rhs.span));
+            }
             lhs = binary(op, at, lhs, rhs);
         }
     }
 
     fn mul_expr(&mut self) -> Expr {
         let mut lhs = self.unary_expr();
+        let mut height = 0;
         loop {
             let op = match self.peek() {
                 Tok::Op("*") => BinOp::Mul,
@@ -1593,6 +1773,9 @@ impl P {
             };
             let at = self.bump().span;
             let rhs = self.unary_expr();
+            if self.chain_too_deep(&mut height, &lhs, &rhs, at) {
+                return self.error_expr(join(lhs.span, rhs.span));
+            }
             lhs = binary(op, at, lhs, rhs);
         }
     }
@@ -1601,7 +1784,12 @@ impl P {
         let at = self.span();
         if matches!(self.peek(), Tok::Op("-")) {
             self.bump();
+            if self.nest >= PROGRAM_NESTING {
+                return self.too_deep_expr(at);
+            }
+            self.nest += 1;
             let operand = self.unary_expr();
+            self.nest -= 1;
             return Expr {
                 span: join(at, operand.span),
                 kind: ExprKind::Unary {
@@ -1614,6 +1802,13 @@ impl P {
             return self.not_expr();
         }
         self.primary()
+    }
+
+    /// Whether the keyword `k` at the cursor is used as a name already reported: a
+    /// parameter of this function, or a function's name, called or used as a value.
+    /// `true`, `false` and `none` keep their meaning as values whatever was declared.
+    fn keyword_name(&self, k: &str) -> bool {
+        !matches!(k, "true" | "false" | "none") && self.keyword_names.iter().any(|n| n == k)
     }
 
     fn error_expr(&self, at: Span) -> Expr {
@@ -1633,6 +1828,21 @@ impl P {
                     kind: ExprKind::Int(v),
                     span: at,
                 }
+            }
+            Tok::Keyword(k) if self.keyword_name(k) => {
+                // A keyword used as a name, already reported where it was declared.
+                self.bump();
+                if matches!(self.peek(), Tok::LParen) {
+                    let (_, close) = self.args();
+                    return self.error_expr(join(at, close));
+                }
+                self.error_expr(at)
+            }
+            Tok::BadInt => {
+                // Already `MZ0103`: an error value, and nothing more on this line.
+                self.bump();
+                self.failed = true;
+                self.error_expr(at)
             }
             Tok::Keyword("true") | Tok::Keyword("false") => {
                 self.bump();
@@ -2020,7 +2230,6 @@ impl P {
                 shift(&mut f.span);
             }
         }
-        self.diags.append(&mut lex_diags);
         let mut sub = P {
             toks,
             pos: 0,
@@ -2030,6 +2239,10 @@ impl P {
             suppress: Vec::new(),
             failed: false,
             skipped_stray: false,
+            nest: self.nest,
+            too_deep: self.too_deep,
+            keyword_names: self.keyword_names.clone(),
+            keyword_fns: self.keyword_fns,
         };
         let e = sub.expr();
         if !sub.at_line_end() && !sub.failed {
@@ -2044,6 +2257,12 @@ impl P {
             );
         }
         let failed = sub.failed;
+        self.too_deep |= sub.too_deep;
+        // Past the cap (`MZ0411`) the fragment is not read, so its lexer's diagnostics go.
+        if sub.skipped.is_empty() {
+            self.diags.append(&mut lex_diags);
+        }
+        self.skipped.append(&mut sub.skipped);
         self.diags.append(&mut sub.diags);
         self.suppress.append(&mut sub.suppress);
         if failed {
@@ -2055,6 +2274,29 @@ impl P {
         }
         Some(e)
     }
+}
+
+/// How many levels deep `e` is, counted without recursion.
+fn depth(e: &Expr) -> usize {
+    let mut deepest = 0;
+    let mut todo = vec![(e, 1usize)];
+    while let Some((e, d)) = todo.pop() {
+        deepest = deepest.max(d);
+        match &e.kind {
+            ExprKind::Binary { lhs, rhs, .. } => {
+                todo.push((lhs, d + 1));
+                todo.push((rhs, d + 1));
+            }
+            ExprKind::Unary { operand, .. } => todo.push((operand, d + 1)),
+            ExprKind::Call { args, .. } => todo.extend(args.iter().map(|a| (a, d + 1))),
+            ExprKind::Text(parts) => todo.extend(parts.iter().filter_map(|p| match p {
+                TextPart::Expr(x) => Some((x, d + 1)),
+                TextPart::Lit(_) => None,
+            })),
+            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Name(_) | ExprKind::Error => {}
+        }
+    }
+    deepest
 }
 
 fn binary(op: BinOp, op_span: Span, lhs: Expr, rhs: Expr) -> Expr {
