@@ -50,6 +50,13 @@ jobs:
         working-directory: compiler
         run: cargo fmt -- --check
 
+      # The pre-commit hook's own tests, in a throwaway repository under $RUNNER_TEMP: git
+      # and rustfmt, no network.
+      - name: pre-commit hook tests
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: bash scripts/test-pre-commit.sh
+
       - name: cargo clippy -D warnings
         working-directory: compiler
         run: cargo clippy --all-targets -- -D warnings

@@ -197,12 +197,20 @@ always have change log updates."_ Run `scripts/install-hooks.sh` once per clone 
 covers every worktree of that clone); **an agent runs it before its first commit**. It sets
 `core.hooksPath` to [`.githooks/`](./.githooks/), whose `pre-commit` refuses a commit unless
 `CHANGELOG.md` is staged or already changed on the branch since it left `origin/staging` or
-`origin/main` (whichever is nearer; with neither, the staged changes alone). The hook has no path
+`origin/main` (whichever is nearer; with neither, the staged changes alone). It trusts those
+local refs: when they are stale, or the branch is stacked on another unmerged branch, other
+people's entries count as the branch's, so fetch first; CI checks the real base. The hook has no path
 exemptions: every change needs an entry. `MZ_NO_CHANGELOG=1 git commit ...` skips it and
 says so; the pull request then needs the `no-changelog` label. When a staged file is Rust
 under `compiler/` or `benchmarks/`, the hook also runs `cargo fmt --all -- --check`. Nothing
 slower runs there, so the block in "Build, test, run" is still for before you push.
-`scripts/test-pre-commit.sh` tests the hook in a throwaway repository.
+`scripts/test-pre-commit.sh` tests the hook in a throwaway repository, and CI's `compiler`
+job runs it.
+
+The hook runs whatever `.githooks/pre-commit` says in the checked-out branch, so committing on
+someone else's branch (a fork's pull request included) runs their code. Read any change under
+`.githooks/` before committing there, or commit with `--no-verify`. `core.hooksPath` sits in
+the clone's shared config, which is one more reason each agent works in a clone of its own.
 
 ## Naming and ownership
 

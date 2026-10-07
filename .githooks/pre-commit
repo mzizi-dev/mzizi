@@ -3,12 +3,17 @@
 #
 # 1. A CHANGELOG.md entry on every branch (owner rule, 2026-10-07: "We need to always have
 #    change log updates"; AGENTS.md, "Changelog"). The commit fails unless CHANGELOG.md is
-#    staged, or the branch's changes since it left origin/staging or origin/main already
-#    include it. Of those two refs the hook uses the nearer merge base (fewest commits back
-#    from HEAD), so a branch cut from main is not credited with main's release commits,
-#    which touch CHANGELOG.md. With neither ref, only the staged changes count. There are no
-#    path exemptions, the rule .github/scripts/changelog-entry.sh applies to a pull request
-#    ("every pull request needs an entry"). That script compares two commits and treats an
+#    staged, or the branch's net changes since it left origin/staging or origin/main
+#    already include it. Of those two refs the hook uses the nearer merge base (fewest
+#    commits back from HEAD), so a branch cut from main is not credited with main's release
+#    commits, which touch CHANGELOG.md. The hook trusts those local refs. If they are older
+#    than the commit the branch was cut from (not fetched lately), or the branch is stacked
+#    on another unmerged branch, the diff takes in entries that are not this branch's, and
+#    the hook passes a branch with no entry of its own. Fetch before relying on it; CI's job
+#    checks the pull request against its real base. With neither ref, only the staged
+#    changes count. There are no path exemptions, the rule
+#    .github/scripts/changelog-entry.sh applies to a pull request ("every pull request
+#    needs an entry"). That script compares two commits and treats an
 #    empty diff as a pass, which is every first commit on a branch, so the hook carries the
 #    same one-line test against the index rather than calling it. MZ_NO_CHANGELOG=1 skips
 #    this check, the local twin of the `no-changelog` label, and says so.
@@ -49,12 +54,8 @@ else
     done
   fi
 
-  on_branch=""
-  if [[ -n $base ]]; then
-    on_branch=$(git -c core.quotePath=false diff --name-only "$base" HEAD)
-  fi
-
-  if ! grep -qxF 'CHANGELOG.md' <<<"$on_branch"; then
+  # A net change, the diff CI's job reads: an entry added and then removed is no entry.
+  if [[ -z $base ]] || git diff --quiet "$base" HEAD -- CHANGELOG.md; then
     if [[ -n $base ]]; then
       where="neither this commit nor the branch's changes since it left $base_ref (${base:0:12}) touch"
     else
@@ -73,6 +74,10 @@ if grep -Eq '^(compiler|benchmarks)/.*\.rs$' <<<"$staged"; then
   if ! command -v cargo >/dev/null 2>&1; then
     echo "pre-commit: Rust is staged but cargo is not on PATH, so cargo fmt did not run."
     echo "CI's fmt check will still run on the pull request."
+  elif ! cargo fmt --version >/dev/null 2>&1; then
+    echo "pre-commit: Rust is staged but \`cargo fmt --version\` failed (rustfmt is not installed,"
+    echo "or the toolchain is broken), so cargo fmt did not run. \`rustup component add rustfmt\`"
+    echo "installs rustfmt. CI's fmt check will still run on the pull request."
   else
     top=$(git rev-parse --show-toplevel)
     if ! (cd "$top" && cargo fmt --all -- --check); then

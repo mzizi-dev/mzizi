@@ -7,6 +7,10 @@
 # Needs git and cargo (with rustfmt); no network. Exit 0 when every case behaves.
 set -euo pipefail
 
+# Ignore the caller's global and system git config (commit signing, a template directory
+# carrying hooks, a global core.hooksPath), so only the hook decides each case.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/mz-hook-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
@@ -79,6 +83,18 @@ g add notes.txt
 expect ok "a later commit passes, because the branch already touched CHANGELOG.md" \
   g commit -q -m later
 
+# An entry added and then taken out again is no entry: CI's job reads the net diff.
+g checkout -q -b net-zero refs/remotes/origin/staging
+printf -- '- fleeting\n' >>"$repo/CHANGELOG.md"
+g commit -q --no-verify -am add-entry
+g checkout -q refs/remotes/origin/staging -- CHANGELOG.md
+g commit -q --no-verify -m drop-entry
+echo z >"$repo/net-zero.txt"
+g add net-zero.txt
+expect fail "an entry added and then removed on the branch does not count" \
+  g commit -q -m no-net-entry
+g reset -q --hard
+
 # The repo's real layout: main carries release commits that touch CHANGELOG.md and that
 # staging does not have. A branch cut from main must not be credited with them.
 g checkout -q -b release main
@@ -91,6 +107,20 @@ g add from-main.txt
 expect fail "a branch cut from a main that has diverged from staging still needs an entry" \
   g commit -q -m no-entry-from-main
 g reset -q --hard
+
+# Staging's own entries are not the branch's: cut a branch from a staging commit that
+# touches CHANGELOG.md.
+g checkout -q -b staging-entry refs/remotes/origin/staging
+printf -- '- on staging\n' >>"$repo/CHANGELOG.md"
+g commit -q --no-verify -am staging-entry
+g update-ref refs/remotes/origin/staging HEAD
+g checkout -q -b from-staging
+echo y >"$repo/from-staging.txt"
+g add from-staging.txt
+expect fail "a branch is not credited with staging's own CHANGELOG.md commits" \
+  g commit -q -m no-entry-from-staging
+g reset -q --hard
+g update-ref refs/remotes/origin/staging main
 
 g checkout -q -b other refs/remotes/origin/staging
 g update-ref -d refs/remotes/origin/staging
@@ -121,6 +151,24 @@ if command -v cargo >/dev/null 2>&1; then
   printf '// formatted\nfn main() {}\n' >"$repo/compiler/src/main.rs"
   g add -A
   expect ok "formatted Rust under compiler/ passes" g commit -q -m good-fmt
+
+  # A cargo without rustfmt: the hook says so and lets the commit through, rather than
+  # refusing it with advice to run a `cargo fmt` that cannot run.
+  mkdir -p "$work/no-rustfmt"
+  printf '#!/bin/sh\necho "error: no such command: fmt" >&2\nexit 101\n' >"$work/no-rustfmt/cargo"
+  chmod +x "$work/no-rustfmt/cargo"
+  printf 'fn   main( ) {   }\n' >"$repo/compiler/src/main.rs"
+  printf -- '- no rustfmt\n' >>"$repo/CHANGELOG.md"
+  g add -A
+  expect ok "without rustfmt, Rust is let through with a notice" \
+    env PATH="$work/no-rustfmt:$PATH" \
+    git -C "$repo" -c user.name=hook-test -c user.email=hook-test@example.invalid commit -q -m no-rustfmt
+  if grep -q 'rustfmt is not installed' "$work/out"; then
+    pass "the notice names rustfmt and how to install it"
+  else
+    fail "no rustfmt notice"
+    sed 's/^/       /' "$work/out"
+  fi
 else
   fail "cargo is not on PATH, so the rustfmt cases did not run"
 fi
