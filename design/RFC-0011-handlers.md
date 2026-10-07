@@ -16,6 +16,13 @@ are the other half of §6.4, and are not designed here.
 > `route` is now an inner block of a `service` (§1). Top-level `route` files wait for modules
 > (G2.3). RFC-0010 carries a note pointing here.
 
+<!-- A second note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes the `result(T, E)` type and its propagation form** that §5 left to "the
+> first `fn` that can fail": `return error(e)`, a prefix `try`, and `match` with `case ok` /
+> `case error` (RFC-0013 §12). It is a draft for review; nothing in it is implemented, and
+> handlers are unchanged.
+
 ---
 
 ## 0. Method: the failure modes a handler language invites

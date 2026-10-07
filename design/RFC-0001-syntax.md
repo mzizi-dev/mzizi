@@ -46,6 +46,14 @@ the type system's internals, and the compiler architecture are later RFCs.
 > declaration, at `warn` or `required` per package (RFC-0010 §8). The warning had never been
 > implemented. §5's `contract` row is specified in RFC-0010 §5.
 
+<!-- A sixth amendment note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes to amend §1.2** (a draft for review; nothing in it is implemented). For
+> function bodies in a `program`, it adds `while` as the one conditional loop, `else when` as part
+> of a `when` block, `match` with exhaustive cases, and `when` / `match` used as the value of a
+> `let`, `var`, assignment or `return`. Views are unchanged. The §1.2 table stands until the owner
+> accepts RFC-0013 (§7 and §20 there).
+
 ---
 
 ## 0. Method: design against named failure modes

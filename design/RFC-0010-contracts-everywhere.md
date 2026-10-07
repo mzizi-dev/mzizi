@@ -24,6 +24,13 @@ out for v0.
 > waits for modules (G2.3). A service's contract is evaluated by running it in process, so
 > `MZ0607` never applies to one (RFC-0011 §7).
 
+<!-- A third note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes the signature syntax §3.1's placeholder waited for:**
+> `fn positive_int(raw: option(text)): option(int)`, closed by `end fn positive_int`, in place of
+> the `take` / `give` lines (RFC-0013 §6, §15.1). It is a draft for review; nothing in it is
+> implemented.
+
 ---
 
 ## 0. Method: four more failure modes, one of them measured
