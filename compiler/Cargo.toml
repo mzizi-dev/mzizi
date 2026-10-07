@@ -9,7 +9,7 @@ edition = "2024"
 # the crate metadata say so too.
 license = "Apache-2.0"
 publish = false
-description = "The Mzizi compiler, `mz` (Phase 0 prototype): lexer, recovering parser, name and type resolver, the agent NDJSON diagnostic protocol with exact fixes, contract evaluation, the content-addressed IR, and lowering of a `service` to a local Rust + axum package. No component lowers yet (RFC-0001, RFC-0003, RFC-0006, RFC-0008, RFC-0011)."
+description = "The Mzizi compiler, `mz` (Phase 0 prototype): lexer, recovering parser, name and type resolver, the agent NDJSON diagnostic protocol with exact fixes, contract evaluation, the content-addressed IR, lowering of a `service` to a local Rust + axum package, and `mz run`, which lowers a `program` in RFC-0013's foundation slice to a dependency-free Rust package and runs it. No component lowers yet (RFC-0001, RFC-0003, RFC-0006, RFC-0008, RFC-0011, RFC-0013)."
 
 # No dependencies, deliberately. The house convention across the Rust crates is to
 # hand-roll small, fully-specified things (JSON emission here) rather than take a

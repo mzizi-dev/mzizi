@@ -165,6 +165,23 @@ jobs:
       - name: mzprobe verify B1 against both references
         run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b1-routing
 
+      # RFC-0013 §15.3 and §18.4: every example program runs through `mz run` (lowered to
+      # Rust, built with cargo, run), and its standard output must match the committed
+      # `examples/<name>.expected`. A program's package has no dependencies, so this step
+      # needs no network.
+      - name: mz run every example program against its .expected output
+        run: |
+          set -euo pipefail
+          cargo build --quiet -p mzizi-lang-compiler --bin mz
+          for program in examples/*.mz; do
+            grep -q '^program ' "$program" || continue
+            expected="${program%.mz}.expected"
+            test -f "$expected" || { echo "$program has no $expected"; exit 1; }
+            echo "running $program"
+            target/debug/mz run "$program" > actual.txt
+            diff -u "$expected" actual.txt
+          done
+
   secrets:
     name: secret scan
     runs-on: ubuntu-latest
