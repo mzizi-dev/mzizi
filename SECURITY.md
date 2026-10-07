@@ -65,6 +65,13 @@ These matter more than they would for a compiler people invoke by hand, because 
 point of the design is a machine driving `mz` in a tight loop, often over code the machine
 itself just generated and nobody has read.
 
+What holds this today, and is tested: nesting is capped at 64 blocks with the error
+`MZ0411`, so depth costs no stack (RFC-0001 §4.7 item 8). `compiler/tests/robustness.rs`
+runs every entry point over seeded random edits of the repo's own `.mz` files, random
+tokens, random bytes, deep nesting and 1 MiB lines, each against a deadline. The compiler
+and the three benchmark crates are `#![forbid(unsafe_code)]`, and so is the runtime `mz
+build` writes into every generated package. A report that breaks any of this is in scope.
+
 ### Corruption of the agent protocol
 
 `mz check --agent` emits NDJSON, one diagnostic per line, and an agent consumes it as
