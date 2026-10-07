@@ -1,0 +1,20 @@
+## Performance suite (benchmarks/perf): naive recursive Fibonacci. Almost all of the time is
+## calls and three `int` operations per call (`n - 1`, `n - 2` and the `+`), each one
+## overflow-checked in the lowered Rust. The last line is the checksum the runner compares.
+program fib
+
+  fn main
+    let n = 38
+    let f = fib(n)
+    print("fib({n}) is {f}")
+    print("checksum {f % 1000003}")
+  end fn main
+
+  fn fib(n: int): int
+    when n < 2
+      return n
+    end
+    return fib(n - 1) + fib(n - 2)
+  end fn fib
+
+end program fib
