@@ -51,6 +51,7 @@ pub fn parse_program(src: &str, file: &str) -> (Option<Program>, Vec<Diagnostic>
         unwinding: false,
         service: None,
         skipped: Vec::new(),
+        too_deep: false,
     };
     let component = p.parse_file();
     let program = match p.service.take() {
@@ -134,6 +135,9 @@ struct Parser {
     /// Line ranges the parser skipped whole as one error (a `match` block, `MZ0410`); the
     /// lexer's diagnostics inside them are dropped.
     skipped: Vec<(u32, u32)>,
+    /// Whether `MZ0411` has been reported: it is reported once per file, because one
+    /// nesting attack is one error however many blocks it puts past the cap.
+    too_deep: bool,
 }
 
 impl Parser {
@@ -1307,6 +1311,14 @@ impl Parser {
     fn parse_element(&mut self, stack: &mut Vec<Open>) -> Option<Element> {
         let span = self.peek_span();
 
+        // Each element is one stack frame here and in every pass after the parser, so
+        // nesting is capped before it can exhaust the stack (SECURITY.md, "Crashes and
+        // hangs"): 5,000 nested `row`s aborted `mz` with a stack overflow.
+        if stack.len() >= MAX_NESTING && self.view_line_kind() == LineKind::Opens {
+            self.skip_too_deep(stack, span, false);
+            return None;
+        }
+
         // `nothing` — the only leaf, no block.
         if matches!(self.peek(), Tok::Keyword("nothing")) {
             self.bump();
@@ -1471,6 +1483,144 @@ impl Parser {
             last = self.peek_span().start_line;
             self.recover_line();
         }
+        self.skipped.push((span.start_line, last));
+    }
+
+    /// What a line does to the block depth, in a view, by the rules `parse_elements`,
+    /// `parse_element` and `element_body` apply to it. [`Parser::skip_too_deep`] counts
+    /// with this, so the skip and the parser cannot disagree about where a block ends.
+    pub(crate) fn view_line_kind(&self) -> LineKind {
+        let next = self.tokens.get(self.pos + 1).map(|t| &t.kind);
+        match self.peek() {
+            Tok::Eof => LineKind::Stop,
+            _ if self.at_declaration_word() => LineKind::Stop,
+            // `end component <name>` closes every open block at once (`parse_end`), so it
+            // belongs to the parent, as a declaration word does.
+            Tok::Keyword("end") if matches!(next, Some(Tok::Keyword("component"))) => {
+                LineKind::Stop
+            }
+            Tok::Keyword("end") => LineKind::Closes,
+            Tok::Keyword("match") => LineKind::Match,
+            Tok::Keyword("when" | "for") => LineKind::Opens,
+            // `name = value`, and `name value` missing its `=` (`MZ0406`), are attributes.
+            Tok::Ident(_) if matches!(next, Some(Tok::Equals)) || self.at_missing_equals() => {
+                LineKind::Leaf
+            }
+            Tok::Ident(_) => LineKind::Opens,
+            // `else`, `nothing`, and anything that cannot start a view line (`MZ0402`).
+            _ => LineKind::Leaf,
+        }
+    }
+
+    /// The same for a line in a service handler, by the rules of `statements`.
+    pub(crate) fn handler_line_kind(&self) -> LineKind {
+        let next = self.tokens.get(self.pos + 1).map(|t| &t.kind);
+        match self.peek() {
+            Tok::Eof => LineKind::Stop,
+            // `end service <name>` closes every open block at once (`parse_end`).
+            Tok::Keyword("end") if matches!(next, Some(Tok::Ident(w)) if w == "service") => {
+                LineKind::Stop
+            }
+            Tok::Keyword("end") => LineKind::Closes,
+            Tok::Keyword("when") => LineKind::Opens,
+            Tok::Ident(w) if w == "if" && !matches!(next, Some(Tok::Newline | Tok::Eof)) => {
+                LineKind::Opens
+            }
+            Tok::Ident(w)
+                if matches!(w.as_str(), "route" | "fallback" | "record")
+                    && matches!(next, Some(Tok::Ident(_) | Tok::Newline | Tok::Eof)) =>
+            {
+                LineKind::Stop
+            }
+            Tok::Keyword("contract" | "enum" | "use") => LineKind::Stop,
+            _ => LineKind::Leaf,
+        }
+    }
+
+    /// A block opened past [`MAX_NESTING`]: `MZ0411` (once per file), then the whole block is skipped
+    /// by counting, with [`Parser::view_line_kind`] or [`Parser::handler_line_kind`], the
+    /// lines that open a block against the `end`s that close one, without recursing, so
+    /// input of any depth costs no stack. The `end` that closes the parent, and a line that
+    /// would stop the parent (a declaration word, the next `route`), are left to the parent.
+    pub(crate) fn skip_too_deep(&mut self, stack: &mut Vec<Open>, span: Span, handler: bool) {
+        if !self.too_deep {
+            self.too_deep = true;
+            self.diags.push(Diagnostic::error(
+                "MZ0411",
+                &self.file,
+                span,
+                format!(
+                    "blocks are nested more than {MAX_NESTING} deep here; this block, and every other block past that depth in this file, is not read"
+                ),
+            ));
+        }
+        // The skipped blocks still open, innermost last: an explicit stack in place of the
+        // recursion. If the skip stops before they close (a declaration word, `end
+        // component`, the next `route`), they go onto the parser's own stack, so the
+        // `MZ0204` that follows counts every open block and its fix inserts every `end`.
+        let mut open: Vec<Open> = Vec::new();
+        let mut last = span.start_line;
+        loop {
+            self.skip_newlines();
+            let kind = if handler {
+                self.handler_line_kind()
+            } else {
+                self.view_line_kind()
+            };
+            match kind {
+                LineKind::Stop => break,
+                LineKind::Closes if open.is_empty() => break,
+                LineKind::Closes => {
+                    open.pop();
+                }
+                LineKind::Opens => open.push(Open {
+                    kind: if handler {
+                        BlockKind::When
+                    } else {
+                        BlockKind::Element
+                    },
+                    name: match self.peek() {
+                        // As the parser names them: a handler's `when` (and the `if` for it)
+                        // has no name; in a view, `if` with a condition is a `when`.
+                        _ if handler => String::new(),
+                        Tok::Ident(w)
+                            if w == "if"
+                                && !matches!(
+                                    self.tokens.get(self.pos + 1).map(|t| &t.kind),
+                                    Some(Tok::Newline | Tok::Eof | Tok::Equals)
+                                ) =>
+                        {
+                            "when".to_string()
+                        }
+                        Tok::Ident(w) => w.clone(),
+                        Tok::Keyword(k) => k.to_string(),
+                        _ => String::new(),
+                    },
+                    line: self.peek_span().start_line,
+                }),
+                LineKind::Leaf => {}
+                LineKind::Match => {
+                    // `match` skips its own block with the parser's own `skip_match`, so it
+                    // ends exactly where it would outside the skip, odd indentation and
+                    // all; its `MZ0410` is inside what `MZ0411` already says is not read.
+                    let at = self.peek_span();
+                    let reported = self.diags.len();
+                    self.skip_match(at);
+                    self.diags.truncate(reported);
+                    last = self.skipped.last().map_or(last, |&(_, to)| to);
+                    if open.is_empty() {
+                        break;
+                    }
+                    continue;
+                }
+            }
+            last = self.peek_span().start_line;
+            self.recover_line();
+            if open.is_empty() {
+                break;
+            }
+        }
+        stack.append(&mut open);
         self.skipped.push((span.start_line, last));
     }
 
@@ -2076,6 +2226,27 @@ impl Parser {
             self.recover_line();
         }
     }
+}
+
+/// The deepest blocks may nest: in a view, counting the component and the view; in a
+/// service handler, counting the service and the route. Real files nest under 12
+/// (`examples/changelog_renderer.mz` is the deepest, at 9 levels of indent). Past this
+/// the parser stops descending and reports `MZ0411`.
+const MAX_NESTING: usize = 64;
+
+/// What one line does to the block depth; see [`Parser::view_line_kind`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LineKind {
+    /// Opens a block that an `end` closes.
+    Opens,
+    /// An `end`.
+    Closes,
+    /// Opens no block: an attribute, `else`, `nothing`, a statement, an error line.
+    Leaf,
+    /// `match`, which skips its own block (`MZ0410`).
+    Match,
+    /// Ends the enclosing block without an `end`: a declaration word, the next route, EOF.
+    Stop,
 }
 
 const BLOCK_WORDS: &[&str] = &["component", "enum", "view", "fn", "contract"];

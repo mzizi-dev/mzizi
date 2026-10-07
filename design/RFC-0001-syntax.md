@@ -325,6 +325,7 @@ language itself.
    | `MZ0409` | `span class = "x"`                              | an element word stands alone on its line; the tail was silently kept before       |
    | `MZ0410` | `match size` in a view                          | there is no `match`: one `when size is x` per variant; no fix, it is one-to-many  |
    | `MZ0313` | `icon class "size-14" height 48`                | a `height` that disagrees with its class (FM-11); `exact` fix is the rendered px  |
+   | `MZ0411` | blocks nested more than 64 deep                 | once per file; the block is skipped, not read (item 8 below); no fix              |
 
    The same pilot found §4.1's "never a cascade" broken in three places, now each one
    diagnostic. A declaration word (`contract`, `prop`, …) inside an unclosed view, and
@@ -335,6 +336,20 @@ language itself.
 
    `mz fix` (§4.3) exists as of the same date: it applies every `exact` fix in one pass and
    re-checks the file.
+
+8. **Bounded input** _(added 2026-10-07)_. The parser is recursive descent (§7 item 2),
+   and so is every pass after it, so nesting depth is stack depth. Blocks nest at most 64
+   deep, counting the component and the view, in a view and in a service handler alike.
+   The first block past that depth gets `MZ0411` ("blocks are nested more than 64 deep
+   here"), once per file, and every such block's lines are skipped without recursion, so
+   nesting of any depth costs no stack. The skip classifies each line with the parser's
+   own rules (`view_line_kind`, `handler_line_kind`), so it ends where the parser would
+   have: at the matching `end`, a declaration word, `end component` or `end service`, or the
+   next `route`. Before this, 5,000 nested `row`s or handler `when`s aborted `mz` with a
+   stack overflow. The repo's deepest file nests 9 levels. `compiler/tests/robustness.rs`
+   holds the compiler to SECURITY.md's "terminates with a diagnostic on every input": it
+   runs every entry point over seeded random edits of the repo's `.mz` files, random
+   tokens, random bytes, deep nesting and very long lines, each against a deadline.
 
 ## 5. What lowers to what
 
