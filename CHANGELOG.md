@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — RFC-0012 §8 surveys prior art (2026-10-07)
+
+- **RFC-0012 (the harness) §8 now compares the design with six outside systems** (Refs #48): the Language Server Protocol and rust-analyzer, Roslyn, the TypeScript language service, `rustc --error-format=json` and `cargo --message-format=json`, MCP servers for languages and toolchains, Unison's codebase manager, and Go's `go/analysis` as a plugin host with static composition. For each it says what the RFC takes and how it differs. It also checks the RFC's claim that the harness is part of the language: none of the six systems specifies its machine interface as part of its language, so the claim is stated as a design goal with three conditions, none of which exists yet. The TypeScript row adds a constraint: a plugin's checks must reach `mz check --agent`, because TypeScript's plugins are never loaded by `tsc`. §9 gains question 8, whether to build an LSP server as a client of the harness. `mzizi-dev/agent-tools`' `docs/rfc-harness-plugins.md` still has not been read in full: this session was refused access to the private repository, and §8 says so. **Design only.** It is a reading of documentation, it measures nothing, and no code changes.
+
 ### Changed — the React arm pins from the registry lockfile (2026-10-07)
 
 - **`benchmarks/arms/react/sandbox/package.json` and `package-lock.json` now pin the versions in `mzizi-dev/mzizi-registry`'s `pnpm-lock.yaml` at `3afeb752`**, as RFC-0009 §1 requires (Refs #48). `typescript` 5.9.3 → 6.0.3, `react` 19.3.0 → 19.2.8, `@types/react` 19.3.0 → 19.2.18, `tailwind-merge` 3.7.0 → 3.6.0; `class-variance-authority` 0.7.1 and `clsx` 2.1.1 were already the registry's. The lockfile was regenerated with `npm install`, and all seven packages in it (with `csstype` 3.2.3) match the registry lock's versions and integrity hashes. The versions were copied in by hand; CI does not read the registry.
