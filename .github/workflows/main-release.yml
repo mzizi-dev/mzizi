@@ -12,7 +12,10 @@
 # mukoko-dev/mukoko-circles .github/workflows/main-release.yml.
 name: Main release
 
-on:
+# zizmor flags every `workflow_run` trigger (dangerous-triggers). This one is the safe
+# shape: it runs only after CI on a `push` to `main` (the job's `if`), and checks out
+# that pushed commit, never a pull request's code, with persist-credentials: false.
+on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -44,6 +47,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The checked-out commit is a push to `main` (the job's `if` rejects any other
+      # workflow_run event), so it is trusted code, not a pull request's.
+      # nosemgrep: yaml.github-actions.security.workflow-run-target-code-checkout.workflow-run-target-code-checkout
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}

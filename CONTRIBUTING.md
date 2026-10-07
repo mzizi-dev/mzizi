@@ -124,7 +124,17 @@ The org's required workflows also run on every pull request, from outside this r
 Semgrep over the changed files, dependency review, a lockfile audit and a release version
 check. Their audit runs only when a lockfile changes, and `Cargo.lock` is gitignored here, so
 `cargo deny` is this repo's Rust audit. Semgrep fails a workflow step whose action is not
-pinned to a commit SHA, so pin new `uses:` lines the way `supply-chain.yml` does.
+pinned to a commit SHA, so pin every `uses:` line to a SHA with the ref in a comment, as the
+workflows here do.
+
+The same workflow's **`workflow audit`** job runs [zizmor](https://docs.zizmor.sh) over
+`.github/workflows`. It fails on template injection, unpinned or impostor actions, a
+checkout that leaves its token on disk (set `persist-credentials: false` unless the job
+pushes), over-broad `permissions` and dangerous triggers. A finding that is safe in context
+is suppressed on its line with `# zizmor: ignore[<audit>]` and a comment saying why, as
+`main-release.yml`'s `workflow_run` trigger is. `.github/dependabot.yml` proposes action
+updates to `staging` weekly, a week after each release (`cooldown`), and
+`.github/CODEOWNERS` names the owner for `.github/`, `deny.toml` and `SECURITY.md`.
 
 To run `cargo deny` locally, install [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
 and run `cargo deny check` from the repository root.
