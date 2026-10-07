@@ -168,8 +168,7 @@ Do not wire a build step, test, or script here that reaches out to `mzizi-regist
 
 _Owner rule, 2026-09-30: changelogs are super important._ [`CHANGELOG.md`](./CHANGELOG.md)
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), in dated sections
-because the compiler has no releases. Every pull request that changes behaviour,
-diagnostics, the language, the charter, an RFC or the benchmarks adds an entry under
+because the compiler has no releases. Every pull request adds an entry under
 `## [Unreleased]`:
 
 - Put it under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`.
@@ -179,11 +178,17 @@ diagnostics, the language, the charter, an RFC or the benchmarks adds an entry u
   measured result that does not exist.
 - Whoever merges moves the `[Unreleased]` entries into a section dated with the merge day.
 
-The `changelog / entry required` CI job fails a pull request that changes other files
-without touching `CHANGELOG.md`. It lets through a pull request labelled `no-changelog`, and
-one that touches only `.github/**` or lint configuration (`.prettierrc`, `.prettierignore`,
-`.markdownlint.jsonc`, `.yamllint.yaml`). The job is not a required check
-in branch protection.
+_Owner rule, 2026-10-07: "Change log in every PR that we are doing."_ The `changelog / entry
+required` CI job fails every pull request that does not touch `CHANGELOG.md`, CI and lint
+configuration included. Only two are let through: one labelled `no-changelog` (a person's
+explicit call that there is nothing to record) and a Dependabot version bump. The job is not
+a required check in branch protection.
+
+**Release notes come from these entries.** When a release to `main` is tagged
+(`main-release.yml`), its GitHub release notes are every `CHANGELOG.md` entry added since the
+previous `main` release, under its heading (`.github/scripts/release_notes.py`), followed by
+GitHub's list of the merged pull requests. So an entry is written for a reader of the
+release, not only for the next contributor.
 
 ## Naming and ownership
 

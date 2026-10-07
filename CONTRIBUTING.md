@@ -355,11 +355,13 @@ readable.
 
 ## The changelog
 
-A pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
-the benchmarks adds an entry to [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]`.
-[`AGENTS.md`](./AGENTS.md), "Changelog", has the rules, and the `changelog / entry
-required` CI job checks for the entry. Label a pull request `no-changelog` when it
-genuinely has nothing to record.
+Every pull request adds an entry to [`CHANGELOG.md`](./CHANGELOG.md) under
+`## [Unreleased]` (owner rule, 2026-10-07). [`AGENTS.md`](./AGENTS.md), "Changelog", has the
+rules, and the `changelog / entry required` CI job checks for the entry. Label a pull request
+`no-changelog` only when it genuinely has nothing to record; Dependabot version bumps are let
+through. Each release to `main` publishes the entries added since the previous release as its
+release notes (`.github/scripts/release_notes.py`), so write the entry for someone reading
+the release.
 
 ## Changing the primitives, the examples, or the compiler
 
