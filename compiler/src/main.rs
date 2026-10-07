@@ -346,8 +346,10 @@ fn run(src: &str, path: &str, agent: bool, release: bool) -> ExitCode {
         return ExitCode::from(2);
     };
     let package = lower(&p, &file_name(path));
-    let dir = cache_dir(&package, std::path::Path::new(path));
-    let binary = match write(&package, &dir).and_then(|()| build(&package, &dir, release)) {
+    let binary = match cache_dir(&package, std::path::Path::new(path))
+        .and_then(|dir| write(&package, &dir).map(|()| dir))
+        .and_then(|dir| build(&package, &dir, release))
+    {
         Ok(b) => b,
         Err(e @ RunError::Build(_)) => {
             // Lowered code that rustc rejects is a compiler bug, by construction (P5).
