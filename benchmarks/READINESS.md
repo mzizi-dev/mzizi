@@ -82,8 +82,8 @@ either pilot never raises its error count.
 The gating runs are RFC-0009's `ui-spec` and `backend` families (RFC-0009 §2). Phase 0
 passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
 
-1. **Runner and input (RFC-0009 §9, steps 1–2). Built on 2026-09-30, except for one
-   open item: the React pins.** Nothing here has run an episode.
+1. **Runner and input (RFC-0009 §9, steps 1–2). Built on 2026-09-30; the React pins
+   followed on 2026-10-07.** Nothing here has run an episode.
    - **Done.** Every arm is read from `arms/<id>/arm.toml`. `mzizi`, `dioxus` and `leptos`
      were migrated with no behaviour change: a test rebuilds pilot 2's committed user
      messages byte for byte. `--family ui-spec` hands the author `spec.md`, the
@@ -96,11 +96,11 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
      are rebalanced to 2,750 Qwen2.5-Coder tokens, from 2,691 to 2,750 (2.2% apart, against
      31% before). [`prompts/BUDGET.md`](prompts/BUDGET.md) records them, and a test catches a
      guide that changed without being re-measured.
-   - **Open: the React pins are provisional.** RFC-0009 §1 pins the React arm from
-     `mzizi-registry`'s lockfile at the task commit. That lockfile could not be read when the
-     arm was built, so its six pins are the npm registry's versions of 2026-09-30
-     ([`arms/react/README.md`](arms/react/README.md)). They must be replaced by the registry
-     lockfile's before a gating run, and the guide re-measured if its version lines change.
+   - **Done (2026-10-07): the React pins are the registry's.** RFC-0009 §1 pins the React
+     arm from `mzizi-registry`'s lockfile at the task commit. The six pins and
+     `sandbox/package-lock.json` now match its `pnpm-lock.yaml` at `3afeb752`, version and
+     integrity hash ([`arms/react/README.md`](arms/react/README.md)). The guide's version line
+     changed (React 19.3 to 19.2) and was re-measured: 2,691 tokens, as before.
    - **Not measured.** The guide counts come from Hugging Face `tokenizers`, not llama.cpp's
      `/tokenize`. The run's own `guide_tokens` (on every final line) is the count that goes in
      `PLAN.md`. The React arm, like Leptos (item 4), has never run end to end.

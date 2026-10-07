@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — the React arm pins from the registry lockfile (2026-10-07)
+
+- **`benchmarks/arms/react/sandbox/package.json` and `package-lock.json` now pin the versions in `mzizi-dev/mzizi-registry`'s `pnpm-lock.yaml` at `3afeb752`**, as RFC-0009 §1 requires (Refs #48). `typescript` 5.9.3 → 6.0.3, `react` 19.3.0 → 19.2.8, `@types/react` 19.3.0 → 19.2.18, `tailwind-merge` 3.7.0 → 3.6.0; `class-variance-authority` 0.7.1 and `clsx` 2.1.1 were already the registry's. The lockfile was regenerated with `npm install`, and all seven packages in it (with `csstype` 3.2.3) match the registry lock's versions and integrity hashes. The versions were copied in by hand; CI does not read the registry.
+- **`sandbox/tsconfig.json` drops `baseUrl`**, which TypeScript 6.0 deprecates (TS5101 made every check exit 2). The registry's own `tsconfig.json` has none either.
+- **`benchmarks/prompts/react-guide.md` says React 19.2**, not 19.3. Re-counted with the tokenizer `BUDGET.md` names: 2,691 tokens and 10,298 bytes, unchanged; only its SHA-256 in `BUDGET.md` changes. `verify-guide.sh` on it passes under `tsc` 6.0.3, both wrong-on-purpose outputs byte for byte.
+- `benchmarks/arms/react/README.md`'s pinned-versions section is rewritten with that provenance, and `benchmarks/READINESS.md` closes the item. No episode has run on the React arm; nothing here is a measured result.
+
 ### Added — `match` in a view is `MZ0410`, not a silent element (2026-10-07)
 
 - **`match` inside a view is now the error `MZ0410`** (#54). Mzizi has no `match` (RFC-0001 §1.2); the parser used to read `match size` as an element named `match` with an unchecked tail, so the issue's file passed `mz check` with 0 errors. The diagnostic names the idiom and the form to write instead: “Mzizi has no `match` — write one `when size is x … end` block per variant, with `else` for the rest”. It carries **no fix**: one `match` becomes several `when` blocks, so there is no single replacement, `exact` or `guess` (RFC-0001 §4.3 offers a fix only when one is unambiguous). Its arms are not parsed, since they come in whatever shape the writer knows (`case x` blocks with or without `end`, Rust's `x => …`, an `else`): every line indented past `match` is skipped, then its `end`, and the lexer's diagnostics on those lines are dropped, so the block is one diagnostic and is left out of the tree and the IR. A mistake after the block is still reported, and `case` outside a `match` is still `MZ0402`. Tested: three new tests in `compiler/tests/recovery.rs` (the issue's file verbatim, six arm shapes, and an error after the block); `cargo test --workspace` runs 428 tests (was 425). Views only: in a service handler, `match` is still the generic `MZ0811`.
