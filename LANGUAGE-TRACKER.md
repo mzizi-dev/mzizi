@@ -42,7 +42,7 @@ What exists is the front end of a language whose first domain is UI components:
 - **Toolchain:** `mz check` (with `--agent`, NDJSON diagnostics), `mz fix`, `mz contract`,
   `mz outline`, and `mz build` for a service only; a recovering parser, a resolver, a
   content-addressed IR ([RFC-0003](./design/RFC-0003-ir.md)). About 12,640 lines in
-  `compiler/src`, 425 tests (`cargo test --workspace`).
+  `compiler/src`, 428 tests (`cargo test --workspace`).
 - **Written in Mzizi:** nine primitives (`primitives/`), two component examples and one
   service, `examples/registry.mz` (`examples/`).
 - **The backend slice ([RFC-0011](./design/RFC-0011-handlers.md), #29–#33):** a `service` with
@@ -94,7 +94,7 @@ Mzizi's two ✅ rows are where it is already different on purpose. Every other r
 | C1  | Expressions and operators: arithmetic, comparison, boolean logic, text concatenation and interpolation | ❌     | Comparisons exist only inside contracts and handler conditions (`is`, `at_least`, `at_most`, `in`) | `examples/` computes and prints a value from an expression, and `mz check` types it                       |
 | C2  | Bindings: named values, scope, shadowing rules                                                         | ❌     | —                                                                                                  | A value can be named and reused; the resolver reports use before binding                                  |
 | C3  | Functions: parameters, return types, calls, recursion                                                  | 🟡     | `fn` parses; bodies are not modelled beyond `emit` (`ast.rs`)                                      | One function calls another with arguments and returns a typed value; recursion works                      |
-| C4  | Control flow: `when`/`else` and `match` as expressions, loops, early return                            | 🟡     | `when`/`else`, `match`/`case` and `for each` exist inside `view` and handlers only                 | All four work in a function body, and non-exhaustive `match` is a diagnostic                              |
+| C4  | Control flow: `when`/`else` and `match` as expressions, loops, early return                            | 🟡     | `when`/`else` and `for each` exist in `view` and handlers only; `match` is `MZ0410` in a view      | All four work in a function body, and non-exhaustive `match` is a diagnostic                              |
 | C5  | Numbers: floats or decimals, overflow and division semantics                                           | 🟡     | `int` only                                                                                         | A float type exists, with overflow and divide-by-zero behaviour specified and tested                      |
 | C6  | Text operations: length, slicing, search, split, format                                                | ❌     | `text` is a type only                                                                              | The operations exist in the standard library (P2) with tests                                              |
 | C7  | Collections: maps, sets, tuples; operations (map, filter, fold, index)                                 | 🟡     | `list(T)`, `option(T)` types ([RFC-0008])                                                          | `map(K, V)` exists and collections can be built and transformed in a function                             |

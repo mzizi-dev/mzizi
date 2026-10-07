@@ -133,8 +133,7 @@ tappable.
   checker will not catch that name.
 - `is` is required in a contract (`height is 52`, not `height 52`), and compares as
   written (`is "52"` fails against `52`). There is no `if` (`MZ0407`, fix: `when`) and no
-  `some`. There is no `match` either, and a `match` line is not always an error, so write
-  `when v is x` blocks.
+  `some`. There is no `match` (`MZ0410`): write one `when v is x` block per variant.
 
 ## Reading the checker's output
 
