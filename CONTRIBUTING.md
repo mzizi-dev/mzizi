@@ -5,7 +5,8 @@
 Mzizi is **Phase 0 of a research charter**, and the honest description of what exists today
 is in the README: a prototype front end. The lexer, the recovering parser, the agent
 diagnostic protocol, the content-addressed IR and nine primitives exist and are tested.
-Contract bodies parse but are **not evaluated**. `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. There is no runtime
+`mz contract` evaluates a contract block: a component's against its own declarations, and a
+`service`'s by running its examples in process. `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. There is no runtime
 and no rendering. The Phase 0 benchmark has not run, so **nothing here has been measured against
 the charter's kill criteria** — and [`CHARTER.md`](./CHARTER.md) §4 is explicit that if the
 benchmark does not show a measurable advantage, Phase 1 does not start.
@@ -136,7 +137,8 @@ there is nothing more there to gate.
 
 Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
 component against its own declarations: its variant tables, its view tree, its prop
-defaults. It does not execute anything, and it does not compare against a reference
+defaults. For a component it executes nothing. For a `service` it runs the `example`
+clauses in process, against the service's own handlers. Neither compares against a reference
 implementation — which is what CHARTER.md §6's defect metric actually requires
 ([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means _the
 repo's `.mz` files lex, parse, lower to IR, keep their own promises, and the shipped binary

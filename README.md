@@ -156,7 +156,7 @@ mzizi/
 ├── design/             # the RFCs, and ROADMAP.md — read these next
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
-├── examples/           # two real corpus components, ported by hand
+├── examples/           # example components, ported by hand, and the example service
 └── benchmarks/         # Phase 0 benchmark harness, runner, arms, pilot tasks and results; READINESS.md; the held-out set is private
 ```
 

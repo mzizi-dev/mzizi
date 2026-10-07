@@ -13,13 +13,28 @@ untrusted input**. An agent or a person points `mz` at a `.mz` file that may hav
 written by anyone, and the compiler lexes it, parses it, and lowers it to an IR. Everything
 interesting is downstream of that.
 
-It is also worth stating what the compiler does **not** do today, because it bounds the
-threat model: it does not execute anything. Contract bodies parse but are not evaluated,
-no component lowers to Rust, no runtime and no rendering. `mz build`
-lowers a `service` to a local Rust + axum package, which it writes but does not compile or run;
-there is no Workers, WebAssembly or Containers target. Compiling a
-`.mz` file today runs no code from that file. When contract evaluation and lowering land,
-that changes, and this document changes with them.
+It is also worth stating exactly what each command does with that input today, because it
+bounds the threat model:
+
+- **`mz check`, `mz outline` and `mz ir`** read the file and write nothing. **`mz fix`**
+  rewrites the file it was given, in place, applying only its `exact` fixes.
+- **`mz contract`** evaluates the file's `contract` block, and only for a file that checks
+  with no errors. For a component it compares each clause against the component's own
+  declarations, and nothing executes. For a `service` it runs each `example` against the
+  service's handlers inside the compiler's own process. The handler language has no loop, no
+  call and no state, so a run always terminates, and it opens no socket. A handler that
+  answers with `file "…"` reads that file. The checker accepts only a relative path inside
+  the `.mz` file's directory with no `..` segment (`MZ0810`). A symlink inside that
+  directory is followed.
+- **`mz build`** lowers a `service` that checks with no errors to a Rust + axum package in
+  the `--out` directory (the current directory if none is given), and copies those same
+  `file` fixtures into it. It writes the package but does not compile or run it: whoever
+  runs `cargo` on it runs that code, including its build-time dependencies from crates.io.
+
+No component lowers to Rust, there is no runtime and no rendering, and there is no Workers,
+WebAssembly or Containers target. No command makes a network connection, and none runs the
+`.mz` file's code as native code. As lowering grows, that changes, and this document changes
+with it.
 
 ## Supported versions
 

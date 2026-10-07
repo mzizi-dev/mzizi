@@ -2,7 +2,7 @@
 
 Resolved so far (see `../CHARTER.md` §6):
 
-- **Corpus:** Mzizi's own components (`mzizi-dev/mzizi-registry`'s 571+ component registry,
+- **UI tasks:** Mzizi's own components (`mzizi-dev/mzizi-registry`'s 571+ component registry,
   partially ported to Rust) — the agent authors these in Mzizi-lang against the existing
   `.tsx`/`.rs` implementations as ground truth. Not an external library port.
 - **Defect metric:** a defect is code that compiles cleanly but fails a contract/behavior test
