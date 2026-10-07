@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — dependency checks in CI (2026-10-07)
+
+- **A new `Supply chain` workflow (`.github/workflows/supply-chain.yml`) checks dependencies** (#62). Its `cargo deny` job runs `cargo deny check` with the new `deny.toml` over the workspace and over B1's Rust reference (`axum` 0.8.9 and `tokio` 1.53.1, the versions `mz build` pins). It fails on any RustSec advisory, on a license outside `deny.toml`'s `allow` list, and on any source other than crates.io. It runs on pushes and pull requests to `main` and `staging`, and weekly. Its `dependency review` job runs GitHub's dependency review on pull requests and fails one that adds a dependency with a known vulnerability. On 2026-10-07 both `cargo deny` runs passed locally with no advisories; the one warning is two versions of `winnow` under `toml`. Neither job is a required check yet: that is a branch-protection setting. `AGENTS.md` and `CONTRIBUTING.md` describe both jobs.
+
 ### Added — `AGENTS.md` loads the Mzizi dev skills (2026-10-06)
 
 - **`AGENTS.md` gains "Dev skills, progress reports and the merge gate"**, the canonical rule block from nyuchi/.github#87, after "Track big work in GitHub issues": load the Mzizi dev skills (`digital-hygiene` and `progress-report`), clone only into a directory unique to the agent, run dev work on a 10-minute progress-report loop whose ticks never publish, release, merge or deploy without the owner's approval, and merge only through the merge gate. Docs only: no behaviour changes, and CI is unchanged.
