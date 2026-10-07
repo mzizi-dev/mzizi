@@ -36,6 +36,7 @@ pub mod hash;
 pub mod ir;
 pub mod lex;
 pub mod lower;
+pub mod numbers;
 pub mod outline;
 pub mod parse;
 pub mod program;

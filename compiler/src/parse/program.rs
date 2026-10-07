@@ -8,8 +8,8 @@
 //! Spellings from other languages (`==`, `&&`, `->`, `def`, `console.log`, `x = 1` with no
 //! binding) are repaired in the tree as they are reported, so the checker sees the program
 //! the `exact` fix would produce and reports nothing more about that line (RFC-0013 §16).
-//! Forms RFC-0013 designs that this slice does not build yet (`while`, `match`, `for each`,
-//! methods, `float`, …) are one `MZ0919` each, naming the form, and their block is skipped.
+//! Forms RFC-0013 designs that are not built yet (`while`, `match`, `for each`, methods on
+//! text, …) are one `MZ0919` each, naming the form, and their block is skipped.
 
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, canonical_text};
@@ -284,7 +284,7 @@ impl P {
             "MZ0919",
             join(at, line_end),
             format!(
-                "{what} is designed (RFC-0013) but not built yet — the foundation slice has `fn`, `let`, `var`, `when`, `return`, `print`, and int, bool and text values"
+                "{what} is designed (RFC-0013) but not built yet — a program has `fn`, `let`, `var`, `when`, `return`, `print`, and int, float, bool and text values"
             ),
         );
         if block {
@@ -844,7 +844,7 @@ impl P {
         Some(self.type_ref("`:`"))
     }
 
-    /// A type: `int`, `bool` or `text` in this slice.
+    /// A type: `int`, `float`, `bool` or `text`.
     fn type_ref(&mut self, after: &str) -> TypeRef {
         let at = self.span();
         let Some(name) = word(self.peek()).map(str::to_string) else {
@@ -883,14 +883,15 @@ impl P {
         }
         let ty = match name.as_str() {
             "int" if span == at => Ty::Int,
+            "float" if span == at => Ty::Float,
             "bool" if span == at => Ty::Bool,
             "text" if span == at => Ty::Text,
-            "float" | "list" | "option" | "map" | "set" | "result" => {
+            "list" | "option" | "map" | "set" | "result" => {
                 self.err(
                     "MZ0919",
                     span,
                     format!(
-                        "`{name}` is designed (RFC-0013 §2) but not built yet — the foundation slice has int, bool and text"
+                        "`{name}` is designed (RFC-0013 §2) but not built yet — a program has int, float, bool and text"
                     ),
                 );
                 Ty::Error
@@ -900,11 +901,13 @@ impl P {
                     "i64" | "i32" | "i16" | "i8" | "u64" | "u32" | "usize" | "isize"
                     | "integer" | "number" => Some("int"),
                     "boolean" => Some("bool"),
+                    "f64" | "f32" | "double" | "decimal" | "real" => Some("float"),
                     "string" | "str" | "char" => Some("text"),
                     _ => None,
                 };
-                let say =
-                    format!("`{other}` is not a type here — the types are int, bool and text");
+                let say = format!(
+                    "`{other}` is not a type here — the types are int, float, bool and text"
+                );
                 match alias {
                     Some(a) => {
                         // `String` reached here as the lexer's `string`, with its own MZ0101.
@@ -1545,7 +1548,9 @@ impl P {
     }
 
     fn or_expr(&mut self) -> Expr {
+        let first_diag = self.diags.len();
         let mut lhs = self.and_expr();
+        let mut mixed = is_bare_and(&lhs);
         let mut height = 0;
         loop {
             let at = self.span();
@@ -1555,14 +1560,70 @@ impl P {
                 self.bump();
                 self.idiom_op("||", "or", at);
             } else {
-                return lhs;
+                break;
             }
             let rhs = self.and_expr();
             if self.chain_too_deep(&mut height, &lhs, &rhs, at) {
                 return self.error_expr(join(lhs.span, rhs.span));
             }
+            mixed |= is_bare_and(&rhs);
             lhs = binary(BinOp::Or, at, lhs, rhs);
         }
+        if mixed && matches!(lhs.kind, ExprKind::Binary { op: BinOp::Or, .. }) {
+            self.and_meets_or(&lhs, first_diag);
+        }
+        lhs
+    }
+
+    /// `MZ0913`: `and` mixed with `or` without parentheses (RFC-0013 §3.4). The tree already
+    /// has the reading the precedence table implies; the `exact` fix writes its parentheses
+    /// (§17). An idiom repaired inside it (`&&`, `==`) is folded into this one fix, so two
+    /// `exact` fixes never overlap; a `guess` inside it makes this fix a `guess` too.
+    fn and_meets_or(&mut self, e: &Expr, first_diag: usize) {
+        let confidence = self.fold_inner_fixes(e.span, first_diag);
+        let fixed = canonical(e);
+        let d = Diagnostic::error(
+            "MZ0913",
+            &self.file,
+            e.span,
+            format!("`and` and `or` are mixed without parentheses — write `{fixed}`"),
+        );
+        self.diags.push(if e.has_error() {
+            d
+        } else {
+            d.with_fix(e.span, fixed, confidence)
+        });
+    }
+
+    /// Fold the `exact` repairs reported since `first_diag` inside `span` (`MZ0910`'s idioms,
+    /// and an inner `MZ0913`) into the one fix about to cover all of `span`, so two fixes
+    /// never overlap. The covering fix is `exact` unless a `guess`, or a fix of any other
+    /// code, sits inside it.
+    fn fold_inner_fixes(&mut self, span: Span, first_diag: usize) -> Confidence {
+        let within = |d: &Diagnostic| {
+            d.fix.as_ref().is_some_and(|f| {
+                (f.span.start_line, f.span.start_col) >= (span.start_line, span.start_col)
+                    && (f.span.end_line, f.span.end_col) <= (span.end_line, span.end_col)
+            })
+        };
+        let mut confidence = Confidence::Exact;
+        let mut k = first_diag;
+        while k < self.diags.len() {
+            let d = &self.diags[k];
+            let exact = d
+                .fix
+                .as_ref()
+                .is_some_and(|f| f.confidence == Confidence::Exact);
+            if within(d) && exact && matches!(d.code, "MZ0910" | "MZ0913") {
+                self.diags.remove(k);
+                continue;
+            }
+            if within(d) {
+                confidence = Confidence::Guess;
+            }
+            k += 1;
+        }
+        confidence
     }
 
     fn and_expr(&mut self) -> Expr {
@@ -1626,17 +1687,69 @@ impl P {
                 return self.too_deep_expr(at);
             }
             self.nest += 1;
+            let first_diag = self.diags.len();
             let operand = self.not_expr();
             self.nest -= 1;
-            return Expr {
+            let e = Expr {
                 span: join(at, operand.span),
                 kind: ExprKind::Unary {
                     op: UnOp::Not,
                     operand: Box::new(operand),
                 },
             };
+            return if bang { e } else { self.not_is(e, first_diag) };
         }
         self.cmp_expr()
+    }
+
+    /// `not a is b`, which reads `not (a is b)`: `MZ0910`, with the `exact` fix `a is not b`
+    /// (RFC-0013 §3.3, one spelling for inequality), and the tree holds the repair. Written
+    /// with parentheses, `not (a is b)` is left alone. `!a == b` is not this: in the languages
+    /// that write it, `!` binds to `a`.
+    fn not_is(&mut self, e: Expr, first_diag: usize) -> Expr {
+        let ExprKind::Unary { operand, .. } = &e.kind else {
+            return e;
+        };
+        let ExprKind::Binary {
+            op: op @ (BinOp::Is | BinOp::IsNot),
+            op_span,
+            lhs,
+            rhs,
+        } = &operand.kind
+        else {
+            return e;
+        };
+        if operand.is_parenthesised() {
+            return e;
+        }
+        let (flip, written) = if *op == BinOp::Is {
+            (BinOp::IsNot, "not a is b")
+        } else {
+            (BinOp::Is, "not a is not b")
+        };
+        let flipped = Expr {
+            span: e.span,
+            kind: ExprKind::Binary {
+                op: flip,
+                op_span: *op_span,
+                lhs: lhs.clone(),
+                rhs: rhs.clone(),
+            },
+        };
+        let confidence = self.fold_inner_fixes(e.span, first_diag);
+        let fixed = canonical(&flipped);
+        let d = Diagnostic::error(
+            "MZ0910",
+            &self.file,
+            e.span,
+            format!("`{written}` is not how Mzizi asks for inequality — write `{fixed}`"),
+        );
+        self.diags.push(if flipped.has_error() {
+            d
+        } else {
+            d.with_fix(e.span, fixed, confidence)
+        });
+        flipped
     }
 
     /// A comparison operator at the cursor, consumed, with any idiom reported.
@@ -1829,6 +1942,13 @@ impl P {
                     span: at,
                 }
             }
+            Tok::Float(v) => {
+                self.bump();
+                Expr {
+                    kind: ExprKind::Float(v),
+                    span: at,
+                }
+            }
             Tok::Keyword(k) if self.keyword_name(k) => {
                 // A keyword used as a name, already reported where it was declared.
                 self.bump();
@@ -1905,24 +2025,106 @@ impl P {
                 self.error_expr(at)
             }
         };
-        if matches!(self.peek(), Tok::Dot) && !matches!(e.kind, ExprKind::Error) {
-            // `x.length()`, `p.x`: C6, C7 and C8 are later waves.
-            let dot = self.span();
-            if !self.failed {
-                self.err(
-                    "MZ0919",
-                    join(e.span, self.line_end_span()),
-                    "methods and fields (`x.name`) are designed (RFC-0013 §3.7, §11) but not built yet",
-                );
-            }
-            while matches!(
-                self.peek(),
-                Tok::Dot | Tok::Ident(_) | Tok::LParen | Tok::RParen
-            ) {
-                self.bump();
-            }
-            return self.error_expr(join(e.span, dot));
+        let e = self.postfix(e);
+        if matches!(self.peek(), Tok::Op("**")) {
+            return self.power(e);
         }
+        e
+    }
+
+    /// RFC-0013 §3.5 level 2: `.method(…)` and `.name`, left to right. Which receivers have
+    /// which methods is the checker's question.
+    fn postfix(&mut self, mut e: Expr) -> Expr {
+        let mut links = 0;
+        while matches!(self.peek(), Tok::Dot) {
+            let dot = self.bump().span;
+            // `x.abs().abs()…` builds a tree as deep as the chain is long, like `1 + 1 + …`.
+            links += 1;
+            if links > MAX_NESTING {
+                return self.too_deep_expr(dot);
+            }
+            let name_at = self.span();
+            let Some(name) = word(self.peek()).map(str::to_string) else {
+                if !self.failed {
+                    let found = describe(self.peek());
+                    self.err(
+                        "MZ0917",
+                        name_at,
+                        format!("expected a method's name after `.`, found {found}"),
+                    );
+                }
+                return self.error_expr(join(e.span, dot));
+            };
+            self.bump();
+            let (args, called, end) = if matches!(self.peek(), Tok::LParen) {
+                if self.nest >= PROGRAM_NESTING {
+                    return self.too_deep_expr(name_at);
+                }
+                self.nest += 1;
+                let (args, close) = self.args();
+                self.nest -= 1;
+                (args, true, close)
+            } else {
+                (Vec::new(), false, name_at)
+            };
+            e = Expr {
+                span: join(e.span, end),
+                kind: ExprKind::Method {
+                    recv: Box::new(e),
+                    name,
+                    name_span: name_at,
+                    args,
+                    called,
+                },
+            };
+        }
+        e
+    }
+
+    /// `a ** b`, Python's power operator. Mzizi has none (RFC-0013 §3.2): `MZ0910`, and the
+    /// tree reads `a.pow(b)`. The fix is a `guess`, because `pow` takes an `int` exponent
+    /// and `**` takes any number. `**` binds tighter than prefix `-` and to the right, as in
+    /// Python, which is how a postfix `pow` reads too.
+    fn power(&mut self, base: Expr) -> Expr {
+        let at = self.bump().span;
+        if self.nest >= PROGRAM_NESTING {
+            return self.too_deep_expr(at);
+        }
+        self.nest += 1;
+        let first_diag = self.diags.len();
+        let exponent = self.unary_expr();
+        self.nest -= 1;
+        // `a ** b ** c`: the inner `**` is folded into this one diagnostic and its fix.
+        let mut k = first_diag;
+        while k < self.diags.len() {
+            if self.diags[k].code == "MZ0910" && self.diags[k].say.starts_with("`**`") {
+                self.diags.remove(k);
+            } else {
+                k += 1;
+            }
+        }
+        let span = join(base.span, exponent.span);
+        let e = Expr {
+            span,
+            kind: ExprKind::Method {
+                recv: Box::new(base),
+                name: "pow".to_string(),
+                name_span: at,
+                args: vec![exponent],
+                called: true,
+            },
+        };
+        let d = Diagnostic::error(
+            "MZ0910",
+            &self.file,
+            at,
+            "`**` is not a Mzizi operator — a power is the method `x.pow(n)`, with an int `n`",
+        );
+        self.diags.push(if e.has_error() {
+            d
+        } else {
+            d.with_fix(span, canonical(&e), Confidence::Guess)
+        });
         e
     }
 
@@ -2289,14 +2491,27 @@ fn depth(e: &Expr) -> usize {
             }
             ExprKind::Unary { operand, .. } => todo.push((operand, d + 1)),
             ExprKind::Call { args, .. } => todo.extend(args.iter().map(|a| (a, d + 1))),
+            ExprKind::Method { recv, args, .. } => {
+                todo.push((recv, d + 1));
+                todo.extend(args.iter().map(|a| (a, d + 1)));
+            }
             ExprKind::Text(parts) => todo.extend(parts.iter().filter_map(|p| match p {
                 TextPart::Expr(x) => Some((x, d + 1)),
                 TextPart::Lit(_) => None,
             })),
-            ExprKind::Int(_) | ExprKind::Bool(_) | ExprKind::Name(_) | ExprKind::Error => {}
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Name(_)
+            | ExprKind::Error => {}
         }
     }
     deepest
+}
+
+/// An `and` written without parentheses, as an operand of `or` (`MZ0913`).
+fn is_bare_and(e: &Expr) -> bool {
+    matches!(e.kind, ExprKind::Binary { op: BinOp::And, .. }) && !e.is_parenthesised()
 }
 
 fn binary(op: BinOp, op_span: Span, lhs: Expr, rhs: Expr) -> Expr {
