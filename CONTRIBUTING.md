@@ -374,7 +374,13 @@ it left `origin/staging` or `origin/main`, whichever is nearer) touch `CHANGELOG
 `cargo fmt --all -- --check` when Rust under `compiler/` or `benchmarks/` is staged.
 `MZ_NO_CHANGELOG=1` skips the changelog check, the local twin of the `no-changelog` label.
 The hook is fast on purpose; the six gates below are still what you run before pushing.
-`scripts/test-pre-commit.sh` tests it.
+`scripts/test-pre-commit.sh` tests it, and CI's `compiler` job runs that test. The hook
+trusts your local `origin/staging` and `origin/main`, so fetch first: with stale refs, or on
+a branch stacked on another unmerged one, other people's entries count as yours.
+
+The hook is code from the checked-out branch: committing on someone else's branch, a fork's
+pull request included, runs their `.githooks/pre-commit`. Read any change under `.githooks/`
+before committing there, or commit with `--no-verify`.
 
 ## Changing the primitives, the examples, or the compiler
 

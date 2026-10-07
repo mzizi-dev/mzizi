@@ -8,6 +8,10 @@
 # including worktrees other people or agents have open on the same clone. A worktree on a
 # branch older than .githooks/ then runs no hooks. Hooks already in the clone's hooks
 # directory stop running too; the script names any it finds, and what it replaced.
+#
+# The hook that runs is the checked-out branch's .githooks/pre-commit, so a commit on
+# someone else's branch (a fork's pull request included) runs their code. Read changes
+# under .githooks/ before committing there, or use `git commit --no-verify`.
 set -euo pipefail
 
 top=$(git rev-parse --show-toplevel)
