@@ -309,10 +309,11 @@ language itself.
    records it per iteration. A slow compiler fails Phase 0 no matter how
    good its errors are.
 
-7. **The idioms an agent brings with it** _(amended 2026-09-29)_. Pilot 2
-   (`benchmarks/results/2026-09-27-pilot-2/RUN.md`) found the ~7B model stalling on React
-   idioms that have no Mzizi form, under diagnostics that did not name them. Each now has
-   one diagnostic that names the idiom and, where the repair is mechanical, carries it:
+7. **The idioms an agent brings with it** _(amended 2026-09-29; `MZ0410` added
+   2026-10-07, #54)_. Pilot 2 (`benchmarks/results/2026-09-27-pilot-2/RUN.md`) found the
+   ~7B model stalling on React idioms that have no Mzizi form, under diagnostics that did
+   not name them. Each now has one diagnostic that names the idiom and, where the repair is
+   mechanical, carries it:
 
    | Code     | Written                                         | Diagnostic and fix                                                                |
    | -------- | ----------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -322,6 +323,7 @@ language itself.
    | `MZ0407` | `if open`                                       | there is no `if`; `exact` fix is `when`, and the block parses as a `when`         |
    | `MZ0408` | `slot = "x"` directly under `view`              | one diagnostic per run of such lines; attributes belong on an element             |
    | `MZ0409` | `span class = "x"`                              | an element word stands alone on its line; the tail was silently kept before       |
+   | `MZ0410` | `match size` in a view                          | there is no `match`: one `when size is x` per variant; no fix, it is one-to-many  |
    | `MZ0313` | `icon class "size-14" height 48`                | a `height` that disagrees with its class (FM-11); `exact` fix is the rendered px  |
 
    The same pilot found §4.1's "never a cascade" broken in three places, now each one
