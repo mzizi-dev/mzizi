@@ -1128,9 +1128,9 @@ mz build <file.mz> --out <dir> write the program's Cargo package, as for a servi
 1. **Check.** `mz run` runs `mz check` first. On any error it prints the diagnostics, exits 3 and
    does not build. The loop summary line (RFC-0001 §4.4) is printed as for `mz check`.
 2. **Lower.** It writes a Cargo package (§14) into a cache directory that belongs to the user
-   and is keyed by the source file's path: `mzizi/mz-run/<name>-<path hash>/` under
-   `$XDG_CACHE_HOME` or `~/.cache`, and the system's temporary directory only when neither is
-   set. Per user, because a directory in a shared temporary directory let another account plant
+   and is keyed by the source file's path: `<name>-<path hash>/` under `$MZ_CACHE_DIR`, or
+   `mzizi/mz-run/` under `$XDG_CACHE_HOME` or `~/.cache`. With none of them set, `mz run` exits
+   2 and names the three; it never falls back to the system's temporary directory. Per user, because a directory in a shared temporary directory let another account plant
    a `build.rs` that `cargo` would run. Keyed by path, not by a hash of the generated text,
    because a directory per content hash made every edit a cold build; in one directory per
    source file, Cargo's own fingerprint rebuilds exactly what changed, and the generated code,
@@ -1611,8 +1611,8 @@ in `compiler/tests/program.rs`; nothing measured.
   diagnostic. **Claimed** from §16's free range: `MZ0917` (a line a function body cannot read)
   and `MZ0919` (a designed form not built yet), now in §16's table.
 - **Where the code departs from this text, the code is the fact.** §13.1 step 2's cache is
-  per user, `mzizi/mz-run/<name>-<path hash>` under `$XDG_CACHE_HOME` or `~/.cache` (the
-  system's temporary directory only when neither is set): a shared temporary directory let
+  per user, `<name>-<path hash>` under `$MZ_CACHE_DIR`, or `mzizi/mz-run/` under
+  `$XDG_CACHE_HOME` or `~/.cache`, with no fallback to the system's temporary directory: a shared temporary directory let
   another account plant a `build.rs` that `cargo` would run, and a directory per content hash
   made every edit a cold build. Keyed by the source path, Cargo's fingerprint decides what an
   unchanged program skips. §4.1's rule is read exactly: `int` minimum `% -1` is 0 and does not

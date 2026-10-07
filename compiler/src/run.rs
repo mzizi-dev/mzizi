@@ -553,26 +553,30 @@ impl std::fmt::Display for RunError {
     }
 }
 
-/// Where `mz run` keeps a program's package: `mzizi/mz-run/<name>-<path hash>` under the
-/// user's cache directory (`$XDG_CACHE_HOME`, else `$HOME/.cache`), and under the system's
-/// temporary directory only when neither is set. Per user, so no other account can plant a
-/// file in a package `cargo` builds; keyed by the source file's path, so each edit rebuilds
-/// in place and Cargo's own fingerprint decides what an unchanged program skips.
-pub fn cache_dir(pkg: &Package, source: &Path) -> PathBuf {
+/// Where `mz run` keeps a program's package: `<name>-<path hash>` under `$MZ_CACHE_DIR`, or
+/// else `mzizi/mz-run/` under the user's cache directory (`$XDG_CACHE_HOME`, else
+/// `$HOME/.cache`). Per user, so no other account can plant a file in a package `cargo`
+/// builds; keyed by the source file's path, so each edit rebuilds in place and Cargo's own
+/// fingerprint decides what an unchanged program skips. There is no fallback to the system's
+/// temporary directory: a fixed name there is one another account can create first, so with
+/// none of the three variables set this is an error that names them.
+pub fn cache_dir(pkg: &Package, source: &Path) -> Result<PathBuf, RunError> {
     let env_dir = |k: &str| {
         std::env::var_os(k)
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
     };
-    let base = env_dir("XDG_CACHE_HOME")
-        .or_else(|| env_dir("HOME").map(|h| h.join(".cache")))
-        .map_or_else(
-            || std::env::temp_dir().join("mz-run"),
-            |c| c.join("mzizi/mz-run"),
-        );
+    let base = env_dir("MZ_CACHE_DIR")
+        .or_else(|| env_dir("XDG_CACHE_HOME").map(|c| c.join("mzizi/mz-run")))
+        .or_else(|| env_dir("HOME").map(|h| h.join(".cache/mzizi/mz-run")))
+        .ok_or_else(|| {
+            RunError::Io(
+                "no per-user cache directory: set MZ_CACHE_DIR, XDG_CACHE_HOME or HOME".to_string(),
+            )
+        })?;
     let absolute = std::fs::canonicalize(source).unwrap_or_else(|_| source.to_path_buf());
     let key = crate::hash::sha256(absolute.to_string_lossy().as_bytes()).short();
-    base.join(format!("{}-{key}", pkg.name))
+    Ok(base.join(format!("{}-{key}", pkg.name)))
 }
 
 /// Write the package's files under `dir`, leaving a file alone when it already holds the
