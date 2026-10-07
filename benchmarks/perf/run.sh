@@ -15,8 +15,11 @@
 # that `mz` instead of building one in release. Every package is std only and built with
 # --offline. Needs Linux tools: bash 4 or later, GNU date (for %N) and coreutils.
 #
-# Exit status: 0 when every program's three outputs match; 1 when any differs or a program
-# fails; 2 on a usage error or a missing tool; 3 when a build fails.
+# Exit status: 0 when every program's three outputs match and every timed run succeeds; 1
+# when an output differs or a run, `mz check` or GNU time exits non-zero (that program is
+# reported and not timed, the others still are, and both reports are still written); 2 on
+# a usage error, a program name other than [a-z0-9_]+, or a missing tool; 3 when a build
+# fails.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -40,7 +43,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -*) echo "run.sh: unknown option $1" >&2; exit 2 ;;
@@ -93,6 +96,20 @@ build() {
   fi
 }
 
+# Run one measured command with its standard output discarded. A failure sets `error` to
+# what failed and with which status, reports it, and returns 1, so the caller stops timing
+# that program and the script goes on to the next one.
+try() {
+  local what="$1" status=0
+  shift
+  "$@" > /dev/null || status=$?
+  if [ "$status" -ne 0 ]; then
+    error="$what exited $status"
+    echo "run.sh: $name: $error" >&2
+    return 1
+  fi
+}
+
 timer=""
 if [ -x /usr/bin/time ] && /usr/bin/time -f '%M' true 2> /dev/null; then
   timer=/usr/bin/time
@@ -120,6 +137,36 @@ cargo_v="$(cargo --version)"
 commit="$(git -C "$root" rev-parse --short=12 HEAD 2> /dev/null || echo unknown)"
 when="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# --- programs ----------------------------------------------------------------------------
+
+# Checked before anything is built, so a typo costs no compiler build. A name is the stem
+# of a file in programs/ and nothing else: lower-case letters, digits and `_`, so it can
+# never name a path outside this folder or the build directory.
+programs=()
+if [ ${#only[@]} -gt 0 ]; then
+  for name in "${only[@]}"; do
+    if ! [[ "$name" =~ ^[a-z0-9_]+$ ]]; then
+      echo "run.sh: a program name is lower-case letters, digits and _, not '$name'" >&2
+      exit 2
+    fi
+    [ -f "$here/programs/$name.mz" ] || { echo "run.sh: no programs/$name.mz" >&2; exit 2; }
+    programs+=("$name")
+  done
+else
+  for f in "$here"/programs/*.mz; do
+    programs+=("$(basename "$f" .mz)")
+  done
+fi
+
+# The binary `mz build` makes is named from the `program` line, `_` written `-`
+# (compiler/src/run.rs, `Package::binary`), which need not be the file's name.
+program_line() { awk '$1 == "program" { print $2; exit }' "$1"; }
+
+for name in "${programs[@]}"; do
+  [ -f "$here/programs/$name.expected" ] || { echo "run.sh: programs/$name.mz has no $name.expected" >&2; exit 2; }
+  [ -n "$(program_line "$here/programs/$name.mz")" ] || { echo "run.sh: programs/$name.mz has no \`program\` line" >&2; exit 2; }
+done
+
 # --- mz ----------------------------------------------------------------------------------
 
 if [ -n "${MZ:-}" ]; then
@@ -133,18 +180,6 @@ else
   mz="${CARGO_TARGET_DIR:-$root/target}/release/mz"
 fi
 
-programs=()
-if [ ${#only[@]} -gt 0 ]; then
-  for name in "${only[@]}"; do
-    [ -f "$here/programs/$name.mz" ] || { echo "run.sh: no programs/$name.mz" >&2; exit 2; }
-    programs+=("$name")
-  done
-else
-  for f in "$here"/programs/*.mz; do
-    programs+=("$(basename "$f" .mz)")
-  done
-fi
-
 variants=(mzizi rust_unchecked rust_checked)
 
 # --- per program -------------------------------------------------------------------------
@@ -156,11 +191,7 @@ md_rows=()
 for name in "${programs[@]}"; do
   src="$here/programs/$name.mz"
   expected="$here/programs/$name.expected"
-  [ -f "$expected" ] || { echo "run.sh: programs/$name.mz has no $name.expected" >&2; exit 2; }
-  # The binary `mz build` makes is named from the `program` line, `_` written `-`
-  # (compiler/src/run.rs, `Package::binary`), which need not be the file's name.
-  program="$(awk '$1 == "program" { print $2; exit }' "$src")"
-  [ -n "$program" ] || { echo "run.sh: programs/$name.mz has no \`program\` line" >&2; exit 2; }
+  program="$(program_line "$src")"
   echo "run.sh: $name" >&2
 
   # Each build starts from an empty target directory, named explicitly so that
@@ -186,76 +217,96 @@ for name in "${programs[@]}"; do
   done
 
   # Output equality: all three must print the committed .expected exactly.
-  identical=true
+  error=""
   for v in "${variants[@]}"; do
-    if ! "${bin[$v]}" > "$work/$name/$v.out"; then
-      echo "run.sh: $name ($v) exited non-zero" >&2
-      identical=false
+    status=0
+    "${bin[$v]}" > "$work/$name/$v.out" || status=$?
+    if [ "$status" -ne 0 ]; then
+      echo "run.sh: $name ($v) exited $status" >&2
+      error="${error:-$v exited $status}"
     elif ! diff -u "$expected" "$work/$name/$v.out" >&2; then
       echo "run.sh: $name ($v) printed something other than programs/$name.expected" >&2
-      identical=false
+      error="${error:-$v printed something other than $name.expected}"
     fi
   done
-  if [ "$identical" = true ]; then
+  identical=true
+  if [ -z "$error" ]; then
     echo "run.sh: $name: all three outputs match $name.expected" >&2
   else
-    failed=1
+    identical=false
   fi
 
-  # A program whose output is wrong is not timed: its numbers would mean nothing.
-  if [ "$check_only" = true ] || [ "$identical" = false ]; then
-    json_programs+=("$(printf '{"name":%s,"output_identical":%s,"mz_check_ms":null,"variants":{"mzizi":{"build_ms":%s},"rust_unchecked":{"build_ms":%s},"rust_checked":{"build_ms":%s}}}' \
-      "$(json_str "$name")" "$identical" "$(ms "${build_ns[mzizi]}")" "$(ms "${build_ns[rust_unchecked]}")" "$(ms "${build_ns[rust_checked]}")")")
-    if [ "$identical" = false ]; then
-      md_rows+=("| $name | output differs from $name.expected: not timed | | | | | | | | |")
-    fi
-    unset bin build_ns
-    continue
+  # Every timed run is guarded: a command that fails (a crash, a kill, an out-of-memory)
+  # marks the program failed and is reported, and the loop goes on to the next program, so
+  # perf.json and perf.md are still written and the exit status is 1.
+  if [ -z "$error" ] && [ "$check_only" = false ]; then
+    # `mz check` time: the median of N runs of the shipped binary, wall clock.
+    checks=()
+    for _ in $(seq 1 "$runs"); do
+      t0="$(now_ns)"
+      try "\`mz check\`" "$mz" check "$src" || break
+      checks+=($(($(now_ns) - t0)))
+    done
   fi
-
-  # `mz check` time: the median of N runs of the shipped binary, wall clock.
-  checks=()
-  for _ in $(seq 1 "$runs"); do
-    t0="$(now_ns)"
-    "$mz" check "$src" > /dev/null
-    checks+=($(($(now_ns) - t0)))
-  done
-  check_ms="$(ms "$(median "${checks[@]}")")"
 
   # Wall time: one warm-up each, then N rounds. The order of the three rotates every
   # round, so neither drift on the machine nor going first falls on one variant alone.
   declare -A walls
-  for v in "${variants[@]}"; do
-    "${bin[$v]}" > /dev/null
-    walls[$v]=""
-  done
-  for round in $(seq 0 $((runs - 1))); do
-    for i in 0 1 2; do
-      v="${variants[$(((i + round) % 3))]}"
-      t0="$(now_ns)"
-      "${bin[$v]}" > /dev/null
-      walls[$v]+="$(($(now_ns) - t0)) "
+  if [ -z "$error" ] && [ "$check_only" = false ]; then
+    for v in "${variants[@]}"; do
+      try "$v (warm-up)" "${bin[$v]}" || break
+      walls[$v]=""
     done
+  fi
+  if [ -z "$error" ] && [ "$check_only" = false ]; then
+    for round in $(seq 0 $((runs - 1))); do
+      for i in 0 1 2; do
+        v="${variants[$(((i + round) % 3))]}"
+        t0="$(now_ns)"
+        try "$v" "${bin[$v]}" || break 2
+        walls[$v]+="$(($(now_ns) - t0)) "
+      done
+    done
+  fi
+
+  # Max RSS: one more run of each under GNU time.
+  declare -A rss_of
+  for v in "${variants[@]}"; do
+    rss_of[$v]=null
   done
+  if [ -z "$error" ] && [ "$check_only" = false ] && [ -n "$timer" ]; then
+    for v in "${variants[@]}"; do
+      try "$v (under $timer)" "$timer" -f '%M' -o "$work/$name/$v.rss" "${bin[$v]}" || break
+      rss_of[$v]="$(tail -n 1 "$work/$name/$v.rss")"
+    done
+  fi
+
+  # A program that failed is not timed: its numbers would mean nothing.
+  if [ -n "$error" ] || [ "$check_only" = true ]; then
+    if [ -n "$error" ]; then
+      failed=1
+      md_rows+=("| $name | failed, not timed: $error | | | | | | | | |")
+    fi
+    json_programs+=("$(printf '{"name":%s,"output_identical":%s,"error":%s,"mz_check_ms":null,"variants":{"mzizi":{"build_ms":%s},"rust_unchecked":{"build_ms":%s},"rust_checked":{"build_ms":%s}}}' \
+      "$(json_str "$name")" "$identical" "$([ -n "$error" ] && json_str "$error" || echo null)" \
+      "$(ms "${build_ns[mzizi]}")" "$(ms "${build_ns[rust_unchecked]}")" "$(ms "${build_ns[rust_checked]}")")")
+    unset bin build_ns walls rss_of
+    continue
+  fi
+  check_ms="$(ms "$(median "${checks[@]}")")"
 
   json_variants=()
-  declare -A med rss_of size_of
+  declare -A med size_of
   for v in "${variants[@]}"; do
     # shellcheck disable=SC2086 # the run list is space-separated integers
     med[$v]="$(median ${walls[$v]})"
-    rss=null
-    if [ -n "$timer" ]; then
-      "$timer" -f '%M' -o "$work/$name/$v.rss" "${bin[$v]}" > /dev/null
-      rss="$(tail -n 1 "$work/$name/$v.rss")"
-    fi
     size="$(wc -c < "${bin[$v]}" | tr -d ' ')"
     run_list="$(for n in ${walls[$v]}; do ms "$n"; echo; done | paste -sd, -)"
     json_variants+=("$(printf '%s:{"wall_ms_median":%s,"wall_ms_runs":[%s],"max_rss_kb":%s,"binary_bytes":%s,"build_ms":%s}' \
-      "$(json_str "$v")" "$(ms "${med[$v]}")" "$run_list" "$rss" "$size" "$(ms "${build_ns[$v]}")")")
-    rss_of[$v]="$rss"
+      "$(json_str "$v")" "$(ms "${med[$v]}")" "$run_list" "${rss_of[$v]}" "$size" "$(ms "${build_ns[$v]}")")")
     size_of[$v]="$size"
   done
-  json_programs+=("$(printf '{"name":%s,"output_identical":%s,"mz_check_ms":%s,"variants":{%s}}' \
+  json_programs+=("$(printf '{"name":%s,"output_identical":%s,"error":null,"mz_check_ms":%s,"variants":{%s}}' \
     "$(json_str "$name")" "$identical" "$check_ms" "$(IFS=,; echo "${json_variants[*]}")")")
 
   md_rows+=("$(printf '| %s | %s | %s | %s | %s | %s | %s / %s / %s | %s / %s / %s | %s / %s / %s | %s |' \
@@ -295,6 +346,6 @@ fi
 echo "run.sh: wrote $out/perf.json" >&2
 
 if [ "$failed" -ne 0 ]; then
-  echo "run.sh: at least one program's output differed from its .expected" >&2
+  echo "run.sh: at least one program failed (its output differed, or a run exited non-zero); see above" >&2
   exit 1
 fi

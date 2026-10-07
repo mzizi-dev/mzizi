@@ -131,8 +131,9 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
 ### Not part of the run: runtime performance
 
 [`perf/`](perf/README.md) times the Rust that `mz` lowers a program to against hand-written
-Rust, overflow unchecked and checked. It is measured, not gated: CI checks that each program
-builds three ways and prints the same output, and times nothing. It says nothing about the kill
+Rust, overflow unchecked and checked. CI gates its correctness, never its timing: it checks
+that each program builds three ways and prints the same output, and times nothing. No timing
+is committed. It says nothing about the kill
 criterion, which is about how well models write Mzizi, and none of its numbers is a claim that
 Mzizi is faster.
 
