@@ -15,6 +15,12 @@ cross-file checking (G2.3), local state, and lowering are **not** settled here.
 > "No `else`". This RFC adds no new conditional or iteration form; it makes the two
 > RFC-0001 already promised real, and gives them the checking they need.
 
+<!-- A second note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes to extend §1's closed type set** with `float`, `map(K, V)`, `set(K)` and
+> `result(T, E)`, and decides against tuples (RFC-0013 §2). It is a draft for review; nothing in
+> it is implemented, and §1 stands until the owner accepts it.
+
 ---
 
 ## 0. Method: the failure modes the pilot measured
