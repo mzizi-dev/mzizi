@@ -7,7 +7,7 @@ feedback loop are designed for **machine authorship**, and specifically for the 
 need the help most: small open-weight models with limited parameters, context and long-range
 attention. Rust is its platform, the way JavaScript is TypeScript's: Mzizi is designed to lower
 to Rust, with no borrows, lifetimes or ownership at the surface ([RFC-0001](./design/RFC-0001-syntax.md)
-§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target.
+§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice (`int`, `bool` and `text`, functions, `let` / `var`, `when`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target.
 "Makes Rust better" is what Phase 0 exists to test. The harness is the core of the language,
 what an agent reads ([RFC-0012](./design/RFC-0012-harness.md), a draft), and Mzizi Roots is its
 component model, the way React is JavaScript's.
@@ -76,14 +76,17 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (437 tests in 19 suites, gated in CI; 306 of them in the compiler crate):**
+**Built and tested (473 tests in 19 suites, gated in CI; 342 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
 a backend `service` declaration (RFC-0011: parsed, checked, run in process by `mz contract`, and
-lowered to a Rust + axum package by `mz build`), and the Phase 0 benchmark harness, runner,
-pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend task, B1.
-`compiler/src` is 12,916 lines.
+lowered to a Rust + axum package by `mz build`), the foundation slice of the core language
+(RFC-0013 Wave 0: a `program` with `fn main`, functions, `let` / `var`, `when`, integer and
+boolean expressions and `print`, checked by `mz check` and run by `mz run`, which lowers it to
+a dependency-free Rust package and builds it with Cargo), and the Phase 0 benchmark harness,
+runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
+task, B1. `compiler/src` is about 17,400 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
@@ -114,7 +117,9 @@ not exist yet.
 **What doesn't exist yet:** the kill-criterion run and its held-out task set, lowering of
 components to Rust, rendering, a deployment target, a release, a published binary. A `service`
 does lower, to a local Rust + axum package (`mz build`, RFC-0011 §8), which CI compiles, tests
-and asks one request over a socket. That is the whole of the lowering today.
+and asks one request over a socket. A `program` lowers too, in RFC-0013's foundation slice
+only: no loops, `match`, floats, collections, records or results yet. That is the whole of the
+lowering today.
 
 **The number that decides everything:** the Phase 0 benchmark — an LLM agent authoring
 equivalent code in Mzizi and in the best existing language for each kind of task, scored on
@@ -134,10 +139,11 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 306 tests; the compiler crate has zero dependencies
+cargo test                                                           # 342 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check
+cargo run --bin mz -- run ../examples/fib.mz                         # lower a program to Rust, build it, run it
 ```
 
 The compiler crate needs only a stable Rust toolchain. It has no dependencies of its own. The
@@ -156,7 +162,7 @@ mzizi/
 ├── design/             # the RFCs, and ROADMAP.md — read these next
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
-├── examples/           # example components, ported by hand, and the example service
+├── examples/           # example components, the example service, and two programs with their .expected output
 └── benchmarks/         # Phase 0 benchmark harness, runner, arms, pilot tasks and results; READINESS.md; the held-out set is private
 ```
 

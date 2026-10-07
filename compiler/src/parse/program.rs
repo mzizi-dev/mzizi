@@ -1,0 +1,2091 @@
+//! Parsing a `program` (RFC-0013): the program block, `fn`s, statements and expressions.
+//!
+//! A program has its own cursor rather than sharing the component parser's, because its
+//! grammar shares almost nothing with a component's beyond the lexer and the `end` echo.
+//! The rules are the same ones: one statement per line, `end`-delimited blocks, one
+//! diagnostic per true error, and the next line is always a resynchronisation point.
+//!
+//! Spellings from other languages (`==`, `&&`, `->`, `def`, `console.log`, `x = 1` with no
+//! binding) are repaired in the tree as they are reported, so the checker sees the program
+//! the `exact` fix would produce and reports nothing more about that line (RFC-0013 §16).
+//! Forms RFC-0013 designs that this slice does not build yet (`while`, `match`, `for each`,
+//! methods, `float`, …) are one `MZ0919` each, naming the form, and their block is skipped.
+
+use crate::diagnostic::{Confidence, Diagnostic, Span};
+use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, canonical_text};
+use crate::lex::{Tok, Token, lex_fragment};
+use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
+
+/// Whether the token stream starts with `program`.
+pub(super) fn starts_program(tokens: &[Token]) -> bool {
+    tokens
+        .iter()
+        .find(|t| !matches!(t.kind, Tok::Newline | Tok::Doc(_)))
+        .is_some_and(|t| matches!(&t.kind, Tok::Ident(w) if w == "program"))
+}
+
+/// Parse a program. The lexer's diagnostics come in through `lex_diags`, so the ones a
+/// skipped block or a repaired idiom makes redundant can be dropped.
+pub(super) fn parse(
+    tokens: Vec<Token>,
+    lex_diags: &mut Vec<Diagnostic>,
+    file: &str,
+) -> Option<Program> {
+    let mut p = P {
+        toks: tokens,
+        pos: 0,
+        file: file.to_string(),
+        diags: Vec::new(),
+        skipped: Vec::new(),
+        suppress: Vec::new(),
+        failed: false,
+        skipped_stray: false,
+    };
+    let program = p.program();
+    lex_diags.retain(|d| {
+        !p.skipped
+            .iter()
+            .any(|&(from, to)| (from..=to).contains(&d.span.start_line))
+            && !p.suppress.contains(&d.span)
+    });
+    lex_diags.append(&mut p.diags);
+    program
+}
+
+/// Words that open a block a program does not hold yet, or a function body cannot: their
+/// block is skipped to its `end`.
+const OPENERS: &[&str] = &[
+    "fn",
+    "when",
+    "if",
+    "while",
+    "for",
+    "match",
+    "loop",
+    "contract",
+    "record",
+    "enum",
+    "view",
+    "route",
+    "fallback",
+    "test",
+    "component",
+    "service",
+];
+
+/// How a statement list ended.
+enum Stop {
+    /// At `end` (consumed) closing this block.
+    End(Span),
+    /// At `else` (consumed); its span.
+    Else(Span),
+    /// At `end fn`, not consumed: the `when` it arrived in was never closed.
+    EndFn(Span),
+    /// At a line that cannot be in a function (`fn`, `end program`), not consumed.
+    Abrupt(Span),
+    /// At end of file.
+    Eof(Span),
+}
+
+struct P {
+    toks: Vec<Token>,
+    pos: usize,
+    file: String,
+    diags: Vec<Diagnostic>,
+    /// Line ranges skipped whole as one diagnostic; the lexer's diagnostics in them go.
+    skipped: Vec<(u32, u32)>,
+    /// Lexer diagnostics a repair here supersedes (`fmt.Println`'s `MZ0101`).
+    suppress: Vec<Span>,
+    /// Set when the current line already has a diagnostic, so its leftovers are not a
+    /// second one.
+    failed: bool,
+    /// Whether any statement stood outside every `fn`.
+    skipped_stray: bool,
+}
+
+fn join(a: Span, b: Span) -> Span {
+    Span {
+        start_line: a.start_line,
+        start_col: a.start_col,
+        end_line: b.end_line,
+        end_col: b.end_col,
+    }
+}
+
+fn word(tok: &Tok) -> Option<&str> {
+    match tok {
+        Tok::Ident(w) => Some(w.as_str()),
+        Tok::Keyword(k) => Some(k),
+        _ => None,
+    }
+}
+
+fn describe(tok: &Tok) -> String {
+    super::describe(tok)
+}
+
+impl P {
+    fn peek(&self) -> &Tok {
+        &self.toks[self.pos.min(self.toks.len() - 1)].kind
+    }
+
+    fn peek_at(&self, n: usize) -> &Tok {
+        &self.toks[(self.pos + n).min(self.toks.len() - 1)].kind
+    }
+
+    fn span(&self) -> Span {
+        self.toks[self.pos.min(self.toks.len() - 1)].span
+    }
+
+    fn span_at(&self, n: usize) -> Span {
+        self.toks[(self.pos + n).min(self.toks.len() - 1)].span
+    }
+
+    /// The span of the last token consumed.
+    fn prev(&self) -> Span {
+        self.toks[self.pos.saturating_sub(1)].span
+    }
+
+    fn bump(&mut self) -> Token {
+        let t = self.toks[self.pos.min(self.toks.len() - 1)].clone();
+        if self.pos < self.toks.len() - 1 {
+            self.pos += 1;
+        }
+        t
+    }
+
+    fn is_word(&self, w: &str) -> bool {
+        word(self.peek()) == Some(w)
+    }
+
+    fn at_line_end(&self) -> bool {
+        matches!(self.peek(), Tok::Newline | Tok::Eof)
+    }
+
+    fn skip_newlines(&mut self) {
+        while matches!(self.peek(), Tok::Newline) {
+            self.bump();
+        }
+    }
+
+    fn recover_line(&mut self) {
+        while !self.at_line_end() {
+            self.bump();
+        }
+        self.skip_newlines();
+    }
+
+    fn err(&mut self, code: &'static str, span: Span, say: impl Into<String>) {
+        self.failed = true;
+        self.diags
+            .push(Diagnostic::error(code, &self.file, span, say.into()));
+    }
+
+    fn err_fix(
+        &mut self,
+        code: &'static str,
+        span: Span,
+        say: impl Into<String>,
+        fix: Span,
+        replace: impl Into<String>,
+        c: Confidence,
+    ) {
+        self.failed = true;
+        self.diags
+            .push(Diagnostic::error(code, &self.file, span, say.into()).with_fix(fix, replace, c));
+    }
+
+    /// Report leftovers on the line unless the line already failed, then move past it.
+    fn finish_line(&mut self, what: &str) {
+        if !self.at_line_end() && !self.failed {
+            let at = self.span();
+            self.err(
+                "MZ0917",
+                at,
+                format!(
+                    "{} is left over after {what} — one statement per line",
+                    describe(self.peek())
+                ),
+            );
+        }
+        self.recover_line();
+    }
+
+    /// Skip the block that opens on the current line, through its `end`, as one error
+    /// already reported. Returns the last line skipped.
+    fn skip_block(&mut self) -> u32 {
+        let first = self.span().start_line;
+        let mut depth = 0usize;
+        loop {
+            match self.peek() {
+                Tok::Eof => break,
+                Tok::Keyword("end") => {
+                    depth = depth.saturating_sub(1);
+                }
+                t if word(t).is_some_and(|w| OPENERS.contains(&w)) => depth += 1,
+                _ => {}
+            }
+            let line = self.span().start_line;
+            self.recover_line();
+            if depth == 0 {
+                self.skipped.push((first, line));
+                return line;
+            }
+        }
+        let last = self.span().start_line;
+        self.skipped.push((first, last));
+        last
+    }
+
+    /// `MZ0919`: a form RFC-0013 designs that this slice does not build. One diagnostic,
+    /// and the block it opens (or its line) is skipped.
+    fn not_built(&mut self, what: &str, block: bool) {
+        let at = self.span();
+        let line_end = self.line_end_span();
+        self.err(
+            "MZ0919",
+            join(at, line_end),
+            format!(
+                "{what} is designed (RFC-0013) but not built yet — the foundation slice has `fn`, `let`, `var`, `when`, `return`, `print`, and int, bool and text values"
+            ),
+        );
+        if block {
+            self.skip_block();
+        } else {
+            let line = at.start_line;
+            self.skipped.push((line, line));
+            self.recover_line();
+        }
+    }
+
+    /// The span of the last token on the current line.
+    fn line_end_span(&self) -> Span {
+        let mut k = self.pos;
+        while k + 1 < self.toks.len() && !matches!(self.toks[k + 1].kind, Tok::Newline | Tok::Eof) {
+            if matches!(self.toks[k].kind, Tok::Newline | Tok::Eof) {
+                break;
+            }
+            k += 1;
+        }
+        self.toks[k].span
+    }
+
+    // ---------------------------------------------------------------- program and fns
+
+    fn program(&mut self) -> Option<Program> {
+        self.skip_newlines();
+        let mut docs = Vec::new();
+        while let Tok::Doc(text) = self.peek().clone() {
+            docs.push(text);
+            self.bump();
+            self.skip_newlines();
+        }
+        let program_at = self.bump().span; // `program`
+        let (name, name_span) = match self.peek().clone() {
+            Tok::Ident(n) => {
+                let s = self.span();
+                self.bump();
+                (n, s)
+            }
+            other => {
+                self.err(
+                    "MZ0901",
+                    program_at,
+                    format!(
+                        "`program` needs a snake_case name, e.g. `program hello`, found {}",
+                        describe(&other)
+                    ),
+                );
+                return None;
+            }
+        };
+        if !self.at_line_end() {
+            let at = self.span();
+            self.err(
+                "MZ0310",
+                at,
+                format!(
+                    "{} is left over after `program {name}` — one declaration per line",
+                    describe(self.peek())
+                ),
+            );
+        }
+        self.recover_line();
+        let mut program = Program {
+            name: name.clone(),
+            name_span,
+            docs,
+            fns: Vec::new(),
+            stray_statements: false,
+        };
+        let mut stray: Option<(Span, u32)> = None;
+        loop {
+            self.failed = false;
+            self.skip_newlines();
+            let at = self.span();
+            let tok = self.peek().clone();
+            let is_stray = !matches!(tok, Tok::Eof | Tok::Doc(_))
+                && !matches!(word(&tok), Some(w) if is_program_item(w, self.peek_at(1)));
+            if !is_stray && let Some((from, last)) = stray.take() {
+                self.stray_lines(from, last);
+            }
+            match &tok {
+                Tok::Eof => {
+                    let closer = format!("end program {name}");
+                    let eol = if at.start_col > 1 { "\n" } else { "" };
+                    self.err_fix(
+                        "MZ0204",
+                        at,
+                        format!(
+                            "`program {name}` opened on line {} is never closed — add `{closer}`",
+                            name_span.start_line
+                        ),
+                        Span::single(at.start_line, at.start_col, 0),
+                        format!("{eol}{closer}\n"),
+                        Confidence::Exact,
+                    );
+                    break;
+                }
+                Tok::Doc(text) => {
+                    program.docs.push(text.clone());
+                    self.recover_line();
+                }
+                Tok::Keyword("end") => {
+                    if self.program_end(&name, name_span) {
+                        break;
+                    }
+                }
+                Tok::Keyword("fn") => {
+                    if let Some(f) = self.function() {
+                        program.fns.push(f);
+                    }
+                }
+                Tok::Ident(w)
+                    if matches!(w.as_str(), "def" | "function" | "func")
+                        && matches!(self.peek_at(1), Tok::Ident(_)) =>
+                {
+                    let w = w.clone();
+                    self.err_fix(
+                        "MZ0903",
+                        at,
+                        format!("`{w}` is not how Mzizi declares a function — write `fn`"),
+                        at,
+                        "fn",
+                        Confidence::Exact,
+                    );
+                    if let Some(f) = self.function() {
+                        program.fns.push(f);
+                    }
+                }
+                Tok::Keyword("use") => self.not_built("a `use` line in a program", false),
+                Tok::Keyword("enum") => self.not_built("an `enum` in a program", true),
+                Tok::Keyword("contract") => {
+                    self.not_built("a `contract` block in a program (RFC-0013 §15.1)", true)
+                }
+                Tok::Ident(w) if w == "record" => {
+                    self.not_built("a `record` in a program (RFC-0013 §11)", true)
+                }
+                Tok::Ident(w) if w == "test" && matches!(self.peek_at(1), Tok::Str(_)) => {
+                    self.not_built("a `test` block (RFC-0013 §15.2)", true)
+                }
+                Tok::Keyword(w @ ("view" | "prop" | "emit")) => {
+                    let w = *w;
+                    self.cannot_hold(w, at, w == "view");
+                }
+                Tok::Ident(w) if matches!(w.as_str(), "route" | "fallback" | "header") => {
+                    let w = w.clone();
+                    self.cannot_hold(&w, at, w != "header");
+                }
+                _ => {
+                    // A statement at the top level: Python's script shape. Collected into
+                    // one diagnostic per run of lines.
+                    let line = at.start_line;
+                    stray = Some(match stray {
+                        Some((from, _)) => (from, line),
+                        None => (at, line),
+                    });
+                    self.recover_line();
+                }
+            }
+        }
+        if let Some((from, last)) = stray.take() {
+            self.stray_lines(from, last);
+        }
+        program.stray_statements = self.skipped_stray;
+        Some(program)
+    }
+
+    fn stray_lines(&mut self, from: Span, last: u32) {
+        self.skipped_stray = true;
+        self.skipped.push((from.start_line, last));
+        let lines = if last > from.start_line {
+            format!("lines {}–{last}", from.start_line)
+        } else {
+            format!("line {}", from.start_line)
+        };
+        self.err(
+            "MZ0901",
+            from,
+            format!(
+                "a program holds `fn`s, not statements ({lines}) — statements live inside a `fn`; the entry point is `fn main` … `end fn main`"
+            ),
+        );
+    }
+
+    fn cannot_hold(&mut self, w: &str, at: Span, block: bool) {
+        self.err(
+            "MZ0901",
+            at,
+            format!("a program cannot hold `{w}` — it belongs in a component or a service"),
+        );
+        if block {
+            self.skip_block();
+        } else {
+            self.skipped.push((at.start_line, at.start_line));
+            self.recover_line();
+        }
+    }
+
+    /// An `end` at program level. Returns true when it closed the program.
+    fn program_end(&mut self, name: &str, name_span: Span) -> bool {
+        let end_at = self.bump().span;
+        let canonical = format!("end program {name}");
+        let echoed = word(self.peek()).map(str::to_string);
+        if echoed.as_deref() == Some("program") {
+            self.bump();
+            match self.peek().clone() {
+                Tok::Ident(n) if n == name => {
+                    self.bump();
+                }
+                Tok::Ident(n) => {
+                    let s = self.span();
+                    self.bump();
+                    self.err_fix(
+                        "MZ0207",
+                        s,
+                        format!(
+                            "`end program {n}` does not match `program {name}` opened on line {}",
+                            name_span.start_line
+                        ),
+                        s,
+                        name,
+                        Confidence::Exact,
+                    );
+                }
+                _ => {
+                    let closer = join(end_at, self.prev());
+                    self.err_fix(
+                        "MZ0208",
+                        end_at,
+                        format!("top-level blocks close with their name: write `{canonical}`"),
+                        closer,
+                        canonical.clone(),
+                        Confidence::Exact,
+                    );
+                }
+            }
+        } else if echoed.is_none() {
+            self.err_fix(
+                "MZ0208",
+                end_at,
+                format!("top-level blocks close with their name: write `{canonical}`"),
+                end_at,
+                canonical.clone(),
+                Confidence::Exact,
+            );
+        } else {
+            // `end fn x` or `end when` with nothing open: delete it.
+            self.recover_line_from(end_at);
+            return false;
+        }
+        if !self.at_line_end() && !self.failed {
+            let at = self.span();
+            self.err(
+                "MZ0310",
+                at,
+                format!("{} is left over after `{canonical}`", describe(self.peek())),
+            );
+        }
+        self.recover_line();
+        self.skip_newlines();
+        if !matches!(self.peek(), Tok::Eof) {
+            let at = self.span();
+            self.err(
+                "MZ0901",
+                at,
+                format!("nothing follows `{canonical}` — a file holds one program"),
+            );
+            let from = at.start_line;
+            while !matches!(self.peek(), Tok::Eof) {
+                self.bump();
+            }
+            self.skipped.push((from, self.span().start_line));
+        }
+        true
+    }
+
+    /// `end …` with nothing open for it to close: `MZ0205`, whose fix deletes the line.
+    fn recover_line_from(&mut self, end_at: Span) {
+        let line = end_at.start_line;
+        self.err_fix(
+            "MZ0205",
+            end_at,
+            "this `end` has nothing open to close — delete it",
+            Span {
+                start_line: line,
+                start_col: 1,
+                end_line: line + 1,
+                end_col: 1,
+            },
+            "",
+            Confidence::Exact,
+        );
+        self.recover_line();
+    }
+
+    /// `fn name(a: int): int` … `end fn name`. The cursor is on `fn` (or the `def` it
+    /// stands for).
+    fn function(&mut self) -> Option<FnDecl> {
+        let fn_at = self.bump().span;
+        let (name, name_span) = match self.peek().clone() {
+            Tok::Ident(n) => {
+                let s = self.span();
+                self.bump();
+                (n, s)
+            }
+            other => {
+                self.err(
+                    "MZ0903",
+                    fn_at,
+                    format!("`fn` needs a snake_case name, found {}", describe(&other)),
+                );
+                // Skip the body, which cannot be attached to anything.
+                self.skip_fn_body();
+                return None;
+            }
+        };
+        let params = self.params(&name);
+        let ret = self.return_type(&name);
+        self.trailing_block_punctuation();
+        self.finish_line(&format!("the signature of `fn {name}`"));
+        let (body, stop) = self.stmts(false, &name);
+        let end_span = match stop {
+            Stop::End(closer) => closer,
+            Stop::Abrupt(at) | Stop::Eof(at) | Stop::EndFn(at) | Stop::Else(at) => {
+                let closer = format!("end fn {name}");
+                let eof = matches!(stop, Stop::Eof(_));
+                let (fix_at, text) = if eof && at.start_col > 1 {
+                    (at, format!("\n{closer}\n"))
+                } else {
+                    (Span::single(at.start_line, 1, 0), format!("{closer}\n"))
+                };
+                self.err_fix(
+                    "MZ0204",
+                    at,
+                    format!(
+                        "`fn {name}` opened on line {} is never closed — add `{closer}` before this line",
+                        name_span.start_line
+                    ),
+                    fix_at,
+                    text,
+                    Confidence::Guess,
+                );
+                at
+            }
+        };
+        Some(FnDecl {
+            name,
+            name_span,
+            params,
+            ret,
+            body,
+            end_span,
+        })
+    }
+
+    fn skip_fn_body(&mut self) {
+        let first = self.span().start_line;
+        self.recover_line();
+        while !matches!(self.peek(), Tok::Eof) {
+            if self.is_word("end") && matches!(word(self.peek_at(1)), Some("fn" | "program")) {
+                if word(self.peek_at(1)) == Some("fn") {
+                    self.recover_line();
+                }
+                break;
+            }
+            self.recover_line();
+        }
+        self.skipped.push((first, self.span().start_line));
+    }
+
+    fn params(&mut self, fn_name: &str) -> Vec<Param> {
+        let mut params = Vec::new();
+        if !matches!(self.peek(), Tok::LParen) {
+            return params;
+        }
+        let open = self.bump().span;
+        if matches!(self.peek(), Tok::RParen) {
+            let close = self.bump().span;
+            self.err_fix(
+                "MZ0903",
+                join(open, close),
+                format!("a function with no parameters has no parentheses — write `fn {fn_name}`"),
+                join(open, close),
+                "",
+                Confidence::Exact,
+            );
+            return params;
+        }
+        loop {
+            let (name, span) = match self.peek().clone() {
+                Tok::Ident(n) => {
+                    let s = self.span();
+                    self.bump();
+                    (n, s)
+                }
+                other => {
+                    let at = self.span();
+                    self.err(
+                        "MZ0903",
+                        at,
+                        format!(
+                            "expected a parameter, `name: type`, in `fn {fn_name}`, found {}",
+                            describe(&other)
+                        ),
+                    );
+                    self.skip_to_paren_end();
+                    return params;
+                }
+            };
+            let ty = if matches!(self.peek(), Tok::Colon) {
+                self.bump();
+                self.type_ref("a parameter's `:`")
+            } else {
+                self.err(
+                    "MZ0903",
+                    span,
+                    format!(
+                        "parameter `{name}` of `fn {fn_name}` has no type — every parameter is written `{name}: <type>`"
+                    ),
+                );
+                TypeRef {
+                    ty: Ty::Error,
+                    span,
+                }
+            };
+            if matches!(self.peek(), Tok::Equals) {
+                let at = self.span();
+                self.err(
+                    "MZ0903",
+                    at,
+                    format!(
+                        "parameter `{name}` has a default value, and Mzizi has none — a call gives every argument"
+                    ),
+                );
+                while !matches!(
+                    self.peek(),
+                    Tok::Comma | Tok::RParen | Tok::Newline | Tok::Eof
+                ) {
+                    self.bump();
+                }
+            }
+            params.push(Param { name, span, ty });
+            match self.peek() {
+                Tok::Comma => {
+                    self.bump();
+                }
+                Tok::RParen => {
+                    self.bump();
+                    return params;
+                }
+                other => {
+                    let at = self.span();
+                    let other = describe(other);
+                    if !self.failed {
+                        self.err(
+                            "MZ0903",
+                            at,
+                            format!(
+                                "expected `,` or `)` in the parameters of `fn {fn_name}`, found {other}"
+                            ),
+                        );
+                    }
+                    self.skip_to_paren_end();
+                    return params;
+                }
+            }
+        }
+    }
+
+    fn skip_to_paren_end(&mut self) {
+        while !matches!(self.peek(), Tok::RParen | Tok::Newline | Tok::Eof) {
+            self.bump();
+        }
+        if matches!(self.peek(), Tok::RParen) {
+            self.bump();
+        }
+    }
+
+    fn return_type(&mut self, fn_name: &str) -> Option<TypeRef> {
+        let before = self.prev();
+        let arrow = matches!(self.peek(), Tok::Op("->"));
+        if !arrow && !matches!(self.peek(), Tok::Colon) {
+            return None;
+        }
+        // `def f(x):` — a trailing colon is block punctuation, not a return type.
+        if !arrow && matches!(self.peek_at(1), Tok::Newline | Tok::Eof) {
+            return None;
+        }
+        let sep = self.bump().span;
+        let type_at = self.span();
+        if let Some(w @ ("none" | "void" | "unit")) = word(self.peek()) {
+            let w = w.to_string();
+            self.bump();
+            self.err_fix(
+                "MZ0903",
+                join(sep, type_at),
+                format!(
+                    "a function that returns nothing has no return type — delete `: {w}` from `fn {fn_name}`"
+                ),
+                Span {
+                    start_line: before.end_line,
+                    start_col: before.end_col,
+                    end_line: type_at.end_line,
+                    end_col: type_at.end_col,
+                },
+                "",
+                Confidence::Exact,
+            );
+            return None;
+        }
+        if arrow {
+            self.err_fix(
+                "MZ0903",
+                sep,
+                format!("a return type follows `:`, not `->` — `fn {fn_name}(…): <type>`"),
+                Span {
+                    start_line: before.end_line,
+                    start_col: before.end_col,
+                    end_line: type_at.start_line,
+                    end_col: type_at.start_col,
+                },
+                ": ",
+                Confidence::Exact,
+            );
+        }
+        Some(self.type_ref("`:`"))
+    }
+
+    /// A type: `int`, `bool` or `text` in this slice.
+    fn type_ref(&mut self, after: &str) -> TypeRef {
+        let at = self.span();
+        let Some(name) = word(self.peek()).map(str::to_string) else {
+            let found = describe(self.peek());
+            self.err(
+                "MZ0306",
+                at,
+                format!("expected a type after {after}, found {found}"),
+            );
+            return TypeRef {
+                ty: Ty::Error,
+                span: at,
+            };
+        };
+        self.bump();
+        let mut span = at;
+        if matches!(self.peek(), Tok::LParen) {
+            // `list(int)`, `option(text)`, `result(int, text)`: later waves'.
+            let mut depth = 0;
+            loop {
+                match self.peek() {
+                    Tok::LParen => depth += 1,
+                    Tok::RParen => {
+                        depth -= 1;
+                        if depth == 0 {
+                            span = join(at, self.span());
+                            self.bump();
+                            break;
+                        }
+                    }
+                    Tok::Newline | Tok::Eof => break,
+                    _ => {}
+                }
+                self.bump();
+            }
+        }
+        let ty = match name.as_str() {
+            "int" if span == at => Ty::Int,
+            "bool" if span == at => Ty::Bool,
+            "text" if span == at => Ty::Text,
+            "float" | "list" | "option" | "map" | "set" | "result" => {
+                self.err(
+                    "MZ0919",
+                    span,
+                    format!(
+                        "`{name}` is designed (RFC-0013 §2) but not built yet — the foundation slice has int, bool and text"
+                    ),
+                );
+                Ty::Error
+            }
+            other => {
+                let alias = match other {
+                    "i64" | "i32" | "i16" | "i8" | "u64" | "u32" | "usize" | "isize"
+                    | "integer" | "number" => Some("int"),
+                    "boolean" => Some("bool"),
+                    "string" | "str" | "char" => Some("text"),
+                    _ => None,
+                };
+                let say =
+                    format!("`{other}` is not a type here — the types are int, bool and text");
+                match alias {
+                    Some(a) => {
+                        // `String` reached here as the lexer's `string`, with its own MZ0101.
+                        self.suppress.push(at);
+                        self.err_fix("MZ0701", span, say, span, a, Confidence::Guess);
+                    }
+                    None => self.err("MZ0701", span, say),
+                }
+                Ty::Error
+            }
+        };
+        TypeRef { ty, span }
+    }
+
+    /// `MZ0937`: a trailing `:` on a block line (Python). The fix deletes it.
+    fn trailing_block_punctuation(&mut self) {
+        if matches!(self.peek(), Tok::Colon) && matches!(self.peek_at(1), Tok::Newline | Tok::Eof) {
+            let at = self.bump().span;
+            self.err_fix(
+                "MZ0937",
+                at,
+                "a block line has no trailing `:` — the block runs to its `end`",
+                at,
+                "",
+                Confidence::Exact,
+            );
+            // The line is repaired; what follows on it is not a second error.
+            self.failed = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- statements
+
+    /// Statements up to the `end` (or `else`) of the block they are in.
+    fn stmts(&mut self, in_when: bool, fn_name: &str) -> (Vec<Stmt>, Stop) {
+        let mut out = Vec::new();
+        loop {
+            self.failed = false;
+            self.skip_newlines();
+            let at = self.span();
+            match self.peek().clone() {
+                Tok::Eof => return (out, Stop::Eof(at)),
+                Tok::Keyword("end") => {
+                    let next = word(self.peek_at(1)).map(str::to_string);
+                    match next.as_deref() {
+                        Some("program") => return (out, Stop::Abrupt(at)),
+                        Some("fn") if in_when => return (out, Stop::EndFn(at)),
+                        _ => {
+                            let closer = self.block_end(in_when, fn_name);
+                            return (out, Stop::End(closer));
+                        }
+                    }
+                }
+                Tok::Keyword("else") if in_when => {
+                    self.bump();
+                    return (out, Stop::Else(at));
+                }
+                Tok::Keyword("else") => {
+                    self.err(
+                        "MZ0917",
+                        at,
+                        "`else` with no `when` open — `else` continues a `when` block",
+                    );
+                    self.recover_line();
+                }
+                Tok::Keyword("fn") => return (out, Stop::Abrupt(at)),
+                Tok::Doc(_) => self.recover_line(),
+                _ => {
+                    if let Some(s) = self.statement(fn_name) {
+                        out.push(s);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The `end` that closes a function body (`end fn <name>`) or a `when` (`end`).
+    fn block_end(&mut self, in_when: bool, fn_name: &str) -> Span {
+        let end_at = self.bump().span;
+        let canonical = if in_when {
+            "end".to_string()
+        } else {
+            format!("end fn {fn_name}")
+        };
+        let mut echo = Vec::new();
+        while !self.at_line_end() {
+            echo.push(self.bump());
+        }
+        let closer = echo.last().map_or(end_at, |t| join(end_at, t.span));
+        match (in_when, echo.as_slice()) {
+            (true, []) => {}
+            (false, [kw, n]) if word(&kw.kind) == Some("fn") => {
+                if let Tok::Ident(n_text) = &n.kind
+                    && n_text != fn_name
+                {
+                    self.err_fix(
+                        "MZ0207",
+                        n.span,
+                        format!("`end fn {n_text}` does not match `fn {fn_name}`"),
+                        n.span,
+                        fn_name,
+                        Confidence::Exact,
+                    );
+                }
+            }
+            (false, []) | (false, [_])
+                if echo.first().is_none_or(|t| word(&t.kind) == Some("fn")) =>
+            {
+                self.err_fix(
+                    "MZ0208",
+                    end_at,
+                    format!("a `fn` closes with its name: write `{canonical}`"),
+                    closer,
+                    canonical.clone(),
+                    Confidence::Exact,
+                );
+            }
+            _ => {
+                let say = if in_when {
+                    "a `when` closes with a bare `end`".to_string()
+                } else {
+                    format!("a `fn` closes with its name: write `{canonical}`")
+                };
+                self.err_fix(
+                    "MZ0206",
+                    end_at,
+                    say,
+                    closer,
+                    canonical.clone(),
+                    Confidence::Exact,
+                );
+            }
+        }
+        self.recover_line();
+        closer
+    }
+
+    /// One statement line (and, for `when`, its block).
+    fn statement(&mut self, fn_name: &str) -> Option<Stmt> {
+        let at = self.span();
+        let tok = self.peek().clone();
+        let w = word(&tok).map(str::to_string);
+        let kind = match w.as_deref() {
+            Some("let" | "var") => self.binding(w.as_deref() == Some("var"), None)?,
+            Some("const" | "val" | "auto") if matches!(self.peek_at(1), Tok::Ident(_)) => {
+                let w = w.clone().unwrap_or_default();
+                self.err_fix(
+                    "MZ0925",
+                    at,
+                    format!("`{w}` is not a Mzizi binding — a name that never changes is a `let`"),
+                    at,
+                    "let",
+                    Confidence::Exact,
+                );
+                self.binding(false, Some(()))?
+            }
+            Some("mut") if matches!(self.peek_at(1), Tok::Ident(_)) => {
+                self.err_fix(
+                    "MZ0925",
+                    at,
+                    "`mut` is Rust's — a name that changes is a `var`",
+                    at,
+                    "var",
+                    Confidence::Exact,
+                );
+                self.binding(true, Some(()))?
+            }
+            Some("return") => {
+                self.bump();
+                let value = if self.at_line_end() {
+                    None
+                } else {
+                    Some(self.expr())
+                };
+                self.finish_line("`return`");
+                StmtKind::Return(value)
+            }
+            Some("when") => return self.when(at, fn_name),
+            Some("if") => {
+                self.err_fix(
+                    "MZ0407",
+                    at,
+                    "Mzizi's conditional is `when` — `if` is not a word of the language",
+                    at,
+                    "when",
+                    Confidence::Exact,
+                );
+                self.failed = false;
+                return self.when(at, fn_name);
+            }
+            Some(w @ ("while" | "for" | "match" | "loop" | "switch")) => {
+                let what = match w {
+                    "while" => "`while`",
+                    "for" => "`for each`",
+                    "loop" => "a loop",
+                    _ => "`match`",
+                };
+                self.not_built(&format!("{what} in a function body (RFC-0013 §7)"), true);
+                return None;
+            }
+            Some(w @ ("break" | "continue")) => {
+                self.not_built(&format!("`{w}` (RFC-0013 §7.3)"), false);
+                return None;
+            }
+            Some("contract") => {
+                self.not_built("a `contract` block on a function (RFC-0013 §15.1)", true);
+                return None;
+            }
+            _ => self.simple_statement(&tok, at)?,
+        };
+        let line_end = self.prev();
+        Some(Stmt {
+            kind,
+            span: join(at, line_end),
+            last_line: at.start_line,
+        })
+    }
+
+    /// An assignment, a Go `:=`, an operator-assignment, a print idiom, or an expression.
+    fn simple_statement(&mut self, tok: &Tok, at: Span) -> Option<StmtKind> {
+        if let Tok::Ident(name) = tok {
+            let name = name.clone();
+            match (self.peek_at(1).clone(), self.peek_at(2).clone()) {
+                (Tok::Equals, _) => {
+                    self.bump();
+                    self.bump();
+                    let value = self.expr();
+                    self.finish_line("an assignment");
+                    return Some(StmtKind::Assign {
+                        name,
+                        name_span: at,
+                        ty: None,
+                        value,
+                    });
+                }
+                (Tok::Colon, Tok::Equals) => {
+                    // Go's `x := e`.
+                    let eq = self.span_at(2);
+                    self.err_fix(
+                        "MZ0925",
+                        join(at, eq),
+                        format!("`{name} :=` is Go's — a binding is `let {name} = …`"),
+                        join(at, eq),
+                        format!("let {name} ="),
+                        Confidence::Exact,
+                    );
+                    self.bump();
+                    self.bump();
+                    self.bump();
+                    let value = self.expr();
+                    self.finish_line("a binding");
+                    return Some(StmtKind::Bind {
+                        mutable: false,
+                        kw_span: at,
+                        name,
+                        name_span: at,
+                        ty: None,
+                        value,
+                    });
+                }
+                (Tok::Colon, _) => {
+                    // Python's annotated first assignment, `x: int = 1`.
+                    self.bump();
+                    self.bump();
+                    let ty = self.type_ref("`:`");
+                    if !matches!(self.peek(), Tok::Equals) {
+                        if !self.failed {
+                            let s = self.span();
+                            self.err(
+                                "MZ0926",
+                                s,
+                                format!("`{name}` has a type and no value — a binding always has a value"),
+                            );
+                        }
+                        self.recover_line();
+                        return None;
+                    }
+                    self.bump();
+                    let value = self.expr();
+                    self.finish_line("an assignment");
+                    return Some(StmtKind::Assign {
+                        name,
+                        name_span: at,
+                        ty: Some(ty),
+                        value,
+                    });
+                }
+                (Tok::Op(op @ ("+=" | "-=" | "*=" | "/=")), _) => {
+                    let op_at = self.span_at(1);
+                    self.bump();
+                    self.bump();
+                    let rhs = self.expr();
+                    let bin = match op {
+                        "+=" => BinOp::Add,
+                        "-=" => BinOp::Sub,
+                        "*=" => BinOp::Mul,
+                        _ => BinOp::Div,
+                    };
+                    let value = Expr {
+                        span: join(at, rhs.span),
+                        kind: ExprKind::Binary {
+                            op: bin,
+                            op_span: op_at,
+                            lhs: Box::new(Expr {
+                                kind: ExprKind::Name(name.clone()),
+                                span: at,
+                            }),
+                            rhs: Box::new(rhs),
+                        },
+                    };
+                    if !self.failed {
+                        let fixed = format!("{name} = {}", canonical(&value));
+                        self.err_fix(
+                            "MZ0918",
+                            op_at,
+                            format!("`{op}` is not a Mzizi operator — write `{fixed}`"),
+                            join(at, value.span),
+                            fixed,
+                            Confidence::Exact,
+                        );
+                    }
+                    self.finish_line("an assignment");
+                    return Some(StmtKind::Assign {
+                        name,
+                        name_span: at,
+                        ty: None,
+                        value,
+                    });
+                }
+                (Tok::Op(op @ ("++" | "--")), _) => {
+                    let op_at = self.span_at(1);
+                    self.bump();
+                    self.bump();
+                    let bin = if op == "++" { BinOp::Add } else { BinOp::Sub };
+                    let value = Expr {
+                        span: join(at, op_at),
+                        kind: ExprKind::Binary {
+                            op: bin,
+                            op_span: op_at,
+                            lhs: Box::new(Expr {
+                                kind: ExprKind::Name(name.clone()),
+                                span: at,
+                            }),
+                            rhs: Box::new(Expr {
+                                kind: ExprKind::Int(1),
+                                span: op_at,
+                            }),
+                        },
+                    };
+                    let fixed = format!("{name} = {}", canonical(&value));
+                    self.err_fix(
+                        "MZ0918",
+                        op_at,
+                        format!("`{op}` is not a Mzizi operator — write `{fixed}`"),
+                        join(at, op_at),
+                        fixed,
+                        Confidence::Exact,
+                    );
+                    self.finish_line("an assignment");
+                    return Some(StmtKind::Assign {
+                        name,
+                        name_span: at,
+                        ty: None,
+                        value,
+                    });
+                }
+                _ => {}
+            }
+            // `print x` and `puts x`: a print with no parentheses.
+            if matches!(name.as_str(), "print" | "puts")
+                && !matches!(self.peek_at(1), Tok::LParen | Tok::Newline | Tok::Eof)
+            {
+                self.bump();
+                let value = self.expr();
+                let call =
+                    self.print_call(at, &format!("{name} …"), vec![value], join(at, self.prev()));
+                self.finish_line("`print`");
+                return Some(StmtKind::Expr(call));
+            }
+        }
+        let e = self.expr();
+        self.finish_line("an expression");
+        Some(StmtKind::Expr(e))
+    }
+
+    /// `let name[: type] = value`. `prefixed` is set when the cursor is on a word
+    /// (`const`, `mut`) already reported and standing for `let` or `var`.
+    fn binding(&mut self, mutable: bool, prefixed: Option<()>) -> Option<StmtKind> {
+        let kw_at = self.bump().span;
+        let mut mutable = mutable;
+        let mut kw_span = kw_at;
+        // Rust's `let mut`.
+        if prefixed.is_none()
+            && !mutable
+            && self.is_word("mut")
+            && matches!(self.peek_at(1), Tok::Ident(_))
+        {
+            let mut_at = self.bump().span;
+            self.err_fix(
+                "MZ0925",
+                join(kw_at, mut_at),
+                "`let mut` is Rust's — a name that changes is a `var`",
+                join(kw_at, mut_at),
+                "var",
+                Confidence::Exact,
+            );
+            self.failed = false;
+            mutable = true;
+            kw_span = join(kw_at, mut_at);
+        }
+        if prefixed.is_some() {
+            self.failed = false;
+        }
+        let (name, name_span) = match self.peek().clone() {
+            Tok::Ident(n) => {
+                let s = self.span();
+                self.bump();
+                (n, s)
+            }
+            other => {
+                let at = self.span();
+                self.err(
+                    "MZ0917",
+                    at,
+                    format!(
+                        "`{}` needs a snake_case name, found {}",
+                        if mutable { "var" } else { "let" },
+                        describe(&other)
+                    ),
+                );
+                self.recover_line();
+                return None;
+            }
+        };
+        let ty = if matches!(self.peek(), Tok::Colon) {
+            self.bump();
+            Some(self.type_ref("`:`"))
+        } else {
+            None
+        };
+        if !matches!(self.peek(), Tok::Equals) {
+            if !self.failed {
+                self.err(
+                    "MZ0926",
+                    join(kw_at, self.prev()),
+                    format!(
+                        "`{name}` is bound with no value — a binding always has one: `{} {name} = …`{}",
+                        if mutable { "var" } else { "let" },
+                        if self.at_line_end() {
+                            String::new()
+                        } else {
+                            format!(", found {}", describe(&self.toks[self.pos].kind))
+                        }
+                    ),
+                );
+            }
+            self.recover_line();
+            return None;
+        }
+        self.bump();
+        let value = self.expr();
+        self.finish_line("a binding");
+        Some(StmtKind::Bind {
+            mutable,
+            kw_span,
+            name,
+            name_span,
+            ty,
+            value,
+        })
+    }
+
+    /// `when cond` … [`else` …] `end`. The cursor is on `when` (or the `if` it stands for).
+    fn when(&mut self, at: Span, fn_name: &str) -> Option<Stmt> {
+        self.bump();
+        let cond = self.expr();
+        self.trailing_block_punctuation();
+        self.finish_line("a `when` condition");
+        let (then, stop) = self.stmts(true, fn_name);
+        let mut otherwise = None;
+        let mut last_line = stop_line(&stop);
+        match stop {
+            Stop::End(_) => {}
+            Stop::Else(else_at) => {
+                self.failed = false;
+                if self.is_word("when") || self.is_word("if") {
+                    // `else when`: C4's, a later wave. Reported, and read as an `else`
+                    // holding a `when` that shares this `end`, so the rest still checks.
+                    let rest = join(else_at, self.line_end_span());
+                    self.err(
+                        "MZ0919",
+                        rest,
+                        "`else when` is designed (RFC-0013 §7.1) but not built yet — nest a `when` inside the `else`",
+                    );
+                    let inner_at = self.span();
+                    let inner = self.when(inner_at, fn_name)?;
+                    last_line = inner.last_line;
+                    otherwise = Some(vec![inner]);
+                } else {
+                    self.trailing_block_punctuation();
+                    self.finish_line("`else`");
+                    let (o, stop) = self.stmts(true, fn_name);
+                    last_line = stop_line(&stop);
+                    match stop {
+                        Stop::End(_) => {}
+                        Stop::Else(second) => {
+                            self.err(
+                                "MZ0917",
+                                second,
+                                "a second `else` in one `when` — a `when` has one `else`, last",
+                            );
+                            self.recover_line();
+                            let _ = self.stmts(true, fn_name);
+                        }
+                        Stop::EndFn(end_at) => self.unclosed_when(at, end_at),
+                        Stop::Abrupt(_) | Stop::Eof(_) => {}
+                    }
+                    otherwise = Some(o);
+                }
+            }
+            Stop::EndFn(end_at) => self.unclosed_when(at, end_at),
+            Stop::Abrupt(_) | Stop::Eof(_) => {}
+        }
+        Some(Stmt {
+            span: join(at, cond.span),
+            kind: StmtKind::When {
+                cond,
+                then,
+                otherwise,
+            },
+            last_line,
+        })
+    }
+
+    fn unclosed_when(&mut self, when_at: Span, end_at: Span) {
+        let indent = " ".repeat(when_at.start_col.saturating_sub(1) as usize);
+        self.err_fix(
+            "MZ0204",
+            end_at,
+            format!(
+                "`end fn` arrived while the `when` opened on line {} is still open — add `end` before this line",
+                when_at.start_line
+            ),
+            Span::single(end_at.start_line, 1, 0),
+            format!("{indent}end\n"),
+            Confidence::Guess,
+        );
+    }
+
+    // ---------------------------------------------------------------- expressions
+
+    fn expr(&mut self) -> Expr {
+        self.or_expr()
+    }
+
+    fn or_expr(&mut self) -> Expr {
+        let mut lhs = self.and_expr();
+        loop {
+            let at = self.span();
+            if self.is_word("or") {
+                self.bump();
+            } else if matches!(self.peek(), Tok::Op("||")) {
+                self.bump();
+                self.idiom_op("||", "or", at);
+            } else {
+                return lhs;
+            }
+            let rhs = self.and_expr();
+            lhs = binary(BinOp::Or, at, lhs, rhs);
+        }
+    }
+
+    fn and_expr(&mut self) -> Expr {
+        let mut lhs = self.not_expr();
+        loop {
+            let at = self.span();
+            if self.is_word("and") {
+                self.bump();
+            } else if matches!(self.peek(), Tok::Op("&&")) {
+                self.bump();
+                self.idiom_op("&&", "and", at);
+            } else {
+                return lhs;
+            }
+            let rhs = self.not_expr();
+            lhs = binary(BinOp::And, at, lhs, rhs);
+        }
+    }
+
+    /// `MZ0910`: an operator spelt from another language, repaired in place.
+    fn idiom_op(&mut self, written: &str, mzizi: &str, at: Span) {
+        self.diags.push(
+            Diagnostic::error(
+                "MZ0910",
+                &self.file,
+                at,
+                format!("`{written}` is not a Mzizi operator — write `{mzizi}`"),
+            )
+            .with_fix(at, mzizi, Confidence::Exact),
+        );
+    }
+
+    fn not_expr(&mut self) -> Expr {
+        let at = self.span();
+        let bang = matches!(self.peek(), Tok::Op("!"));
+        if self.is_word("not") || bang {
+            self.bump();
+            if bang {
+                // `!x` becomes `not x`: the space is part of the repair.
+                let next = self.span();
+                let spaced = next.start_line == at.start_line && next.start_col > at.end_col;
+                self.diags.push(
+                    Diagnostic::error(
+                        "MZ0910",
+                        &self.file,
+                        at,
+                        "`!` is not a Mzizi operator — write `not`",
+                    )
+                    .with_fix(
+                        at,
+                        if spaced { "not" } else { "not " },
+                        Confidence::Exact,
+                    ),
+                );
+            }
+            let operand = self.not_expr();
+            return Expr {
+                span: join(at, operand.span),
+                kind: ExprKind::Unary {
+                    op: UnOp::Not,
+                    operand: Box::new(operand),
+                },
+            };
+        }
+        self.cmp_expr()
+    }
+
+    /// A comparison operator at the cursor, consumed, with any idiom reported.
+    fn cmp_op(&mut self) -> Option<(BinOp, Span)> {
+        let at = self.span();
+        let op = match self.peek().clone() {
+            Tok::Keyword("is") => {
+                self.bump();
+                if self.is_word("not") {
+                    let not_at = self.bump().span;
+                    return Some((BinOp::IsNot, join(at, not_at)));
+                }
+                BinOp::Is
+            }
+            Tok::Op(o @ ("<" | "<=" | ">" | ">=")) => {
+                self.bump();
+                match o {
+                    "<" => BinOp::Lt,
+                    "<=" => BinOp::Le,
+                    ">" => BinOp::Gt,
+                    _ => BinOp::Ge,
+                }
+            }
+            Tok::Op(o @ ("==" | "===")) => {
+                self.bump();
+                self.idiom_op(o, "is", at);
+                BinOp::Is
+            }
+            Tok::Op(o @ ("!=" | "!==")) => {
+                self.bump();
+                self.idiom_op(o, "is not", at);
+                BinOp::IsNot
+            }
+            Tok::Ident(w) if w == "at_least" || w == "at_most" => {
+                self.bump();
+                let (op, sym) = if w == "at_least" {
+                    (BinOp::Ge, ">=")
+                } else {
+                    (BinOp::Le, "<=")
+                };
+                self.diags.push(
+                    Diagnostic::error(
+                        "MZ0910",
+                        &self.file,
+                        at,
+                        format!("`{w}` is a contract predicate — in an expression, write `{sym}`"),
+                    )
+                    .with_fix(at, sym, Confidence::Exact),
+                );
+                op
+            }
+            _ => return None,
+        };
+        Some((op, at))
+    }
+
+    fn cmp_expr(&mut self) -> Expr {
+        let lhs = self.add_expr();
+        let Some((op, op_at)) = self.cmp_op() else {
+            return lhs;
+        };
+        let rhs = self.add_expr();
+        let first = binary(op, op_at, lhs, rhs);
+        let mut links = vec![first];
+        while let Some((op, op_at)) = self.cmp_op() {
+            let middle = match &links.last().expect("one link").kind {
+                ExprKind::Binary { rhs, .. } => (**rhs).clone(),
+                _ => unreachable!("links are binary"),
+            };
+            let rhs = self.add_expr();
+            links.push(binary(op, op_at, middle, rhs));
+        }
+        if links.len() == 1 {
+            return links.pop().expect("one link");
+        }
+        // `a < b < c`: comparisons do not chain (RFC-0013 §3.3). The fix is a guess,
+        // because `b` is evaluated once in one and twice in the other.
+        let mut chain = links.remove(0);
+        for link in links {
+            let at = link.span;
+            chain = binary(BinOp::And, at, chain, link);
+        }
+        let fixed = canonical(&chain);
+        self.diags.push(
+            Diagnostic::error(
+                "MZ0913",
+                &self.file,
+                chain.span,
+                format!("comparisons do not chain — write `{fixed}`"),
+            )
+            .with_fix(chain.span, fixed, Confidence::Guess),
+        );
+        self.failed = true;
+        chain
+    }
+
+    fn add_expr(&mut self) -> Expr {
+        let mut lhs = self.mul_expr();
+        loop {
+            let op = match self.peek() {
+                Tok::Op("+") => BinOp::Add,
+                Tok::Op("-") => BinOp::Sub,
+                _ => return lhs,
+            };
+            let at = self.bump().span;
+            let rhs = self.mul_expr();
+            lhs = binary(op, at, lhs, rhs);
+        }
+    }
+
+    fn mul_expr(&mut self) -> Expr {
+        let mut lhs = self.unary_expr();
+        loop {
+            let op = match self.peek() {
+                Tok::Op("*") => BinOp::Mul,
+                Tok::Op("/") => BinOp::Div,
+                Tok::Op("%") => BinOp::Rem,
+                _ => return lhs,
+            };
+            let at = self.bump().span;
+            let rhs = self.unary_expr();
+            lhs = binary(op, at, lhs, rhs);
+        }
+    }
+
+    fn unary_expr(&mut self) -> Expr {
+        let at = self.span();
+        if matches!(self.peek(), Tok::Op("-")) {
+            self.bump();
+            let operand = self.unary_expr();
+            return Expr {
+                span: join(at, operand.span),
+                kind: ExprKind::Unary {
+                    op: UnOp::Neg,
+                    operand: Box::new(operand),
+                },
+            };
+        }
+        if self.is_word("not") || matches!(self.peek(), Tok::Op("!")) {
+            return self.not_expr();
+        }
+        self.primary()
+    }
+
+    fn error_expr(&self, at: Span) -> Expr {
+        Expr {
+            kind: ExprKind::Error,
+            span: at,
+        }
+    }
+
+    fn primary(&mut self) -> Expr {
+        let at = self.span();
+        let tok = self.peek().clone();
+        let e = match tok {
+            Tok::Int(v) => {
+                self.bump();
+                Expr {
+                    kind: ExprKind::Int(v),
+                    span: at,
+                }
+            }
+            Tok::Keyword("true") | Tok::Keyword("false") => {
+                self.bump();
+                Expr {
+                    kind: ExprKind::Bool(tok == Tok::Keyword("true")),
+                    span: at,
+                }
+            }
+            Tok::Str(raw) => {
+                self.bump();
+                let parts = self.text(&raw, at);
+                Expr {
+                    kind: ExprKind::Text(parts),
+                    span: at,
+                }
+            }
+            Tok::LParen => {
+                self.bump();
+                let inner = self.expr();
+                if matches!(self.peek(), Tok::RParen) {
+                    let close = self.bump().span;
+                    Expr {
+                        kind: inner.kind,
+                        span: join(at, close),
+                    }
+                } else {
+                    if !self.failed {
+                        let s = self.span();
+                        let found = describe(self.peek());
+                        self.err(
+                            "MZ0917",
+                            s,
+                            format!(
+                                "expected `)` to close the `(` on column {}, found {found}",
+                                at.start_col
+                            ),
+                        );
+                    }
+                    self.error_expr(at)
+                }
+            }
+            Tok::Ident(name) => self.name_or_call(name, at),
+            Tok::Keyword("none") => {
+                self.bump();
+                self.err(
+                    "MZ0919",
+                    at,
+                    "`none` is an option's absence, and options in a function body are designed (RFC-0013 §8) but not built yet",
+                );
+                self.error_expr(at)
+            }
+            other => {
+                if !self.failed {
+                    self.err(
+                        "MZ0917",
+                        at,
+                        format!("expected a value, found {}", describe(&other)),
+                    );
+                }
+                self.error_expr(at)
+            }
+        };
+        if matches!(self.peek(), Tok::Dot) && !matches!(e.kind, ExprKind::Error) {
+            // `x.length()`, `p.x`: C6, C7 and C8 are later waves.
+            let dot = self.span();
+            if !self.failed {
+                self.err(
+                    "MZ0919",
+                    join(e.span, self.line_end_span()),
+                    "methods and fields (`x.name`) are designed (RFC-0013 §3.7, §11) but not built yet",
+                );
+            }
+            while matches!(
+                self.peek(),
+                Tok::Dot | Tok::Ident(_) | Tok::LParen | Tok::RParen
+            ) {
+                self.bump();
+            }
+            return self.error_expr(join(e.span, dot));
+        }
+        e
+    }
+
+    fn name_or_call(&mut self, name: String, at: Span) -> Expr {
+        self.bump();
+        // `console.log(…)`, `fmt.Println(…)`, `System.out.println(…)`: print idioms.
+        if matches!(self.peek(), Tok::Dot) {
+            let mut path = vec![name.clone()];
+            let mut k = 0;
+            while matches!(self.peek_at(k), Tok::Dot)
+                && let Tok::Ident(seg) = self.peek_at(k + 1)
+            {
+                path.push(seg.clone());
+                k += 2;
+            }
+            let joined = path.join(".");
+            if matches!(
+                joined.as_str(),
+                "console.log" | "fmt.println" | "system.out.println"
+            ) && matches!(self.peek_at(k), Tok::LParen)
+            {
+                for j in 0..k {
+                    self.suppress.push(self.span_at(j));
+                }
+                self.suppress.push(at);
+                for _ in 0..k {
+                    self.bump();
+                }
+                let (args, close) = self.args();
+                let span = join(at, close);
+                return self.print_call(at, &joined, args, span);
+            }
+            return Expr {
+                kind: ExprKind::Name(name),
+                span: at,
+            };
+        }
+        // `println!(…)`: Rust's macro.
+        if matches!(self.peek(), Tok::Op("!")) && matches!(self.peek_at(1), Tok::LParen) {
+            let bang = self.bump().span;
+            let (args, close) = self.args();
+            let span = join(at, close);
+            if matches!(name.as_str(), "println" | "print") {
+                return self.print_call(join(at, bang), &format!("{name}!"), args, span);
+            }
+            self.err(
+                "MZ0917",
+                join(at, bang),
+                format!("`{name}!` is a Rust macro, and Mzizi has none"),
+            );
+            return self.error_expr(span);
+        }
+        if !matches!(self.peek(), Tok::LParen) {
+            return Expr {
+                kind: ExprKind::Name(name),
+                span: at,
+            };
+        }
+        let (args, close) = self.args();
+        let span = join(at, close);
+        if name == "print" || name == "puts" {
+            return self.print_call(at, &name, args, span);
+        }
+        Expr {
+            kind: ExprKind::Call {
+                name,
+                name_span: at,
+                args,
+            },
+            span,
+        }
+    }
+
+    /// `(a, b)`: the cursor is on `(`. Returns the arguments and the `)`'s span.
+    fn args(&mut self) -> (Vec<Expr>, Span) {
+        let open = self.bump().span;
+        let mut args = Vec::new();
+        if matches!(self.peek(), Tok::RParen) {
+            return (args, self.bump().span);
+        }
+        loop {
+            if let (Tok::Ident(n), Tok::Equals) = (self.peek().clone(), self.peek_at(1).clone()) {
+                let at = self.span();
+                self.err(
+                    "MZ0905",
+                    join(at, self.span_at(1)),
+                    format!(
+                        "`{n} = …` is a named argument, and a call gives its arguments by position, in the order of the signature"
+                    ),
+                );
+                self.bump();
+                self.bump();
+            }
+            args.push(self.expr());
+            match self.peek() {
+                Tok::Comma => {
+                    self.bump();
+                }
+                Tok::RParen => return (args, self.bump().span),
+                other => {
+                    if !self.failed {
+                        let s = self.span();
+                        let found = describe(other);
+                        self.err(
+                            "MZ0917",
+                            s,
+                            format!(
+                                "expected `,` or `)` in the call opened on column {}, found {found}",
+                                open.start_col
+                            ),
+                        );
+                    }
+                    let end = self.prev();
+                    while !self.at_line_end() {
+                        self.bump();
+                    }
+                    return (args, end);
+                }
+            }
+        }
+    }
+
+    /// A call to `print`, however it was spelt. `print` takes exactly one value; any
+    /// other spelling or arity is one `MZ0980` whose fix rewrites the whole call.
+    fn print_call(&mut self, name_at: Span, written: &str, args: Vec<Expr>, span: Span) -> Expr {
+        let ok_spelling = written == "print";
+        if ok_spelling && args.len() == 1 {
+            return Expr {
+                kind: ExprKind::Call {
+                    name: "print".to_string(),
+                    name_span: name_at,
+                    args,
+                },
+                span,
+            };
+        }
+        let fixable = args.len() < 2
+            || args
+                .iter()
+                .all(|a| matches!(a.kind, ExprKind::Text(_)) || !a.has_text_literal());
+        let arg = match args.len() {
+            0 => Expr {
+                kind: ExprKind::Text(Vec::new()),
+                span,
+            },
+            1 => args.into_iter().next().expect("one argument"),
+            _ => {
+                // Python's `print(a, b)` separates its arguments with a space.
+                let mut parts = Vec::new();
+                for (i, a) in args.into_iter().enumerate() {
+                    if i > 0 {
+                        parts.push(TextPart::Lit(" ".to_string()));
+                    }
+                    match a.kind {
+                        ExprKind::Text(p) => parts.extend(p),
+                        _ => parts.push(TextPart::Expr(a)),
+                    }
+                }
+                let mut merged: Vec<TextPart> = Vec::new();
+                for p in parts {
+                    match (merged.last_mut(), p) {
+                        (Some(TextPart::Lit(a)), TextPart::Lit(b)) => a.push_str(&b),
+                        (_, p) => merged.push(p),
+                    }
+                }
+                Expr {
+                    kind: ExprKind::Text(merged),
+                    span,
+                }
+            }
+        };
+        let fixed = match &arg.kind {
+            ExprKind::Text(parts) => format!("print({})", canonical_text(parts)),
+            _ => format!("print({})", canonical(&arg)),
+        };
+        let shown: String = if written.ends_with('!') || written.contains('.') {
+            format!("`{written}(…)`")
+        } else {
+            format!("`{written}` with these arguments")
+        };
+        let say = format!("{shown} is not how Mzizi prints — `print` takes one value: `{fixed}`");
+        if fixable && !self.failed {
+            self.err_fix("MZ0980", span, say, span, fixed, Confidence::Exact);
+        } else if !self.failed {
+            self.err("MZ0980", span, say);
+        }
+        Expr {
+            kind: ExprKind::Call {
+                name: "print".to_string(),
+                name_span: name_at,
+                args: vec![arg],
+            },
+            span,
+        }
+    }
+
+    /// A text literal's pieces: escapes decoded, `{…}` parsed as an expression
+    /// (RFC-0013 §3.6). `at` is the token's span; the raw text starts one column after.
+    fn text(&mut self, raw: &str, at: Span) -> Vec<TextPart> {
+        let chars: Vec<char> = raw.chars().collect();
+        let col0 = at.start_col + 1;
+        let line = at.start_line;
+        let mut parts = Vec::new();
+        let mut lit = String::new();
+        let mut k = 0;
+        while k < chars.len() {
+            let c = chars[k];
+            let here = Span::single(line, col0 + k as u32, 1);
+            match c {
+                '\\' => {
+                    let decoded = match chars.get(k + 1) {
+                        Some('n') => Some('\n'),
+                        Some('t') => Some('\t'),
+                        Some('"') => Some('"'),
+                        Some('\\') => Some('\\'),
+                        Some('{') => Some('{'),
+                        Some('}') => Some('}'),
+                        _ => None,
+                    };
+                    match decoded {
+                        Some(d) => lit.push(d),
+                        None => {
+                            let shown: String = chars[k..(k + 2).min(chars.len())].iter().collect();
+                            self.err(
+                                "MZ0917",
+                                Span::single(line, col0 + k as u32, shown.chars().count() as u32),
+                                format!(
+                                    "`{shown}` is not an escape — the escapes are `\\n`, `\\t`, `\\\"`, `\\\\`, `\\{{` and `\\}}`"
+                                ),
+                            );
+                        }
+                    }
+                    k += 2;
+                }
+                '{' => {
+                    let close = chars[k + 1..].iter().position(|c| *c == '}' || *c == '{');
+                    match close.map(|o| k + 1 + o) {
+                        Some(end) if chars[end] == '}' => {
+                            let inner: String = chars[k + 1..end].iter().collect();
+                            let span = Span::single(line, col0 + k as u32, (end - k + 1) as u32);
+                            if inner.trim().is_empty() {
+                                self.err(
+                                    "MZ0714",
+                                    span,
+                                    "`{}` interpolates nothing — put a value inside, or write `\\{\\}` for the braces",
+                                );
+                            } else if let Some(e) =
+                                self.interpolation(&inner, line, col0 + k as u32 + 1, span)
+                            {
+                                if !lit.is_empty() {
+                                    parts.push(TextPart::Lit(std::mem::take(&mut lit)));
+                                }
+                                parts.push(TextPart::Expr(e));
+                            }
+                            k = end + 1;
+                        }
+                        _ => {
+                            self.err(
+                                "MZ0714",
+                                here,
+                                "this `{` is not closed in its text — an interpolation holds no string literal and no braces; bind the value with `let` first, or write `\\{` for a brace",
+                            );
+                            return parts;
+                        }
+                    }
+                }
+                '}' => {
+                    self.err_fix(
+                        "MZ0714",
+                        here,
+                        "a `}` with no `{` — write `\\}` for a brace in text",
+                        here,
+                        "\\}",
+                        Confidence::Exact,
+                    );
+                    k += 1;
+                }
+                c => {
+                    lit.push(c);
+                    k += 1;
+                }
+            }
+        }
+        if !lit.is_empty() {
+            parts.push(TextPart::Lit(lit));
+        }
+        parts
+    }
+
+    /// The inside of `{…}`, as an expression with spans in the file's coordinates.
+    fn interpolation(&mut self, inner: &str, line: u32, col: u32, braces: Span) -> Option<Expr> {
+        let (mut toks, mut lex_diags) = lex_fragment(inner, &self.file);
+        let shift = |s: &mut Span| {
+            s.start_line = line;
+            s.end_line = line;
+            s.start_col += col - 1;
+            s.end_col += col - 1;
+        };
+        for t in &mut toks {
+            shift(&mut t.span);
+        }
+        for d in &mut lex_diags {
+            shift(&mut d.span);
+            if let Some(f) = d.fix.as_mut() {
+                shift(&mut f.span);
+            }
+        }
+        self.diags.append(&mut lex_diags);
+        let mut sub = P {
+            toks,
+            pos: 0,
+            file: self.file.clone(),
+            diags: Vec::new(),
+            skipped: Vec::new(),
+            suppress: Vec::new(),
+            failed: false,
+            skipped_stray: false,
+        };
+        let e = sub.expr();
+        if !sub.at_line_end() && !sub.failed {
+            let at = sub.span();
+            let found = describe(sub.peek());
+            sub.err(
+                "MZ0714",
+                at,
+                format!(
+                    "{found} is left over inside `{{{inner}}}` — an interpolation holds one value"
+                ),
+            );
+        }
+        let failed = sub.failed;
+        self.diags.append(&mut sub.diags);
+        self.suppress.append(&mut sub.suppress);
+        if failed {
+            self.failed = true;
+            return Some(Expr {
+                kind: ExprKind::Error,
+                span: braces,
+            });
+        }
+        Some(e)
+    }
+}
+
+fn binary(op: BinOp, op_span: Span, lhs: Expr, rhs: Expr) -> Expr {
+    Expr {
+        span: join(lhs.span, rhs.span),
+        kind: ExprKind::Binary {
+            op,
+            op_span,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        },
+    }
+}
+
+/// Whether a line starting with `w` is something the program level reads itself, rather
+/// than a stray statement.
+fn is_program_item(w: &str, next: &Tok) -> bool {
+    match w {
+        "fn" | "end" | "use" | "enum" | "contract" | "record" | "view" | "prop" | "emit"
+        | "route" | "fallback" | "header" => true,
+        "def" | "function" | "func" => matches!(next, Tok::Ident(_)),
+        "test" => matches!(next, Tok::Str(_)),
+        _ => false,
+    }
+}
+
+/// The line a block's statement list stopped on.
+fn stop_line(stop: &Stop) -> u32 {
+    match stop {
+        Stop::End(s) | Stop::Else(s) | Stop::EndFn(s) | Stop::Abrupt(s) | Stop::Eof(s) => {
+            s.start_line
+        }
+    }
+}

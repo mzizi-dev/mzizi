@@ -11,7 +11,7 @@
 its compiler (`mz`, written in Rust), a research prototype in Phase 0 of the Mzizi research
 charter. Its one goal is building Mzizi as a language that stands against the best existing
 language for each kind of task ([`CHARTER.md`](./CHARTER.md) §1, v0.4). "Compiles to Rust" is
-the design, not the state: `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
+the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice (`int`, `bool` and `text`, functions, `let` / `var`, `when`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
 ([RFC-0012](./design/RFC-0012-harness.md), a draft); `benchmarks/harness/` is a different
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
@@ -30,7 +30,7 @@ tied the arms, and the ~7B open-weight model did worse in Mzizi on all three met
 run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
 waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
 Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust" (only a
-`service` lowers, to a local axum package; no component does), "the benchmark shows", "production
+`service` and a foundation-slice `program` lower; no component does, and most of Tier 1 does not exist), "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 306 tests (437 in the workspace)
+cargo test                                                              # 342 tests (473 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -60,6 +60,7 @@ cargo run --bin mz -- outline        ../primitives/alert.mz
 cargo run --bin mz -- ir              ../primitives/card.mz
 cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
 cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
+cargo run --bin mz -- run            ../examples/fib.mz                  # lower a program, build it, run it
 ```
 
 Run before every push. These are the commands in
@@ -67,8 +68,9 @@ Run before every push. These are the commands in
 from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` exits 2 (usage).
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
-`mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
-`axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
+`mzprobe verify` of the backend task B1 against its Mzizi and axum references, and `mz run`
+of every example program with its output diffed against `examples/<name>.expected`; it
+fetches `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
 `cargo deny check` against [`deny.toml`](./deny.toml), and zizmor over the workflows), the org's required workflows (Semgrep,
 dependency review, a lockfile audit and a release version check, which run on every pull
 request from outside this repo), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
