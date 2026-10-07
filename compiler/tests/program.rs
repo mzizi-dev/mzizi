@@ -713,3 +713,75 @@ fn mz_run_shows_warnings_and_an_inherited_deny_warnings_does_not_fail_the_build(
     assert_eq!(String::from_utf8_lossy(&out.stdout), "1\n");
     assert!(stderr.contains("[MZ0924]"), "{stderr}");
 }
+
+// ------------------------------------------------------------------- one error, not three
+
+#[test]
+fn a_keyword_named_parameter_is_one_mz0903() {
+    // The parameter still counts, so `twice(2)` is not short an argument (`MZ0905`), and
+    // `match` in the body is not a second error (`MZ0917`).
+    let src = "program t\n\n  fn main\n    print(\"{twice(2)}\")\n  end fn main\n\n  fn twice(match: int): int\n    return match * 2\n  end fn twice\n\nend program t\n";
+    let d = one(src, "MZ0903");
+    assert!(d.say.contains("`match` is a keyword"), "{d:#?}");
+}
+
+#[test]
+fn a_keyword_named_function_is_one_mz0903_and_its_call_is_silent() {
+    // The call comes before the `fn`, as `main` usually does.
+    let src = "program t\n\n  fn main\n    nothing()\n    print(\"{true}\")\n  end fn main\n\n  fn nothing\n    print(\"x\")\n  end fn nothing\n\nend program t\n";
+    let d = one(src, "MZ0903");
+    assert!(d.say.contains("`nothing` is a keyword"), "{d:#?}");
+    // Called as a statement, with a keyword that opens a block, it is still one error.
+    let src = "program t\n\n  fn main\n    match(1)\n  end fn main\n\n  fn match(n: int)\n    print(\"{n}\")\n  end fn match\n\nend program t\n";
+    one(src, "MZ0903");
+    // Used as a value, not called, it is silent too.
+    let src = "program t\n\n  fn main\n    let a = nothing\n    print(\"{a}\")\n  end fn main\n\n  fn nothing: int\n    return 1\n  end fn nothing\n\nend program t\n";
+    one(src, "MZ0903");
+}
+
+#[test]
+fn an_oversized_literal_is_one_mz0103() {
+    one(&wrap("print(\"{99999999999999999999}\")"), "MZ0103");
+    one(
+        &wrap("let x = 99999999999999999999 + 1\nprint(\"{x}\")"),
+        "MZ0103",
+    );
+}
+
+#[test]
+fn a_program_that_opens_with_another_languages_comment_is_one_mz0911() {
+    // It is still lexed as a program, with its operators: no `MZ0104` for the `+`.
+    for marker in ["//", "#"] {
+        let src = format!(
+            "{marker} adds two numbers\nprogram t\n\n  fn main\n    let x = 1 + 2\n    print(\"{{x}}\")\n  end fn main\n\nend program t\n"
+        );
+        fixed_by(&src, "MZ0911", "## adds two numbers");
+    }
+    // `///` and `//!` are replaced whole.
+    fixed_by(
+        &wrap("/// a note\nprint(\"hi\")"),
+        "MZ0911",
+        "    ## a note",
+    );
+    fixed_by(
+        &wrap("//! a note\nprint(\"hi\")"),
+        "MZ0911",
+        "    ## a note",
+    );
+    // `#!` may be a shebang and `#[inline]` is code, which `##` would break: a guess.
+    for first in ["#!/usr/bin/env mz run", "#[inline]"] {
+        let d = one(
+            &format!(
+                "{first}\nprogram t\n\n  fn main\n    print(\"hi\")\n  end fn main\n\nend program t\n"
+            ),
+            "MZ0911",
+        );
+        assert_eq!(
+            d.fix.expect("a fix").confidence,
+            Confidence::Guess,
+            "{first}"
+        );
+    }
+    // Inside a function body, too.
+    fixed_by(&wrap("// a note\nprint(\"hi\")"), "MZ0911", "## a note");
+}

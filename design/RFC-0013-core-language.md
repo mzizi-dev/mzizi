@@ -1120,24 +1120,31 @@ status **1**. Under `mz run --agent` that is one NDJSON line with code `MZ0992`.
 
 ```text
 mz run <file.mz>              check, lower, build with cargo, run; the program's output passes through
-mz run --agent <file.mz>      the same, with diagnostics, a trap or main's error as NDJSON on stderr
+mz run --agent <file.mz>      the same, with diagnostics, a trap or main's error as NDJSON on stderr (not built yet)
 mz run --release <file.mz>    build the release profile
 mz build <file.mz> --out <dir> write the program's Cargo package, as for a service (RFC-0011 §8.1)
 ```
 
 1. **Check.** `mz run` runs `mz check` first. On any error it prints the diagnostics, exits 3 and
    does not build. The loop summary line (RFC-0001 §4.4) is printed as for `mz check`.
-2. **Lower.** It writes a Cargo package (§14) into a cache directory keyed by a hash of the
-   generated files themselves, `mz-run/<name>-<hash prefix>/` in the system's temporary
-   directory. The key is the generated text, not the IR root hash, because the generated code
-   embeds each trap's file, line and column (§14.3) and the IR hash ignores positions: moving a
-   line must rebuild, or a trap would name a stale line. An unchanged program is never built
-   twice (RFC-0002 §2.1's "perfect caching"). The package is generated output, never committed.
+2. **Lower.** It writes a Cargo package (§14) into a cache directory that belongs to the user
+   and is keyed by the source file's path: `mzizi/mz-run/<name>-<path hash>/` under
+   `$XDG_CACHE_HOME` or `~/.cache`, and the system's temporary directory only when neither is
+   set. Per user, because a directory in a shared temporary directory let another account plant
+   a `build.rs` that `cargo` would run. Keyed by path, not by a hash of the generated text,
+   because a directory per content hash made every edit a cold build; in one directory per
+   source file, Cargo's own fingerprint rebuilds exactly what changed, and the generated code,
+   which embeds each trap's file, line and column (§14.3), is rewritten on every run, so moving
+   a line still rebuilds and a trap never names a stale line. (This draft first keyed the
+   directory by the generated text in the temporary directory; §18.6 records the change.) The
+   package is generated output, never committed.
 3. **Build.** `cargo build --offline --quiet` (with `--release` when asked). The package has **no
    dependencies**, so `--offline` always works and a run needs no network: not even crates.io's
    index, unlike a service. A missing `cargo` is a usage problem, exit 2. Lowered code that
    `rustc` rejects is a compiler bug, by construction (P5): `mz run` reports it as `MZ0990`, with
-   the `.mz` construct it came from and `rustc`'s first message, and exits 3.
+   the `.mz` construct it came from and `rustc`'s first message, and exits 3. (As built,
+   `MZ0990` names the program and quotes `rustc`'s first message; naming the construct is not
+   built yet, §18.6.)
 4. **Run.** It runs the binary with the terminal's standard input, output and error, and exits
    with the program's own status, or 128 plus the signal's number when a signal killed it, the
    shell's convention. Under `--agent`, the summary line gains `"ran": true` or `false`,
@@ -1431,7 +1438,7 @@ fills, the next family is `MZ10xx`.
 | `MZ0971` | `mz check`    | assignment to `self` or a field of it in a method                                                                                                                                                                                                                              |
 | `MZ0972` | `mz check`    | a declaration deferred past M1: type parameters, `class`, `interface`, `trait`, `impl`                                                                                                                                                                                         |
 | `MZ0980` | `mz check`    | a print spelt from another language: `print(a, b)` (`exact` to one interpolated text), `console.log`, `println!`, `fmt.Println`, `puts`, `print x`                                                                                                                             |
-| `MZ0990` | `mz run`      | the lowered code did not compile: a compiler bug, reported with the `.mz` construct and `rustc`'s first message                                                                                                                                                                |
+| `MZ0990` | `mz run`      | the lowered code did not compile: a compiler bug, reported with the `.mz` construct (not built yet: it names the program, §18.6) and `rustc`'s first message                                                                                                                   |
 | `MZ0991` | `mz run`      | a trap (§4.3): integer overflow, division by zero, a negative `int` exponent, an index or key out of range, a float out of `int`'s range                                                                                                                                       |
 | `MZ0992` | `mz run`      | `main` returned an error (§12.5)                                                                                                                                                                                                                                               |
 | `MZ0993` | `mz run`      | the runtime failed: the lowered program panicked, or its thread could not start; exit 70 (§13.1)                                                                                                                                                                               |
@@ -1597,7 +1604,8 @@ in `compiler/tests/program.rs`; nothing measured.
   `or`, `not`, `{expr}` interpolation and §3.1's escapes, integer traps (§4.3), the lowering
   (§14), `mz run` (with `--release`) and `mz build` for a program, and CI's `mz run` of
   `examples/*.mz` programs against `examples/<name>.expected` (§18.4).
-- **Codes emitted:** `MZ0901`–`MZ0910`, `MZ0912`, `MZ0913` (chained comparison only),
+- **Codes emitted:** `MZ0901`–`MZ0910`, `MZ0911` (a line that starts with `//` or `#` only),
+  `MZ0912`, `MZ0913` (chained comparison only),
   `MZ0915`, `MZ0916`, `MZ0918`, `MZ0920`–`MZ0926`, `MZ0937` (a trailing `:` only), `MZ0980`,
   `MZ0990` and `MZ0991`, beyond §18.1's list where an idiom needed its code to stay one
   diagnostic. **Claimed** from §16's free range: `MZ0917` (a line a function body cannot read)
@@ -1611,6 +1619,25 @@ in `compiler/tests/program.rs`; nothing measured.
   trap; only a zero divisor traps a remainder. `mz run` prints warnings to standard error
   before it runs, and a `cargo` failure that is not `rustc` rejecting the lowered code exits 2,
   not `MZ0990`.
+- **Nesting is capped, as for components and services (RFC-0001 §4.7 item 8), with `MZ0411`
+  once per file.** A program's blocks and expressions share one budget of 32 levels: the
+  program, the `fn`, each `when` (and `else when`), and each expression read inside
+  another: a statement's value, a `(`, a call's arguments, an interpolation, a `not`, a
+  prefix `-`. An expression's tree of binary operators may be 64 deep, so a chain such as
+  `1 + 1 + …` or `a < b < …` may be about 64 long. Half the cap a component gets, because each level costs
+  the parser and the checker several frames: in a debug build a level took 12 to 16 KiB of
+  stack, and the robustness tests hold every case to a 1 MiB stack. Past the cap a `when` is
+  skipped to its `end`, and the rest of an expression's line is not read, both without
+  recursion. 100,000 nested parentheses, `not`s or prefix `-`s, and 5,000 nested `when`s,
+  each give one `MZ0411` (`compiler/tests/robustness.rs`).
+- **One diagnostic per true error, in three more places.** A keyword written as a
+  parameter's or a function's name (`fn twice(match: int)`, `fn nothing`) is one `MZ0903`:
+  the parameter still counts toward the function's arity and the function is still
+  declared, so a call is not also `MZ0905`, and a use of the keyword as that name is not
+  also `MZ0917`. An `int` literal too large (`MZ0103`) reads as an error value, not as a
+  missing one. `MZ0911` is built for a line that starts with `//` or `#`, with the `exact`
+  fix `##` (a `guess` when code follows the marker with no space, as in a `#!` shebang or `#[inline]`), and a file that opens with one is still read as a program; `/* … */` and a
+  comment after code on the same line are not built.
 - **Not built:** `mz run --agent` (it exits 2 and says so), a trap or `MZ0990` as NDJSON,
   `MZ0990` naming the `.mz` construct (it names the program and quotes `rustc`'s first
   message), the guide change of §18.5, and everything outside §18.1's list.
