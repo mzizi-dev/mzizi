@@ -17,6 +17,11 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — a pre-commit hook: a changelog entry on every branch, and cargo fmt (2026-10-07)
+
+- **`.githooks/pre-commit`** refuses a commit unless `CHANGELOG.md` is staged, or the branch's changes since it left `origin/staging` or `origin/main` already include it. The hook compares the branch with whichever of those two refs it shares the most recent history with, so a branch cut from `main` is not credited with `main`'s own release commits; with neither ref, only the staged changes count. It has no path exemptions, the same rule as `changelog / entry required`: every change needs an entry. `MZ_NO_CHANGELOG=1` skips the check and prints a notice, the local twin of the `no-changelog` label. When staged files include Rust under `compiler/` or `benchmarks/`, it also runs `cargo fmt --all -- --check` (against the working tree, not the index), and nothing slower. **`scripts/install-hooks.sh`** sets `core.hooksPath` to `.githooks` for a clone and every worktree of it, and says what it replaced. AGENTS.md ("Changelog") and CONTRIBUTING.md say to run it once per clone, and that agents run it before their first commit. Owner rule, 2026-10-07: "We need to always have change log updates." Refs #69.
+- **`scripts/test-pre-commit.sh`** tests the hook in a throwaway repository: 12 cases, all passing locally (a commit without an entry is refused, one with it passes, `MZ_NO_CHANGELOG=1` passes, a branch cut from a `main` that has diverged from `staging`, the `origin/main` and no-ref fallbacks, a linked worktree, unformatted Rust refused, formatted Rust passes). CI does not run it. A hook is local and `git commit --no-verify` bypasses it, so the CI job is still the check on the pull request.
+
 ### Changed — RFC-0013: amendments from the top-10 language survey, design only (2026-10-07)
 
 - **`design/RFC-0013-core-language.md` is amended from `design/LANGUAGE-SURVEY.md`** (PR #75, not merged yet; Refs #69). Design only: no compiler code changes, no diagnostic is emitted, and nothing was measured. The survey's measured findings were measured on other languages, not on Mzizi. The amendment adds:
