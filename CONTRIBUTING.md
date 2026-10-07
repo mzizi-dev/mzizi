@@ -5,7 +5,8 @@
 Mzizi is **Phase 0 of a research charter**, and the honest description of what exists today
 is in the README: a prototype front end. The lexer, the recovering parser, the agent
 diagnostic protocol, the content-addressed IR and nine primitives exist and are tested.
-Contract bodies parse but are **not evaluated**. `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. There is no runtime
+`mz contract` evaluates a contract block: a component's against its own declarations, and a
+`service`'s by running its examples in process. `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. There is no runtime
 and no rendering. The Phase 0 benchmark has not run, so **nothing here has been measured against
 the charter's kill criteria** — and [`CHARTER.md`](./CHARTER.md) §4 is explicit that if the
 benchmark does not show a measurable advantage, Phase 1 does not start.
@@ -64,7 +65,7 @@ cd compiler
 
 cargo fmt -- --check                        # formatting, not negotiable
 cargo clippy --all-targets -- -D warnings   # every lint is an error, including in tests
-cargo test                                  # 294 tests in the compiler crate
+cargo test                                  # 297 tests in the compiler crate
 
 # The ones that are the point — the shipped binary, not the test harness:
 cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
@@ -107,6 +108,37 @@ repository and had never been scanned in a context where a leak would be world-r
 Keep it that way: nothing that looks like a credential belongs in a commit here, including
 in a test fixture.
 
+### The supply chain
+
+[`.github/workflows/supply-chain.yml`](./.github/workflows/supply-chain.yml) checks
+dependencies, not code (#62). **`cargo deny`** runs `cargo deny check` with
+[`deny.toml`](./deny.toml) over the workspace and over B1's Rust reference, which pins the
+same `axum` and `tokio` as `mz build`'s generated package. Any RustSec advisory fails it, so
+does a license `deny.toml` does not allow, and so does a source other than crates.io.
+`Cargo.lock` is gitignored, so it checks the versions a fresh build would fetch, and it also
+runs weekly: an advisory can land against a crate this repo already uses with no change here.
+A pull request that adds a crate with a new license widens `deny.toml`'s `allow` list in the
+same pull request.
+
+The org's required workflows also run on every pull request, from outside this repo:
+Semgrep over the changed files, dependency review, a lockfile audit and a release version
+check. Their audit runs only when a lockfile changes, and `Cargo.lock` is gitignored here, so
+`cargo deny` is this repo's Rust audit. Semgrep fails a workflow step whose action is not
+pinned to a commit SHA, so pin every `uses:` line to a SHA with the ref in a comment, as the
+workflows here do.
+
+The same workflow's **`workflow audit`** job runs [zizmor](https://docs.zizmor.sh) over
+`.github/workflows`. It fails on template injection, unpinned or impostor actions, a
+checkout that leaves its token on disk (set `persist-credentials: false` unless the job
+pushes), over-broad `permissions` and dangerous triggers. A finding that is safe in context
+is suppressed on its line with `# zizmor: ignore[<audit>]` and a comment saying why, as
+`main-release.yml`'s `workflow_run` trigger is. `.github/dependabot.yml` proposes action
+updates to `staging` weekly, a week after each release (`cooldown`), and
+`.github/CODEOWNERS` names the owner for `.github/`, `deny.toml` and `SECURITY.md`.
+
+To run `cargo deny` locally, install [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
+and run `cargo deny check` from the repository root.
+
 ### What CI does not check
 
 The `lowering` job gates one lowered package: `mz build` of `examples/registry.mz`, which it
@@ -115,7 +147,8 @@ there is nothing more there to gate.
 
 Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
 component against its own declarations: its variant tables, its view tree, its prop
-defaults. It does not execute anything, and it does not compare against a reference
+defaults. For a component it executes nothing. For a `service` it runs the `example`
+clauses in process, against the service's own handlers. Neither compares against a reference
 implementation — which is what CHARTER.md §6's defect metric actually requires
 ([RFC-0006](./design/RFC-0006-contracts.md) §5, §10.1). A green CI run today means _the
 repo's `.mz` files lex, parse, lower to IR, keep their own promises, and the shipped binary

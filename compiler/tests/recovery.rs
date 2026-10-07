@@ -439,6 +439,86 @@ fn if_is_one_diagnostic_whose_fix_is_when() {
 }
 
 #[test]
+fn match_in_a_view_is_one_diagnostic_naming_when_with_no_fix() {
+    // Issue #54, the file verbatim: `match size` checked with 0 errors, as an element
+    // named `match`. One `match` becomes several `when` blocks, so there is no single
+    // replacement to carry: the diagnostic names the form and has no fix.
+    let src = "\
+component t
+  enum t_size
+    sm  class \"h-12\"
+    lg  class \"h-14\"
+  end
+  prop size: t_size = sm
+  view
+    row
+      slot = \"t\"
+      match size
+        chip
+          text = \"x\"
+        end
+      end
+    end
+  end
+  contract
+    slot is \"t\"
+  end
+end component t
+";
+    let report = check(src, "t.mz");
+    assert_eq!(report.error_count(), 1, "{:#?}", report.diagnostics);
+    let d = &report.diagnostics[0];
+    assert_eq!(d.code, "MZ0410");
+    assert!(d.fix.is_none(), "{d:#?}");
+    assert!(d.say.contains("no `match`"), "{}", d.say);
+    assert!(d.say.contains("`when size is x … end`"), "{}", d.say);
+    assert_eq!(
+        (d.span.start_line, d.span.start_col, d.span.end_col),
+        (10, 7, 17)
+    );
+}
+
+#[test]
+fn match_is_one_diagnostic_whatever_shape_its_arms_take() {
+    // The arms come in the shape the writer knows, and none of them is Mzizi: `case`
+    // blocks with and without `end`, Rust's `=>`, an `else`, a trailing comment, no `end`.
+    let shapes = [
+        "      match open\n        case true\n          span\n            text = label\n          end\n        end\n      end",
+        "      match open\n        case true\n          span\n            text = label\n          end\n        case false\n          nothing\n      end",
+        "      match open\n        true => span\n        false => nothing\n      end",
+        "      match open\n        case true\n          nothing\n        end\n        else\n          nothing\n        end\n      end",
+        "      match open  ## pick one\n        nothing\n      end",
+        "      match open\n        nothing",
+    ];
+    for arms in shapes {
+        let src = component_with_view(&format!("    row\n      slot = \"q\"\n{arms}\n    end"));
+        let found = errors(&src);
+        assert_eq!(found.len(), 1, "{arms}\n{found:#?}");
+        assert_eq!(found[0].0, "MZ0410");
+        assert!(
+            found[0].1.contains("`when open is x … end`"),
+            "{}",
+            found[0].1
+        );
+    }
+}
+
+#[test]
+fn a_mistake_after_a_match_block_is_still_reported() {
+    // Skipping the `match` block stops at its `end`: the `if` after it is its own error.
+    let src = component_with_view(
+        "    row\n      slot = \"q\"\n      match open\n        nothing\n      end\n      if open\n        nothing\n      end\n    end",
+    );
+    let codes: Vec<&str> = errors(&src).iter().map(|(c, _)| *c).collect();
+    assert_eq!(codes, ["MZ0410", "MZ0407"]);
+    // Outside a `match`, `case` is still not a view line.
+    let src = component_with_view("    row\n      slot = \"q\"\n      case true\n    end");
+    let found = errors(&src);
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].0, "MZ0402");
+}
+
+#[test]
 fn an_element_word_with_more_on_its_line_is_an_error_not_a_silent_tail() {
     let src = component_with_view(
         "    row\n      slot = \"q\"\n      span class = \"x\"\n        text = label\n      end\n    end",
