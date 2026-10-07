@@ -192,6 +192,18 @@ previous `main` release, under its heading (`.github/scripts/release_notes.py`),
 GitHub's list of the merged pull requests. So an entry is written for a reader of the
 release, not only for the next contributor.
 
+The same rule runs locally, before CI sees anything. _Owner rule, 2026-10-07: "We need to
+always have change log updates."_ Run `scripts/install-hooks.sh` once per clone (one run
+covers every worktree of that clone); **an agent runs it before its first commit**. It sets
+`core.hooksPath` to [`.githooks/`](./.githooks/), whose `pre-commit` refuses a commit unless
+`CHANGELOG.md` is staged or already changed on the branch since it left `origin/staging` or
+`origin/main` (whichever is nearer; with neither, the staged changes alone). The hook has no path
+exemptions: every change needs an entry. `MZ_NO_CHANGELOG=1 git commit ...` skips it and
+says so; the pull request then needs the `no-changelog` label. When a staged file is Rust
+under `compiler/` or `benchmarks/`, the hook also runs `cargo fmt --all -- --check`. Nothing
+slower runs there, so the block in "Build, test, run" is still for before you push.
+`scripts/test-pre-commit.sh` tests the hook in a throwaway repository.
+
 ## Naming and ownership
 
 - The language repo is plain `mzizi`. The org's other product repositories are
