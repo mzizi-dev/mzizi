@@ -5,9 +5,10 @@
 //! expressions later without taking a program's statements with them (RFC-0013 §18.1).
 //! The parser for this tree is [`crate::parse`]'s, because it shares the token cursor.
 //!
-//! What is here is RFC-0013's Wave 0 subset: `int`, `bool` and `text` values, the integer
-//! operators, comparison, `and` / `or` / `not`, calls and interpolation. Floats, collections,
-//! methods and results are later waves'.
+//! What is here is RFC-0013's Wave 0 subset and Wave 1's numbers (C1 and C5): `int`,
+//! `float`, `bool` and `text` values, the arithmetic operators, comparison, `and` / `or` /
+//! `not`, calls, the numeric methods of §4.4 and interpolation. Collections, other methods
+//! and results are later waves'.
 
 use crate::diagnostic::Span;
 
@@ -16,6 +17,8 @@ use crate::diagnostic::Span;
 pub enum Ty {
     /// A signed 64-bit integer (RFC-0013 §4.1).
     Int,
+    /// An IEEE 754 binary64 number (RFC-0013 §4.2).
+    Float,
     /// `true` or `false`.
     Bool,
     /// UTF-8 text.
@@ -32,6 +35,7 @@ impl Ty {
     pub fn name(self) -> &'static str {
         match self {
             Ty::Int => "int",
+            Ty::Float => "float",
             Ty::Bool => "bool",
             Ty::Text => "text",
             Ty::Nothing => "nothing",
@@ -43,7 +47,7 @@ impl Ty {
 /// A prefix operator.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnOp {
-    /// `-x`, on `int`; traps on overflow (`-` of `int` minimum).
+    /// `-x`, on `int` (trapping on overflow: `-` of `int` minimum) or `float`.
     Neg,
     /// `not b`, on `bool`.
     Not,
@@ -111,7 +115,7 @@ impl BinOp {
         }
     }
 
-    /// Whether this is one of the integer arithmetic operators.
+    /// Whether this is one of the arithmetic operators, on `int` or `float`.
     pub fn is_arithmetic(self) -> bool {
         self.level() <= 5
     }
@@ -136,6 +140,8 @@ pub enum TextPart {
 pub enum ExprKind {
     /// An `int` literal.
     Int(i64),
+    /// A `float` literal (RFC-0013 §3.1): digits, a point and digits.
+    Float(f64),
     /// `true` or `false`.
     Bool(bool),
     /// A text literal, with any interpolations.
@@ -150,6 +156,20 @@ pub enum ExprKind {
         name_span: Span,
         /// The arguments, in order.
         args: Vec<Expr>,
+    },
+    /// `recv.name(args)`, a method (RFC-0013 §3.7), or `recv.name` with no parentheses,
+    /// which a program reads only to report it.
+    Method {
+        /// The value the method is called on.
+        recv: Box<Expr>,
+        /// The method's name.
+        name: String,
+        /// Where the name is.
+        name_span: Span,
+        /// The arguments, in order.
+        args: Vec<Expr>,
+        /// Whether the parentheses were written: `x.abs()` rather than `x.abs`.
+        called: bool,
     },
     /// A prefix operator.
     Unary {
@@ -183,13 +203,48 @@ pub struct Expr {
 }
 
 impl Expr {
-    /// RFC-0013 §3.5's level of the expression's outermost operator: 1 for a primary.
-    fn level(&self) -> u8 {
+    /// RFC-0013 §3.5's level of the expression's outermost operator: 1 for a primary, 2
+    /// for a method.
+    pub fn level(&self) -> u8 {
         match &self.kind {
             ExprKind::Binary { op, .. } => op.level(),
             ExprKind::Unary { op: UnOp::Neg, .. } => 3,
             ExprKind::Unary { op: UnOp::Not, .. } => 7,
+            ExprKind::Method { .. } => 2,
             _ => 1,
+        }
+    }
+
+    /// Whether the expression holds a sub-expression the parser could not read, whose
+    /// canonical text would be a placeholder rather than the author's code.
+    pub fn has_error(&self) -> bool {
+        match &self.kind {
+            ExprKind::Error => true,
+            ExprKind::Text(parts) => parts.iter().any(|p| match p {
+                TextPart::Expr(e) => e.has_error(),
+                TextPart::Lit(_) => false,
+            }),
+            ExprKind::Call { args, .. } => args.iter().any(Expr::has_error),
+            ExprKind::Method { recv, args, .. } => {
+                recv.has_error() || args.iter().any(Expr::has_error)
+            }
+            ExprKind::Unary { operand, .. } => operand.has_error(),
+            ExprKind::Binary { lhs, rhs, .. } => lhs.has_error() || rhs.has_error(),
+            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Name(_) => false,
+        }
+    }
+
+    /// Whether the parentheses that make `e` one operand were written: an operator whose
+    /// span reaches past its operands' (`(a and b)`), or any other expression.
+    pub fn is_parenthesised(&self) -> bool {
+        match &self.kind {
+            ExprKind::Binary { lhs, rhs, .. } => {
+                (self.span.start_line, self.span.start_col)
+                    != (lhs.span.start_line, lhs.span.start_col)
+                    || (self.span.end_line, self.span.end_col)
+                        != (rhs.span.end_line, rhs.span.end_col)
+            }
+            _ => true,
         }
     }
 
@@ -199,6 +254,9 @@ impl Expr {
         match &self.kind {
             ExprKind::Text(_) => true,
             ExprKind::Call { args, .. } => args.iter().any(Expr::has_text_literal),
+            ExprKind::Method { recv, args, .. } => {
+                recv.has_text_literal() || args.iter().any(Expr::has_text_literal)
+            }
             ExprKind::Unary { operand, .. } => operand.has_text_literal(),
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_text_literal() || rhs.has_text_literal(),
             _ => false,
@@ -212,12 +270,33 @@ impl Expr {
 pub fn canonical(e: &Expr) -> String {
     match &e.kind {
         ExprKind::Int(v) => v.to_string(),
+        ExprKind::Float(v) => crate::numbers::mz_float_layout(*v, true),
         ExprKind::Bool(b) => b.to_string(),
         ExprKind::Text(parts) => canonical_text(parts),
         ExprKind::Name(n) => n.clone(),
         ExprKind::Call { name, args, .. } => {
             let args: Vec<String> = args.iter().map(canonical).collect();
             format!("{name}({})", args.join(", "))
+        }
+        ExprKind::Method {
+            recv,
+            name,
+            args,
+            called,
+            ..
+        } => {
+            let r = canonical(recv);
+            let r = if recv.level() > 2 {
+                format!("({r})")
+            } else {
+                r
+            };
+            if *called {
+                let args: Vec<String> = args.iter().map(canonical).collect();
+                format!("{r}.{name}({})", args.join(", "))
+            } else {
+                format!("{r}.{name}")
+            }
         }
         ExprKind::Unary { op, operand } => {
             let inner = canonical(operand);
@@ -238,9 +317,14 @@ pub fn canonical(e: &Expr) -> String {
             let left = canonical(lhs);
             let right = canonical(rhs);
             // Left-associative: a left operand at the same level needs no parentheses, a
-            // right one does. Comparisons do not associate, so both sides need them.
-            let left_parens = lhs.level() > level || (op.is_comparison() && lhs.level() == level);
-            let right_parens = rhs.level() >= level;
+            // right one does. Comparisons do not associate, so both sides need them. Where
+            // `and` meets `or`, the parentheses are always written (§3.4, §17).
+            let meets = |o: &Expr| {
+                *op == BinOp::Or && matches!(o.kind, ExprKind::Binary { op: BinOp::And, .. })
+            };
+            let left_parens =
+                lhs.level() > level || (op.is_comparison() && lhs.level() == level) || meets(lhs);
+            let right_parens = rhs.level() >= level || meets(rhs);
             let wrap = |s: String, p: bool| if p { format!("({s})") } else { s };
             format!(
                 "{} {} {}",
@@ -289,6 +373,8 @@ pub enum Fault {
     DivideByZero,
     /// A literal computation that does not fit in an `int`.
     Overflow,
+    /// `x.pow(n)` on `int` with a literal `n` below zero.
+    NegativeExponent,
 }
 
 /// The value of an integer expression built only from literals, or `None` when it reads a
@@ -308,6 +394,31 @@ pub fn fold(e: &Expr) -> Option<Result<i64, Fault>> {
                 (Err(f), _) | (_, Err(f)) => return Some(Err(f)),
             };
             Some(int_op(*op, a, b))
+        }
+        ExprKind::Method {
+            recv,
+            name,
+            args,
+            called: true,
+            ..
+        } => {
+            let x = fold(recv)?;
+            let mut values = Vec::new();
+            for a in args {
+                values.push(fold(a)?);
+            }
+            let x = match x {
+                Ok(x) => x,
+                Err(f) => return Some(Err(f)),
+            };
+            let mut ints = Vec::new();
+            for v in values {
+                match v {
+                    Ok(v) => ints.push(v),
+                    Err(f) => return Some(Err(f)),
+                }
+            }
+            crate::numbers::fold_int_method(name, x, &ints)
         }
         _ => None,
     }
@@ -333,7 +444,7 @@ pub fn int_op(op: BinOp, a: i64, b: i64) -> Result<i64, Fault> {
 /// Whether a value of this type has a text form (RFC-0013 §3.8), so it can be printed or
 /// interpolated.
 pub fn has_text_form(t: Ty) -> bool {
-    matches!(t, Ty::Int | Ty::Bool | Ty::Text | Ty::Error)
+    matches!(t, Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Error)
 }
 
 /// The type a binary operator gives two operand types, or the reason it does not apply.
@@ -350,11 +461,11 @@ pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
     }
     match op {
         _ if op.is_arithmetic() => {
-            if l == Ty::Int && r == Ty::Int {
-                Ok(Ty::Int)
+            if l == r && matches!(l, Ty::Int | Ty::Float) {
+                Ok(l)
             } else {
                 Err(format!(
-                    "`{}` takes two ints, and this is {} {} {}",
+                    "`{}` takes two ints or two floats, and this is {} {} {}",
                     op.text(),
                     l.name(),
                     op.text(),
@@ -389,12 +500,13 @@ pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
             }
         }
         _ => {
-            // Ordering: int and text (by Unicode scalar value), with one type on both sides.
-            if l == r && matches!(l, Ty::Int | Ty::Text) {
+            // Ordering: int, float and text (by Unicode scalar value), with one type on
+            // both sides.
+            if l == r && matches!(l, Ty::Int | Ty::Float | Ty::Text) {
                 Ok(Ty::Bool)
             } else {
                 Err(format!(
-                    "`{}` orders two ints or two texts, and this is {} {} {}",
+                    "`{}` orders two ints, two floats or two texts, and this is {} {} {}",
                     op.text(),
                     l.name(),
                     op.text(),

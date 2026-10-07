@@ -17,6 +17,7 @@ use crate::expr::{
     BinOp, Expr, ExprKind, Fault, TextPart, Ty, UnOp, binary_type, canonical, canonical_text, fold,
     has_text_form,
 };
+use crate::numbers;
 use crate::resolve::nearest;
 
 /// `program <name>` … `end program <name>`.
@@ -491,6 +492,16 @@ impl<'a> FnCheck<'a> {
                 .fns
                 .get(name.as_str())
                 .map_or(Ty::Error, |f| f.ret.map_or(Ty::Nothing, |r| r.ty)),
+            ExprKind::Unary {
+                op: UnOp::Neg,
+                operand,
+            } => numeric(self.shallow_ty(operand), Ty::Int),
+            ExprKind::Binary { op, lhs, rhs, .. } if op.is_arithmetic() => {
+                numeric(self.shallow_ty(lhs), self.shallow_ty(rhs))
+            }
+            ExprKind::Method { recv, name, .. } => {
+                numbers::method(self.shallow_ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
+            }
             _ => shallow_type(e),
         }
     }
@@ -590,6 +601,17 @@ impl<'a> FnCheck<'a> {
             } => {
                 let vt = self.expr(value);
                 let bound = self.binding_type(name, ty.as_ref(), vt, value.span);
+                // The checked type replaces the shape's guess, so a later `MZ0920` fix that
+                // hoists this binding declares it with the right zero (`0.0` for `a * b` on
+                // floats, which the shape alone cannot tell from ints).
+                if bound != Ty::Error
+                    && let Some(site) = self
+                        .sites
+                        .iter_mut()
+                        .find(|s| s.name == *name && s.line == name_span.start_line)
+                {
+                    site.ty = bound;
+                }
                 if self.may_bind(name, *name_span) {
                     let kind = if *mutable { Kind::Var } else { Kind::Let };
                     self.bind(name, kind, bound, Some(*kw_span));
@@ -769,6 +791,7 @@ impl<'a> FnCheck<'a> {
                 if t != Ty::Bool && t != Ty::Error {
                     let question = match t {
                         Ty::Int => Some(format!("{} is not 0", canonical(cond))),
+                        Ty::Float => Some(format!("{} is not 0.0", canonical(cond))),
                         Ty::Text => Some(format!("{} is not \"\"", canonical(cond))),
                         _ => None,
                     };
@@ -870,6 +893,7 @@ impl<'a> FnCheck<'a> {
             .map(|(_, w)| *w);
         let zero = match ty {
             Ty::Int => Some("0"),
+            Ty::Float => Some("0.0"),
             Ty::Bool => Some("false"),
             Ty::Text => Some("\"\""),
             _ => None,
@@ -898,6 +922,7 @@ impl<'a> FnCheck<'a> {
     fn expr(&mut self, e: &Expr) -> Ty {
         match &e.kind {
             ExprKind::Int(_) => Ty::Int,
+            ExprKind::Float(_) => Ty::Float,
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Text(parts) => {
                 for part in parts {
@@ -924,15 +949,23 @@ impl<'a> FnCheck<'a> {
                 name_span,
                 args,
             } => self.call(name, *name_span, args, e.span),
+            ExprKind::Method {
+                recv,
+                name,
+                name_span,
+                args,
+                called,
+            } => self.method(e, recv, name, *name_span, args, *called),
             ExprKind::Unary { op, operand } => {
                 let t = self.expr(operand);
                 let want = match op {
+                    UnOp::Neg if t == Ty::Float => Ty::Float,
                     UnOp::Neg => Ty::Int,
                     UnOp::Not => Ty::Bool,
                 };
                 if t != want && t != Ty::Error {
                     let (word, kind) = match op {
-                        UnOp::Neg => ("-", "an int"),
+                        UnOp::Neg => ("-", "an int or a float"),
                         UnOp::Not => ("not", "a bool"),
                     };
                     self.err(
@@ -985,7 +1018,27 @@ impl<'a> FnCheck<'a> {
                 t
             }
             Err(why) => {
-                self.err("MZ0912", e.span, format!("`{}`: {why}", canonical(e)));
+                // `int` with `float`: no implicit conversion (RFC-0013 §3.2). The fix
+                // converts the `int` side.
+                let int_side = match (l, r) {
+                    (Ty::Int, Ty::Float) => Some(lhs),
+                    (Ty::Float, Ty::Int) => Some(rhs),
+                    _ => None,
+                };
+                match int_side.and_then(|side| to_float_fix(side).map(|f| (side.span, f))) {
+                    Some((at, (text, c))) => self.err_fix(
+                        "MZ0912",
+                        e.span,
+                        format!(
+                            "`{}`: {why} — Mzizi never converts between them implicitly; write `{text}`",
+                            canonical(e)
+                        ),
+                        at,
+                        text,
+                        c,
+                    ),
+                    None => self.err("MZ0912", e.span, format!("`{}`: {why}", canonical(e))),
+                }
                 if op.is_arithmetic() {
                     Ty::Error
                 } else {
@@ -1157,6 +1210,12 @@ impl<'a> FnCheck<'a> {
             }
             return Ty::Nothing;
         }
+        if !self.fns.contains_key(name)
+            && self.visible(name).is_none()
+            && let Some(t) = self.free_numeric(name, args, &types, at)
+        {
+            return t;
+        }
         if self.visible(name).is_some() {
             self.err(
                 "MZ0711",
@@ -1220,6 +1279,348 @@ impl<'a> FnCheck<'a> {
         ret
     }
 
+    /// Python's free numeric functions, `float(x)`, `int(x)`, `abs(x)`, `round(x)`,
+    /// `min(a, b)`, `pow(a, b)` and the rest: in Mzizi each is a method (RFC-0013 §3.7,
+    /// §4.4), so `MZ0962` with the `exact` method call when the types fit. `str(x)` and
+    /// `String(x)` are `MZ0962` too, with the `exact` fix `"{x}"` (§3.6). `None` when
+    /// `name` is not one of them, so the call is checked as any other.
+    fn free_numeric(&mut self, name: &str, args: &[Expr], types: &[Ty], at: Span) -> Option<Ty> {
+        if matches!(name, "str" | "string" | "String") && args.len() == 1 {
+            // `str(x)`, `String(x)`: a value's text is interpolation (RFC-0013 §3.6).
+            let fixed = if types[0] == Ty::Text {
+                // Already text: the conversion has nothing to do.
+                canonical(&args[0])
+            } else {
+                format!("\"{{{}}}\"", canonical(&args[0]))
+            };
+            let mut say =
+                format!("`{name}(…)` is not a Mzizi function — a value's text is `\"{{x}}\"`");
+            if args[0].has_error() {
+                self.err("MZ0962", at, say);
+            } else if types[0] != Ty::Text && args[0].has_text_literal() {
+                say.push_str(
+                    ", and an interpolation holds no string literal: bind the value with `let` first",
+                );
+                self.err("MZ0962", at, say);
+            } else {
+                say = format!("{say}: write `{fixed}`");
+                self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+            }
+            return Some(Ty::Text);
+        }
+        let method = match name {
+            "float" => "to_float",
+            "int" => "to_int",
+            "abs" | "round" | "floor" | "ceil" | "sqrt" | "min" | "max" | "pow" => name,
+            _ => return None,
+        };
+        let (recv, rest) = args.split_first()?;
+        let rt = types[0];
+        if rt == Ty::Error {
+            return Some(Ty::Error);
+        }
+        let r = receiver_text(recv);
+        let fits = |params: &[Ty]| {
+            params.len() == rest.len()
+                && params
+                    .iter()
+                    .zip(&types[1..])
+                    .all(|(p, t)| p == t || *t == Ty::Error)
+        };
+        let (fixed, ty) = match numbers::method(rt, method) {
+            Some((params, ret)) if fits(&params) => {
+                let rest: Vec<String> = rest.iter().map(canonical).collect();
+                (format!("{r}.{method}({})", rest.join(", ")), ret)
+            }
+            // `float(x)` on a float, `int(n)` on an int: there is nothing to convert.
+            None if rest.is_empty()
+                && ((method, rt) == ("to_float", Ty::Float)
+                    || (method, rt) == ("to_int", Ty::Int)) =>
+            {
+                (canonical(recv), rt)
+            }
+            _ => {
+                self.err(
+                    "MZ0962",
+                    at,
+                    format!(
+                        "`{name}(…)` is not a Mzizi function — an operation on a value is a method, and {} has {}",
+                        rt.name(),
+                        method_list(rt)
+                    ),
+                );
+                return Some(Ty::Error);
+            }
+        };
+        let say = format!(
+            "`{name}(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
+        );
+        if args.iter().any(Expr::has_error) {
+            self.err("MZ0962", at, say);
+        } else {
+            self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+        }
+        Some(ty)
+    }
+
+    /// `recv.name(args)`: the numeric methods of RFC-0013 §4.4. Methods on text, lists and
+    /// records are later waves' (`MZ0919`).
+    fn method(
+        &mut self,
+        e: &Expr,
+        recv: &Expr,
+        name: &str,
+        name_span: Span,
+        args: &[Expr],
+        called: bool,
+    ) -> Ty {
+        let rt = self.expr(recv);
+        let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+        // `x.to_string()`: a value's text is interpolation (RFC-0013 §3.6), on any value
+        // with a text form; on a `text` it is the value itself.
+        if name == "to_string" && called && args.is_empty() && has_text_form(rt) {
+            if rt == Ty::Error {
+                return Ty::Error;
+            }
+            let fixed = if rt == Ty::Text {
+                canonical(recv)
+            } else {
+                format!("\"{{{}}}\"", canonical(recv))
+            };
+            let say =
+                "`.to_string()` is not a Mzizi method — a value's text is `\"{x}\"`".to_string();
+            if recv.has_error() || (rt != Ty::Text && recv.has_text_literal()) {
+                self.err("MZ0962", e.span, say);
+            } else {
+                let say = format!("{say}: write `{fixed}`");
+                self.err_fix("MZ0962", e.span, say, e.span, fixed, Confidence::Exact);
+            }
+            return Ty::Text;
+        }
+        match rt {
+            Ty::Error => return Ty::Error,
+            Ty::Int | Ty::Float => {}
+            Ty::Text => {
+                self.err(
+                    "MZ0919",
+                    e.span,
+                    format!(
+                        "`.{name}` on text: methods on text are designed (RFC-0013 §10) but not built yet — a program has the numeric methods of §4.4"
+                    ),
+                );
+                return Ty::Error;
+            }
+            Ty::Bool | Ty::Nothing => {
+                self.err(
+                    "MZ0708",
+                    name_span,
+                    format!(
+                        "`{}` is {}, which has no method `{name}` — only numbers have methods in a program yet",
+                        canonical(recv),
+                        rt.name()
+                    ),
+                );
+                return Ty::Error;
+            }
+        }
+        let r = receiver_text(recv);
+        let Some((params, ret)) = numbers::method(rt, name) else {
+            return self.no_such_method(e, rt, &r, name, name_span, args, called);
+        };
+        if !called {
+            let say = format!(
+                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
+            );
+            if params.is_empty() {
+                self.err_fix(
+                    "MZ0962",
+                    name_span,
+                    say,
+                    Span::single(name_span.end_line, name_span.end_col, 0),
+                    "()",
+                    Confidence::Exact,
+                );
+            } else {
+                self.err("MZ0962", name_span, say);
+            }
+            return ret;
+        }
+        if args.len() != params.len() {
+            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            self.err(
+                "MZ0905",
+                e.span,
+                format!(
+                    "`.{name}` on {} takes {} argument{}{}, and this call gives {}",
+                    rt.name(),
+                    params.len(),
+                    if params.len() == 1 { "" } else { "s" },
+                    if wanted.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", wanted.join(", "))
+                    },
+                    args.len()
+                ),
+            );
+            return ret;
+        }
+        for ((a, t), p) in args.iter().zip(&types).zip(&params) {
+            if *t == Ty::Error || t == p {
+                continue;
+            }
+            match (*t, *p) {
+                // `x.min(1)` on a float, `n.min(1.5)` on an int: the `int` side converts.
+                (Ty::Int, Ty::Float) | (Ty::Float, Ty::Int) if name != "pow" => {
+                    let int_side = if *t == Ty::Int { a } else { recv };
+                    let why = format!(
+                        "`{}`: `.{name}` takes two values of one type, and this is {} and {} — Mzizi never converts between them implicitly",
+                        canonical(e),
+                        rt.name(),
+                        t.name()
+                    );
+                    match to_float_fix(int_side) {
+                        Some((text, c)) => {
+                            self.err_fix("MZ0912", e.span, why, int_side.span, text, c)
+                        }
+                        None => self.err("MZ0912", e.span, why),
+                    }
+                    return Ty::Error;
+                }
+                _ => {
+                    let say = format!(
+                        "`{}` is {}, and the exponent of `.pow` is an int",
+                        canonical(a),
+                        t.name()
+                    );
+                    let say = if name == "pow" {
+                        say
+                    } else {
+                        format!(
+                            "`{}` is {}, and `.{name}` on {} takes {}",
+                            canonical(a),
+                            t.name(),
+                            rt.name(),
+                            p.name()
+                        )
+                    };
+                    match (name, &a.kind) {
+                        ("pow", ExprKind::Float(v)) if v.fract() == 0.0 && v.abs() < 9.0e15 => {
+                            let int = format!("{}", *v as i64);
+                            self.err_fix("MZ0905", a.span, say, a.span, int, Confidence::Guess)
+                        }
+                        // Python's `x ** 0.5` is a square root. Any other fractional or
+                        // computed exponent has no `int` that means the same, so no fix:
+                        // `e.to_int()` would truncate `0.5` to `0` and print `1.0`.
+                        ("pow", ExprKind::Float(v))
+                            if *v == 0.5 && rt == Ty::Float && !recv.has_error() =>
+                        {
+                            let fixed = format!("{}.sqrt()", receiver_text(recv));
+                            self.err_fix("MZ0905", a.span, say, e.span, fixed, Confidence::Guess)
+                        }
+                        _ => self.err("MZ0905", a.span, say),
+                    }
+                    return ret;
+                }
+            }
+        }
+        // Faults the checker can see (RFC-0013 §4.4, `MZ0915`).
+        if rt == Ty::Int {
+            let negative = name == "pow"
+                && args
+                    .first()
+                    .and_then(fold)
+                    .is_some_and(|k| k.is_ok_and(|k| k < 0));
+            let children_ok = fold(recv).is_some_and(|v| v.is_ok())
+                && args.iter().all(|a| fold(a).is_some_and(|v| v.is_ok()));
+            if negative {
+                self.err(
+                    "MZ0915",
+                    e.span,
+                    format!(
+                        "`{}` has a negative exponent, which traps on an int every time — for a fraction, use a float: `{r}.to_float().pow(…)`",
+                        canonical(e)
+                    ),
+                );
+            } else if children_ok && fold(e) == Some(Err(Fault::Overflow)) {
+                self.err(
+                    "MZ0915",
+                    e.span,
+                    format!(
+                        "`{}` overflows an int — this line would trap every time it ran",
+                        canonical(e)
+                    ),
+                );
+            }
+        }
+        ret
+    }
+
+    /// `MZ0708`: a method the receiver's type does not have. When the other numeric type
+    /// has it, the fix converts (`n.sqrt()` on an int); otherwise the nearest name.
+    #[allow(clippy::too_many_arguments)]
+    fn no_such_method(
+        &mut self,
+        e: &Expr,
+        rt: Ty,
+        r: &str,
+        name: &str,
+        name_span: Span,
+        args: &[Expr],
+        called: bool,
+    ) -> Ty {
+        let other = if rt == Ty::Int { Ty::Float } else { Ty::Int };
+        if let Some((_, other_ret)) = numbers::method(other, name) {
+            let args: Vec<String> = args.iter().map(canonical).collect();
+            let (say, fixed, ty) = match name {
+                "to_float" | "to_int" => (
+                    format!(
+                        "`{r}` is already {}, so `.{name}()` has nothing to convert — delete it",
+                        rt.name()
+                    ),
+                    r.to_string(),
+                    rt,
+                ),
+                _ => (
+                    format!(
+                        "`.{name}` is a method of float, and `{r}` is an int — convert it first: `{r}.to_float().{name}(…)`"
+                    ),
+                    format!("{r}.to_float().{name}({})", args.join(", ")),
+                    other_ret,
+                ),
+            };
+            if called && !e.has_error() {
+                self.err_fix("MZ0708", name_span, say, e.span, fixed, Confidence::Guess);
+            } else {
+                self.err("MZ0708", name_span, say);
+            }
+            return ty;
+        }
+        match nearest(name, numbers::methods_of(rt)) {
+            Some((near, _)) => self.err_fix(
+                "MZ0708",
+                name_span,
+                format!(
+                    "{} has no method `{name}` — did you mean `{near}`?",
+                    rt.name()
+                ),
+                name_span,
+                near,
+                Confidence::Guess,
+            ),
+            None => self.err(
+                "MZ0708",
+                name_span,
+                format!(
+                    "{} has no method `{name}` — it has {}",
+                    rt.name(),
+                    method_list(rt)
+                ),
+            ),
+        }
+        Ty::Error
+    }
+
     /// `MZ0907`: a statement after a `return` on the same path can never run. One
     /// diagnostic per block, whose `exact` fix deletes every such line.
     fn reachability(&mut self, stmts: &[Stmt]) {
@@ -1273,13 +1674,79 @@ pub fn terminates(stmts: &[Stmt]) -> bool {
 fn shallow_type(e: &Expr) -> Ty {
     match &e.kind {
         ExprKind::Int(_) => Ty::Int,
+        ExprKind::Float(_) => Ty::Float,
         ExprKind::Bool(_) => Ty::Bool,
         ExprKind::Text(_) => Ty::Text,
-        ExprKind::Unary { op: UnOp::Neg, .. } => Ty::Int,
+        // An arithmetic result is a float when an operand visibly is, else an int.
+        ExprKind::Unary {
+            op: UnOp::Neg,
+            operand,
+        } => numeric(shallow_type(operand), Ty::Int),
         ExprKind::Unary { op: UnOp::Not, .. } => Ty::Bool,
-        ExprKind::Binary { op, .. } if op.is_arithmetic() => Ty::Int,
+        ExprKind::Binary { op, lhs, rhs, .. } if op.is_arithmetic() => {
+            numeric(shallow_type(lhs), shallow_type(rhs))
+        }
         ExprKind::Binary { .. } => Ty::Bool,
+        ExprKind::Method { recv, name, .. } => {
+            let rt = shallow_type(recv);
+            numbers::method(rt, name).map_or(Ty::Error, |(_, ret)| ret)
+        }
         _ => Ty::Error,
+    }
+}
+
+/// The type of arithmetic on operands of shallow types `a` and `b`: a float when either
+/// visibly is, an int when both are, and unknown (`Error`) otherwise, so that a fix built on
+/// it is withheld rather than wrong (`a * b` on two float names is not an int).
+fn numeric(a: Ty, b: Ty) -> Ty {
+    if a == Ty::Float || b == Ty::Float {
+        Ty::Float
+    } else if a == Ty::Int && b == Ty::Int {
+        Ty::Int
+    } else {
+        Ty::Error
+    }
+}
+
+/// An expression as the receiver of a method: in parentheses unless it is a primary or
+/// already postfix (RFC-0013 §3.5).
+fn receiver_text(e: &Expr) -> String {
+    let c = canonical(e);
+    if e.level() > 2 { format!("({c})") } else { c }
+}
+
+/// `MZ0912`'s fix for an `int` where a `float` is wanted (RFC-0013 §3.2): on an `int`
+/// literal the `exact` `1.0`, on anything else the `guess` `x.to_float()`. `None` when the
+/// expression holds a part the parser could not read.
+fn to_float_fix(e: &Expr) -> Option<(String, Confidence)> {
+    if e.has_error() {
+        return None;
+    }
+    match &e.kind {
+        ExprKind::Int(v) => Some((format!("{v}.0"), Confidence::Exact)),
+        ExprKind::Unary {
+            op: UnOp::Neg,
+            operand,
+        } if matches!(operand.kind, ExprKind::Int(_)) => {
+            Some((format!("{}.0", canonical(e)), Confidence::Exact))
+        }
+        _ => Some((
+            format!("{}.to_float()", receiver_text(e)),
+            Confidence::Guess,
+        )),
+    }
+}
+
+/// A numeric type's methods, as a diagnostic lists them.
+fn method_list(t: Ty) -> String {
+    let ms: Vec<String> = numbers::methods_of(t)
+        .iter()
+        .map(|m| format!("`{m}`"))
+        .collect();
+    if ms.is_empty() {
+        "no methods".to_string()
+    } else {
+        format!("the methods {}", ms.join(", "))
     }
 }
 

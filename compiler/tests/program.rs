@@ -99,7 +99,7 @@ fn the_examples_parse_and_check_clean() {
 #[test]
 fn precedence_follows_rfc_0013_section_3_5() {
     let p = program(&wrap(
-        "let a = 1 + 2 * 3 - -4 % 5\nlet b = not a is 3 and true or false\nlet c = (1 + 2) * 3",
+        "let a = 1 + 2 * 3 - -4 % 5\nlet b = (not a < 3 and true) or false\nlet c = (1 + 2) * 3",
     ));
     let values: Vec<String> = p.fns[0]
         .body
@@ -113,7 +113,7 @@ fn precedence_follows_rfc_0013_section_3_5() {
         values,
         [
             "1 + 2 * 3 - -4 % 5",
-            "not a is 3 and true or false",
+            "(not a < 3 and true) or false",
             "(1 + 2) * 3"
         ]
     );
@@ -347,7 +347,7 @@ fn mz0919_a_designed_form_not_built_yet_is_one_diagnostic() {
         &wrap("var n = 3\nwhile n > 0\n  n = n - 1\nend\nprint(n)"),
         "MZ0919",
     );
-    one(&wrap("let x = 1.5"), "MZ0919");
+    one(&wrap("let s = \"abc\".length()"), "MZ0919");
     one(
         &wrap("let n = 1\nwhen n is 1\n  print(1)\nelse when n is 2\n  print(2)\nend"),
         "MZ0919",
