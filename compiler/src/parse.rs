@@ -19,6 +19,7 @@ use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::lex::{Tok, Token, lex};
 use crate::service::Service;
 
+mod program;
 mod service;
 
 /// A parsed file: its one top-level declaration.
@@ -28,6 +29,8 @@ pub enum Program {
     Component(Component),
     /// `service <name>` … `end service <name>` (RFC-0011).
     Service(Service),
+    /// `program <name>` … `end program <name>` (RFC-0013).
+    Program(crate::program::Program),
 }
 
 /// Parse a source file. Returns the component when the shape was recoverable, plus every
@@ -40,9 +43,13 @@ pub fn parse(src: &str, file: &str) -> (Option<Component>, Vec<Diagnostic>) {
     }
 }
 
-/// Parse a source file holding either kind of top-level declaration.
+/// Parse a source file holding any kind of top-level declaration.
 pub fn parse_program(src: &str, file: &str) -> (Option<Program>, Vec<Diagnostic>) {
     let (tokens, mut diags) = lex(src, file);
+    if program::starts_program(&tokens) {
+        let parsed = program::parse(tokens, &mut diags, file);
+        return (parsed.map(Program::Program), diags);
+    }
     let mut p = Parser {
         tokens,
         pos: 0,
@@ -388,7 +395,7 @@ impl Parser {
                 &self.file,
                 span,
                 format!(
-                    "a .mz file starts with `component <name>` or `service <name>`, found {}",
+                    "a .mz file starts with `component <name>`, `service <name>` or `program <name>`, found {}",
                     describe(self.peek())
                 ),
             ));
@@ -2300,6 +2307,7 @@ fn describe(tok: &Tok) -> String {
         Tok::RParen => "`)`".to_string(),
         Tok::Comma => "`,`".to_string(),
         Tok::Dot => "`.`".to_string(),
+        Tok::Op(op) => format!("`{op}`"),
         Tok::Newline => "end of line".to_string(),
         Tok::Eof => "end of file".to_string(),
     }

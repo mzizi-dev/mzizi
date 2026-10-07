@@ -5,8 +5,9 @@
 //! a recursive-descent parser with per-line recovery, a name and type resolver
 //! ([RFC-0008](../../design/RFC-0008-types-collections-records.md)), and the agent-facing
 //! NDJSON diagnostic protocol. A `service` lowers to a local Rust + axum package (`mz build`,
-//! RFC-0011 §8); no component lowers yet (RFC-0007 G2.1), and there is no Workers, WebAssembly
-//! or Containers target.
+//! RFC-0011 §8), and a `program` in RFC-0013's foundation slice lowers to a dependency-free
+//! Rust package that `mz run` builds and runs ([`run`]); no component lowers yet (RFC-0007
+//! G2.1), and there is no Workers, WebAssembly or Containers target.
 //!
 //! The point of the prototype is to make the design's two central claims testable:
 //!
@@ -30,13 +31,16 @@
 pub mod ast;
 pub mod contract;
 pub mod diagnostic;
+pub mod expr;
 pub mod hash;
 pub mod ir;
 pub mod lex;
 pub mod lower;
 pub mod outline;
 pub mod parse;
+pub mod program;
 pub mod resolve;
+pub mod run;
 pub mod serve;
 pub mod service;
 
@@ -54,6 +58,7 @@ fn front_end_program(
     let resolved = match &program {
         Some(parse::Program::Component(component)) => resolve::resolve(component, file),
         Some(parse::Program::Service(s)) => service::check(s, file),
+        Some(parse::Program::Program(p)) => program::check(p, file),
         None => Vec::new(),
     };
     // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.
@@ -113,6 +118,9 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
                 tally = evaluated;
                 report.diagnostics.append(&mut failures);
             }
+            // A program's contract block is a later wave's (RFC-0013 §15.1); the parser
+            // reports one as `MZ0919`, so a program that checks has no clause to run.
+            Some(parse::Program::Program(_)) => {}
             None => {}
         }
     }

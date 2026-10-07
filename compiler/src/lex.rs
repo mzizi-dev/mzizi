@@ -35,6 +35,11 @@ pub enum Tok {
     Comma,
     /// `.`
     Dot,
+    /// An operator, lexed only in a `program` file (RFC-0013 §3): `+ - * / % < <= > >=`, and
+    /// the spellings other languages use that a program's parser repairs (`==`, `!=`, `&&`,
+    /// `||`, `!`, `->`, `+=`, …). In a component or a service these characters are still
+    /// `MZ0104`, with today's text.
+    Op(&'static str),
     /// End of a logical line.
     Newline,
     /// End of input.
@@ -320,9 +325,41 @@ fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
     r.is_empty() || r.starts_with(':') || word_then("=") || word_then(" is")
 }
 
+/// The operators a `program` lexes, longest first, so `<=` is one token and not `<` `=`.
+const OPERATORS: &[&str] = &[
+    "===", "!==", "==", "!=", "<=", ">=", "->", "=>", "&&", "||", "+=", "-=", "*=", "/=", "++",
+    "--", "+", "-", "*", "/", "%", "<", ">", "!",
+];
+
+/// Whether `src` holds a `program` (RFC-0013 §1): its first line that is neither blank nor
+/// a doc comment starts with the word `program`. Only then does the lexer read operators
+/// and string escapes, so a component or a service lexes exactly as it did before.
+pub fn is_program(src: &str) -> bool {
+    src.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("##"))
+        .is_some_and(|l| {
+            // `Program` too, which the lexer repairs to `program` for the parser: `Program t`
+            // is one `MZ0101`, not a program lexed without its operators.
+            l.get(..7).is_some_and(|w| w == "program" || w == "Program")
+                && l[7..].chars().next().is_none_or(char::is_whitespace)
+        })
+}
+
 /// Tokenize `src`. Never fails: bad input produces diagnostics and the lexer keeps going,
-/// so the parser always receives a full token stream to recover against.
+/// so the parser always receives a full token stream to recover against. A `program` file
+/// ([`is_program`]) also lexes operators and string escapes.
 pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    lex_with(src, file, is_program(src))
+}
+
+/// Tokenize a piece of a program on its own — the inside of a `{…}` interpolation — with
+/// a program's operators. Spans are relative to the piece: line 1, column 1 is its start.
+pub fn lex_fragment(text: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    lex_with(text, file, true)
+}
+
+fn lex_with(src: &str, file: &str, program: bool) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut tokens = Vec::new();
     let mut diags = Vec::new();
 
@@ -411,6 +448,13 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                         closed = true;
                         break;
                     }
+                    // In a program a backslash escapes the next character (RFC-0013 §3.1),
+                    // so `\"` does not close the string. The text keeps the backslash: the
+                    // program parser decodes escapes and interpolation together.
+                    if program && bytes[j] == '\\' && j + 1 < bytes.len() {
+                        text.push(bytes[j]);
+                        j += 1;
+                    }
                     text.push(bytes[j]);
                     j += 1;
                 }
@@ -429,7 +473,13 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                         .with_fix(
                             Span::single(line_no, (bytes.len() + 1) as u32, 0),
                             "\"",
-                            Confidence::Exact,
+                            // In a program, an escaped quote may be the one meant to end the string,
+                            // so where the string ends is the author's call.
+                            if program && text.contains("\\\"") {
+                                Confidence::Guess
+                            } else {
+                                Confidence::Exact
+                            },
                         ),
                     );
                 }
@@ -521,6 +571,22 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                     repair_symbolic_type(&bytes, i, line_no, file, &mut tokens, &mut diags)
             {
                 i += consumed;
+                continue;
+            }
+
+            if program
+                && let Some(op) = OPERATORS.iter().find(|op| {
+                    op.chars()
+                        .enumerate()
+                        .all(|(k, c)| bytes.get(i + k) == Some(&c))
+                })
+            {
+                let len = op.chars().count();
+                tokens.push(Token {
+                    kind: Tok::Op(op),
+                    span: Span::single(line_no, col, len as u32),
+                });
+                i += len;
                 continue;
             }
 

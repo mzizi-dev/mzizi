@@ -1,0 +1,468 @@
+//! Expressions in a function body (RFC-0013 §3, §4): the tree, its canonical text, the
+//! constant folding that finds faults at check time, and the typing rule of each operator.
+//!
+//! Kept apart from [`crate::program`] so that components and services can adopt
+//! expressions later without taking a program's statements with them (RFC-0013 §18.1).
+//! The parser for this tree is [`crate::parse`]'s, because it shares the token cursor.
+//!
+//! What is here is RFC-0013's Wave 0 subset: `int`, `bool` and `text` values, the integer
+//! operators, comparison, `and` / `or` / `not`, calls and interpolation. Floats, collections,
+//! methods and results are later waves'.
+
+use crate::diagnostic::Span;
+
+/// A type a Wave 0 expression can have.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ty {
+    /// A signed 64-bit integer (RFC-0013 §4.1).
+    Int,
+    /// `true` or `false`.
+    Bool,
+    /// UTF-8 text.
+    Text,
+    /// The "value" of a call to a function that returns nothing.
+    Nothing,
+    /// A sub-expression that already failed. It is reported once and silent from then on
+    /// (RFC-0013 §16: one diagnostic per true error).
+    Error,
+}
+
+impl Ty {
+    /// The type as Mzizi writes it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Ty::Int => "int",
+            Ty::Bool => "bool",
+            Ty::Text => "text",
+            Ty::Nothing => "nothing",
+            Ty::Error => "unknown",
+        }
+    }
+}
+
+/// A prefix operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnOp {
+    /// `-x`, on `int`; traps on overflow (`-` of `int` minimum).
+    Neg,
+    /// `not b`, on `bool`.
+    Not,
+}
+
+/// A binary operator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BinOp {
+    /// `+`
+    Add,
+    /// `-`
+    Sub,
+    /// `*`
+    Mul,
+    /// `/`, truncating toward zero.
+    Div,
+    /// `%`, with the sign of the dividend.
+    Rem,
+    /// `is`
+    Is,
+    /// `is not`
+    IsNot,
+    /// `<`
+    Lt,
+    /// `<=`
+    Le,
+    /// `>`
+    Gt,
+    /// `>=`
+    Ge,
+    /// `and`, short-circuit.
+    And,
+    /// `or`, short-circuit.
+    Or,
+}
+
+impl BinOp {
+    /// The operator as Mzizi writes it.
+    pub fn text(self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::Is => "is",
+            BinOp::IsNot => "is not",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::And => "and",
+            BinOp::Or => "or",
+        }
+    }
+
+    /// RFC-0013 §3.5's level: lower binds tighter.
+    pub fn level(self) -> u8 {
+        match self {
+            BinOp::Mul | BinOp::Div | BinOp::Rem => 4,
+            BinOp::Add | BinOp::Sub => 5,
+            BinOp::Is | BinOp::IsNot | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => 6,
+            BinOp::And => 8,
+            BinOp::Or => 9,
+        }
+    }
+
+    /// Whether this is one of the integer arithmetic operators.
+    pub fn is_arithmetic(self) -> bool {
+        self.level() <= 5
+    }
+
+    /// Whether this is a comparison (level 6, which does not chain).
+    pub fn is_comparison(self) -> bool {
+        self.level() == 6
+    }
+}
+
+/// One piece of a text literal.
+#[derive(Clone, Debug, PartialEq)]
+pub enum TextPart {
+    /// Literal text, escapes decoded.
+    Lit(String),
+    /// `{expr}`, interpolated through the value's text form (RFC-0013 §3.8).
+    Expr(Expr),
+}
+
+/// What an expression is.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExprKind {
+    /// An `int` literal.
+    Int(i64),
+    /// `true` or `false`.
+    Bool(bool),
+    /// A text literal, with any interpolations.
+    Text(Vec<TextPart>),
+    /// A binding or parameter.
+    Name(String),
+    /// `f(a, b)`, a function of the program or `print`.
+    Call {
+        /// The function's name.
+        name: String,
+        /// Where the name is.
+        name_span: Span,
+        /// The arguments, in order.
+        args: Vec<Expr>,
+    },
+    /// A prefix operator.
+    Unary {
+        /// Which.
+        op: UnOp,
+        /// Its operand.
+        operand: Box<Expr>,
+    },
+    /// A binary operator.
+    Binary {
+        /// Which.
+        op: BinOp,
+        /// Where the operator is written.
+        op_span: Span,
+        /// The left operand.
+        lhs: Box<Expr>,
+        /// The right operand.
+        rhs: Box<Expr>,
+    },
+    /// Something the parser could not read. Already reported.
+    Error,
+}
+
+/// An expression with its source span.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Expr {
+    /// What it is.
+    pub kind: ExprKind,
+    /// Where it is, first character to last.
+    pub span: Span,
+}
+
+impl Expr {
+    /// RFC-0013 §3.5's level of the expression's outermost operator: 1 for a primary.
+    fn level(&self) -> u8 {
+        match &self.kind {
+            ExprKind::Binary { op, .. } => op.level(),
+            ExprKind::Unary { op: UnOp::Neg, .. } => 3,
+            ExprKind::Unary { op: UnOp::Not, .. } => 7,
+            _ => 1,
+        }
+    }
+
+    /// Whether the expression holds a text literal anywhere. Interpolation may not
+    /// (RFC-0013 §3.6), so a fix that moves an expression into `{…}` checks this first.
+    pub fn has_text_literal(&self) -> bool {
+        match &self.kind {
+            ExprKind::Text(_) => true,
+            ExprKind::Call { args, .. } => args.iter().any(Expr::has_text_literal),
+            ExprKind::Unary { operand, .. } => operand.has_text_literal(),
+            ExprKind::Binary { lhs, rhs, .. } => lhs.has_text_literal() || rhs.has_text_literal(),
+            _ => false,
+        }
+    }
+}
+
+/// The canonical text of an expression (RFC-0013 §17): one space around a binary operator,
+/// none after unary `-`, `f(a, b)`, and parentheses only where precedence needs them. It is
+/// what a trap quotes (§4.3), so it reads as the author would have written it.
+pub fn canonical(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Int(v) => v.to_string(),
+        ExprKind::Bool(b) => b.to_string(),
+        ExprKind::Text(parts) => canonical_text(parts),
+        ExprKind::Name(n) => n.clone(),
+        ExprKind::Call { name, args, .. } => {
+            let args: Vec<String> = args.iter().map(canonical).collect();
+            format!("{name}({})", args.join(", "))
+        }
+        ExprKind::Unary { op, operand } => {
+            let inner = canonical(operand);
+            match op {
+                // `-(-x)`: written bare, `--x` would lex as the decrement idiom.
+                UnOp::Neg
+                    if operand.level() > 3 || matches!(operand.kind, ExprKind::Unary { .. }) =>
+                {
+                    format!("-({inner})")
+                }
+                UnOp::Neg => format!("-{inner}"),
+                UnOp::Not if operand.level() > 7 => format!("not ({inner})"),
+                UnOp::Not => format!("not {inner}"),
+            }
+        }
+        ExprKind::Binary { op, lhs, rhs, .. } => {
+            let level = op.level();
+            let left = canonical(lhs);
+            let right = canonical(rhs);
+            // Left-associative: a left operand at the same level needs no parentheses, a
+            // right one does. Comparisons do not associate, so both sides need them.
+            let left_parens = lhs.level() > level || (op.is_comparison() && lhs.level() == level);
+            let right_parens = rhs.level() >= level;
+            let wrap = |s: String, p: bool| if p { format!("({s})") } else { s };
+            format!(
+                "{} {} {}",
+                wrap(left, left_parens),
+                op.text(),
+                wrap(right, right_parens)
+            )
+        }
+        ExprKind::Error => "…".to_string(),
+    }
+}
+
+/// A text literal as canonical Mzizi: escapes re-applied, interpolations canonical.
+pub fn canonical_text(parts: &[TextPart]) -> String {
+    let mut out = String::from("\"");
+    for part in parts {
+        match part {
+            TextPart::Lit(s) => {
+                for c in s.chars() {
+                    match c {
+                        '"' => out.push_str("\\\""),
+                        '\\' => out.push_str("\\\\"),
+                        '{' => out.push_str("\\{"),
+                        '}' => out.push_str("\\}"),
+                        '\n' => out.push_str("\\n"),
+                        '\t' => out.push_str("\\t"),
+                        c => out.push(c),
+                    }
+                }
+            }
+            TextPart::Expr(e) => {
+                out.push('{');
+                out.push_str(&canonical(e));
+                out.push('}');
+            }
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// A fault the checker can see in constants (RFC-0013 §4.1, `MZ0915`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Fault {
+    /// `x / 0` or `x % 0` with a literal zero.
+    DivideByZero,
+    /// A literal computation that does not fit in an `int`.
+    Overflow,
+}
+
+/// The value of an integer expression built only from literals, or `None` when it reads a
+/// name or calls a function. `Some(Err(_))` is a constant fault: the program would trap
+/// every time this expression ran.
+pub fn fold(e: &Expr) -> Option<Result<i64, Fault>> {
+    match &e.kind {
+        ExprKind::Int(v) => Some(Ok(*v)),
+        ExprKind::Unary {
+            op: UnOp::Neg,
+            operand,
+        } => Some(fold(operand)?.and_then(|v| v.checked_neg().ok_or(Fault::Overflow))),
+        ExprKind::Binary { op, lhs, rhs, .. } if op.is_arithmetic() => {
+            let (a, b) = (fold(lhs)?, fold(rhs)?);
+            let (a, b) = match (a, b) {
+                (Ok(a), Ok(b)) => (a, b),
+                (Err(f), _) | (_, Err(f)) => return Some(Err(f)),
+            };
+            Some(int_op(*op, a, b))
+        }
+        _ => None,
+    }
+}
+
+/// One integer operation with RFC-0013 §4.1's semantics: overflow and division by zero are
+/// faults, division truncates toward zero, and `%` takes the dividend's sign. The lowering
+/// emits the same rule through `checked_*` (§14.2).
+pub fn int_op(op: BinOp, a: i64, b: i64) -> Result<i64, Fault> {
+    let r = match op {
+        BinOp::Add => a.checked_add(b),
+        BinOp::Sub => a.checked_sub(b),
+        BinOp::Mul => a.checked_mul(b),
+        BinOp::Div | BinOp::Rem if b == 0 => return Err(Fault::DivideByZero),
+        BinOp::Div => a.checked_div(b),
+        // `int` minimum `% -1` is 0, which fits: only a zero divisor is a fault.
+        BinOp::Rem => Some(a.wrapping_rem(b)),
+        _ => return Err(Fault::Overflow),
+    };
+    r.ok_or(Fault::Overflow)
+}
+
+/// Whether a value of this type has a text form (RFC-0013 §3.8), so it can be printed or
+/// interpolated.
+pub fn has_text_form(t: Ty) -> bool {
+    matches!(t, Ty::Int | Ty::Bool | Ty::Text | Ty::Error)
+}
+
+/// The type a binary operator gives two operand types, or the reason it does not apply.
+/// `Ty::Error` on either side is silent: that operand was already reported.
+pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
+    if l == Ty::Error || r == Ty::Error {
+        return Ok(
+            if op.is_comparison() || matches!(op, BinOp::And | BinOp::Or) {
+                Ty::Bool
+            } else {
+                Ty::Error
+            },
+        );
+    }
+    match op {
+        _ if op.is_arithmetic() => {
+            if l == Ty::Int && r == Ty::Int {
+                Ok(Ty::Int)
+            } else {
+                Err(format!(
+                    "`{}` takes two ints, and this is {} {} {}",
+                    op.text(),
+                    l.name(),
+                    op.text(),
+                    r.name()
+                ))
+            }
+        }
+        BinOp::Is | BinOp::IsNot => {
+            if l == r && l != Ty::Nothing {
+                Ok(Ty::Bool)
+            } else {
+                Err(format!(
+                    "`{}` compares two values of one type, and this is {} {} {}",
+                    op.text(),
+                    l.name(),
+                    op.text(),
+                    r.name()
+                ))
+            }
+        }
+        BinOp::And | BinOp::Or => {
+            if l == Ty::Bool && r == Ty::Bool {
+                Ok(Ty::Bool)
+            } else {
+                Err(format!(
+                    "`{}` takes two bools, and this is {} {} {} — Mzizi has no truthiness",
+                    op.text(),
+                    l.name(),
+                    op.text(),
+                    r.name()
+                ))
+            }
+        }
+        _ => {
+            // Ordering: int and text (by Unicode scalar value), with one type on both sides.
+            if l == r && matches!(l, Ty::Int | Ty::Text) {
+                Ok(Ty::Bool)
+            } else {
+                Err(format!(
+                    "`{}` orders two ints or two texts, and this is {} {} {}",
+                    op.text(),
+                    l.name(),
+                    op.text(),
+                    r.name()
+                ))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at() -> Span {
+        Span::single(1, 1, 1)
+    }
+
+    fn int(v: i64) -> Expr {
+        Expr {
+            kind: ExprKind::Int(v),
+            span: at(),
+        }
+    }
+
+    fn bin(op: BinOp, l: Expr, r: Expr) -> Expr {
+        Expr {
+            kind: ExprKind::Binary {
+                op,
+                op_span: at(),
+                lhs: Box::new(l),
+                rhs: Box::new(r),
+            },
+            span: at(),
+        }
+    }
+
+    #[test]
+    fn integer_division_truncates_and_remainder_takes_the_dividends_sign() {
+        assert_eq!(int_op(BinOp::Div, -7, 2), Ok(-3));
+        assert_eq!(int_op(BinOp::Rem, -7, 2), Ok(-1));
+        assert_eq!(int_op(BinOp::Div, 7, 0), Err(Fault::DivideByZero));
+        assert_eq!(int_op(BinOp::Div, i64::MIN, -1), Err(Fault::Overflow));
+        assert_eq!(int_op(BinOp::Rem, i64::MIN, -1), Ok(0));
+        assert_eq!(int_op(BinOp::Add, i64::MAX, 1), Err(Fault::Overflow));
+    }
+
+    #[test]
+    fn canonical_text_keeps_only_the_parentheses_precedence_needs() {
+        // (1 + 2) * 3 needs them; 1 + (2 * 3) does not; 1 - (2 - 3) does.
+        let e = bin(BinOp::Mul, bin(BinOp::Add, int(1), int(2)), int(3));
+        assert_eq!(canonical(&e), "(1 + 2) * 3");
+        let e = bin(BinOp::Add, int(1), bin(BinOp::Mul, int(2), int(3)));
+        assert_eq!(canonical(&e), "1 + 2 * 3");
+        let e = bin(BinOp::Sub, int(1), bin(BinOp::Sub, int(2), int(3)));
+        assert_eq!(canonical(&e), "1 - (2 - 3)");
+    }
+
+    #[test]
+    fn folding_finds_constant_faults() {
+        assert_eq!(
+            fold(&bin(BinOp::Div, int(1), int(0))),
+            Some(Err(Fault::DivideByZero))
+        );
+        assert_eq!(
+            fold(&bin(BinOp::Mul, int(i64::MAX), int(2))),
+            Some(Err(Fault::Overflow))
+        );
+        assert_eq!(fold(&bin(BinOp::Add, int(2), int(3))), Some(Ok(5)));
+    }
+}
