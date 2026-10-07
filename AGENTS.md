@@ -69,8 +69,9 @@ The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/re
 then `cargo test` and one request over a socket against the generated package, and
 `mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
 `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
-`cargo deny check` against [`deny.toml`](./deny.toml), and GitHub's dependency review on pull
-requests), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
+`cargo deny check` against [`deny.toml`](./deny.toml)), the org's required workflows (Semgrep,
+dependency review, a lockfile audit and a release version check, which run on every pull
+request from outside this repo), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
 yamllint) are not listed here.
 
 ```bash

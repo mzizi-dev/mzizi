@@ -1,21 +1,20 @@
 name: Supply chain
 
-# The dependency half of issue #62 (shift-left security). Two checks, each on a
-# different question:
+# The dependency audit from issue #62 (shift-left security). `cargo deny` asks whether
+# what a fresh build fetches today is acceptable: no RustSec advisory, an allowed
+# license, crates.io as the only source (deny.toml).
 #
-# - `cargo deny` asks whether what a fresh build fetches today is acceptable: no
-#   RustSec advisory, an allowed license, crates.io as the only source (deny.toml).
-#   Cargo.lock is gitignored, so it resolves the newest versions the manifests
-#   allow. It runs on every push and pull request, and weekly, because an advisory
-#   can be published against a crate this repo already depends on with no change
-#   here at all.
-# - `dependency review` asks what a pull request itself changes: it fails a PR that
-#   adds a dependency with a known vulnerability. It uses GitHub's dependency graph,
-#   so it runs on pull requests only.
+# The org's required workflows already run Semgrep, dependency review and a lockfile
+# audit on every pull request, so this does not repeat them. Their audit runs only
+# when a lockfile changes, and this repo gitignores Cargo.lock, so it never audits
+# here: this job is the Rust audit for this repo. With no lockfile it resolves the
+# newest versions the manifests allow, and it runs weekly because an advisory can be
+# published against a crate this repo already uses with no change here at all.
 #
-# Neither needs a secret. Both reach outside crates.io: cargo-deny fetches its
-# binary and the RustSec advisory database from GitHub, as the `secret scan` job
-# already fetches gitleaks.
+# It needs no secret. It reaches outside crates.io for its binary and the RustSec
+# advisory database, both on GitHub, as the `secret scan` job fetches gitleaks.
+# Actions are pinned to commit SHAs (the org Semgrep rule
+# github-actions-mutable-action-tag); the comment names the ref each SHA was read from.
 
 on:
   push:
@@ -39,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
 
       # The release binary, checked against the SHA-256 the release publishes, as the
       # `secret scan` job installs gitleaks: no `cargo install` compile on every run.
@@ -72,16 +71,3 @@ jobs:
           --manifest-path benchmarks/tasks/b1-routing/reference-rust/Cargo.toml
           --config deny.toml
           check
-
-  dependency-review:
-    name: dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/dependency-review-action@v5
-        with:
-          fail-on-severity: low
-          comment-summary-in-pr: never
