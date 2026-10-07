@@ -647,6 +647,59 @@ fn mz_run_on_a_program_that_does_not_check_exits_3_and_runs_nothing() {
 }
 
 #[test]
+fn mz_run_without_a_per_user_cache_directory_refuses_and_writes_nothing_to_temp() {
+    // No fallback to the shared temporary directory: a fixed name there is one another
+    // account can create first (semgrep rust.lang.security.temp-dir).
+    let path = root().join("examples/hello.mz");
+    let shared = std::env::temp_dir().join("mz-run");
+    let existed = shared.exists();
+    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+        .args(["run", path.to_str().unwrap()])
+        .env_remove("MZ_CACHE_DIR")
+        .env_remove("XDG_CACHE_HOME")
+        .env_remove("HOME")
+        .output()
+        .expect("mz runs");
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("MZ_CACHE_DIR") && err.contains("XDG_CACHE_HOME") && err.contains("HOME"),
+        "{err}"
+    );
+    assert_eq!(
+        shared.exists(),
+        existed,
+        "mz run must not create {}",
+        shared.display()
+    );
+}
+
+#[test]
+fn mz_run_honours_mz_cache_dir() {
+    let cache = std::env::temp_dir().join(format!("mz-cache-test-{}", std::process::id()));
+    let path = root().join("examples/hello.mz");
+    if Command::new("cargo").arg("--version").output().is_err() {
+        eprintln!("SKIPPED: `cargo` is not on the path, so `mz run` cannot build anything");
+        return;
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+        .args(["run", path.to_str().unwrap()])
+        .env("MZ_CACHE_DIR", &cache)
+        .output()
+        .expect("mz runs");
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let made: Vec<_> = std::fs::read_dir(&cache).expect("cache made").collect();
+    assert_eq!(made.len(), 1, "one package directory under MZ_CACHE_DIR");
+    let _ = std::fs::remove_dir_all(&cache);
+}
+
+#[test]
 fn other_commands_on_a_program_behave() {
     let path = root().join("examples/fib.mz");
     let bin = env!("CARGO_BIN_EXE_mz");
