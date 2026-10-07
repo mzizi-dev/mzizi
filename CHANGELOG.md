@@ -17,9 +17,9 @@ carry no pull request number.
 
 ## [Unreleased]
 
-### Security — dependency checks in CI (2026-10-07)
+### Security — a Rust dependency audit in CI (2026-10-07)
 
-- **A new `Supply chain` workflow (`.github/workflows/supply-chain.yml`) checks dependencies** (#62). Its `cargo deny` job runs `cargo deny check` with the new `deny.toml` over the workspace and over B1's Rust reference (`axum` 0.8.9 and `tokio` 1.53.1, the versions `mz build` pins). It fails on any RustSec advisory, on a license outside `deny.toml`'s `allow` list, and on any source other than crates.io. It runs on pushes and pull requests to `main` and `staging`, and weekly. Its `dependency review` job runs GitHub's dependency review on pull requests and fails one that adds a dependency with a known vulnerability. On 2026-10-07 both `cargo deny` runs passed locally with no advisories; the one warning is two versions of `winnow` under `toml`. Neither job is a required check yet: that is a branch-protection setting. `AGENTS.md` and `CONTRIBUTING.md` describe both jobs.
+- **A new `Supply chain` workflow (`.github/workflows/supply-chain.yml`) audits Rust dependencies with `cargo deny`** (#62). It runs `cargo deny check` with the new `deny.toml` over the workspace and over B1's Rust reference (`axum` 0.8.9 and `tokio` 1.53.1, the versions `mz build` pins). It fails on any RustSec advisory, on a license outside `deny.toml`'s `allow` list, and on any source other than crates.io. It runs on pushes and pull requests to `main` and `staging`, and weekly. The org's required workflows already run Semgrep, dependency review and a lockfile audit on every pull request, but that audit runs only when a lockfile changes, and this repo gitignores `Cargo.lock`, so it never audited here. On 2026-10-07 both `cargo deny` runs passed locally with no advisories; the one warning is two versions of `winnow` under `toml`. The job is not a required check yet: that is a branch-protection setting. `AGENTS.md` and `CONTRIBUTING.md` describe it, and the org's required workflows.
 
 ### Added — `AGENTS.md` loads the Mzizi dev skills (2026-10-06)
 
