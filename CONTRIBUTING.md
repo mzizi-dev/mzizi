@@ -107,6 +107,24 @@ repository and had never been scanned in a context where a leak would be world-r
 Keep it that way: nothing that looks like a credential belongs in a commit here, including
 in a test fixture.
 
+### The supply chain
+
+[`.github/workflows/supply-chain.yml`](./.github/workflows/supply-chain.yml) checks
+dependencies, not code (#62):
+
+- **`cargo deny`** runs `cargo deny check` with [`deny.toml`](./deny.toml) over the workspace
+  and over B1's Rust reference, which pins the same `axum` and `tokio` as `mz build`'s
+  generated package. Any RustSec advisory fails it, so does a license `deny.toml` does not
+  allow, and so does a source other than crates.io. `Cargo.lock` is gitignored, so it checks
+  the versions a fresh build would fetch, and it also runs weekly: an advisory can land
+  against a crate this repo already uses with no change here. A pull request that adds a
+  crate with a new license widens `deny.toml`'s `allow` list in the same pull request.
+- **`dependency review`** runs on pull requests only and fails one that adds a dependency
+  with a known vulnerability of any severity.
+
+To run the first locally, install [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
+and run `cargo deny check` from the repository root.
+
 ### What CI does not check
 
 The `lowering` job gates one lowered package: `mz build` of `examples/registry.mz`, which it

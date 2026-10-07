@@ -16,9 +16,10 @@ the design, not the state: `mz build` lowers a `service` to a local Rust + axum 
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
-network access it needs is to crates.io, for the index, the benchmark runner's two pinned
+network access its builds need is to crates.io, for the index, the benchmark runner's two pinned
 crates, and the pinned `axum` and `tokio` that CI's `lowering` job builds a generated service
-against (see "Build, test, run"). See "Repo boundaries" below before adding any dependency that would break that.
+against (see "Build, test, run"). Two CI tools also come from GitHub releases: gitleaks for
+the `secret scan` job, and cargo-deny with the RustSec advisory database for `supply chain`. See "Repo boundaries" below before adding any dependency that would break that.
 
 ## The one rule that overrides the others
 
@@ -67,8 +68,10 @@ from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` e
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
 `mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
-`axum` and `tokio` from crates.io), and the lint gate (`lint.yml`: actionlint, JSON validity,
-prettier, markdownlint, yamllint) are not listed here.
+`axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
+`cargo deny check` against [`deny.toml`](./deny.toml), and GitHub's dependency review on pull
+requests), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
+yamllint) are not listed here.
 
 ```bash
 # job `compiler` — run from compiler/
