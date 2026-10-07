@@ -60,6 +60,12 @@ the type system's internals, and the compiler architecture are later RFCs.
 > braces inside it (RFC-0013 §3.6). Views are unchanged. §1.2 and §1.5 stand until the owner
 > accepts RFC-0013.
 
+<!-- A seventh amendment note; the separator keeps it distinct. -->
+
+> **RFC-0013's survey amendment touches §4.7.** In a program, `MZ0106` (a spread) gains the
+> `exact` fix to RFC-0013's copy-and-update form, `p with (x = 3.0)` (RFC-0013 §11.1). Components
+> keep §4.7's rule. Design only; nothing in it is implemented.
+
 ---
 
 ## 0. Method: design against named failure modes

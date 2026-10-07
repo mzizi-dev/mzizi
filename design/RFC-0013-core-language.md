@@ -1,6 +1,12 @@
 # RFC-0013 — The core language: expressions, bindings, functions, control flow, errors and a program entry point
 
 **Status:** draft for review. Wave 0, the foundation slice of §18.1, is implemented, and §18.6 records what landed and what it changed here; the rest is design. It measures nothing. Later pull requests implement the other waves of §18, and each one updates §18.6 with what landed.
+**Amended** on 2026-10-07 from `design/LANGUAGE-SURVEY.md` (PR #75, not merged yet), a survey of
+ten widely used languages: named arguments (§6.5), records built and copied by field name with
+invariants (§11), enum payloads (§11.5), `otherwise` (§8), indexing that returns an option and a
+closed set of named folds (§9), error mapping with `via` (§12.2) and unused bindings (§5.1). §21
+lists every survey row against this text. The survey measured nothing in Mzizi, and neither does
+this amendment.
 **Author:** the machine author (Claude)
 **Scope:** Tier 1 of [`LANGUAGE-TRACKER.md`](../LANGUAGE-TRACKER.md), rows C1–C10, as one design
 (owner decision, 2026-10-07, issue #69: "Tiers by rfc, compile to rust, methods for now, go
@@ -34,6 +40,12 @@ bindings (P8), concurrency (P9) and Rust interop (P6) are not designed here.
 >   which §6 now designs.
 > - **RFC-0011 §5**, which left `result(T, E)` and its propagation form to "the first `fn` that
 >   can fail" (§12).
+> - **RFC-0010 §4.3**, which lowers `always` to `debug_assert!`, checked in debug builds only. In a
+>   program a record's `always` clauses are checked in every build, and a broken one traps (§11.4).
+> - **RFC-0007 D1's open question**, static columns or payloads: one `enum` construct holds both
+>   (§11.5).
+> - **RFC-0001 §4.7's `MZ0106`** (a spread), which gains an `exact` fix to `with` in a program
+>   (§11.1).
 >
 > Each of those RFCs carries a note pointing here and naming these sections. None of the
 > amendments takes effect until the owner accepts this RFC. RFC-0010 §11's open question 3
@@ -71,7 +83,7 @@ component and a service do (RFC-0001 §1.1, RFC-0011 §1).
 program fibonacci
 
   fn main
-    for each i in range(0, 10)
+    for each i in range(0, to = 10)
       print("fib({i}) is {fib(i)}")
     end
     print("even sum below 100 is {even_sum(100)}")
@@ -120,7 +132,7 @@ Decisions, and why:
   stay `net`, `storage`, `ml`, `motion`). Writing to standard error, reading input and writing
   without a newline belong to P2.
 - **No new keywords.** `program`, `let`, `var`, `return`, `while`, `break`, `continue`, `and`,
-  `or`, `try`, `self`, `error`, `ok` and the type names `float`, `map`, `set` and `result` are
+  `or`, `try`, `self`, `otherwise`, `with`, `via`, `changes`, `error`, `ok` and the type names `float`, `map`, `set` and `result` are
   contextual words, as `service`, `route` and `record` are (RFC-0011 §1). Each is special only
   in a position where nothing else can appear. They fall in three groups, by how far that
   position reaches:
@@ -140,10 +152,13 @@ Decisions, and why:
     name a binding, parameter or `fn`, where the same misreading has no qualified form to fix it
     to (`MZ0921`).
   - **The rest** (`program`, `let`, `var`, `return`, `while`, `break`, `continue`, `and`, `or`,
-    `try`, `self`) name nothing in a program: no binding, parameter, `fn`, record, enum or variant
+    `try`, `self`, `otherwise`, `with`, `via`) name nothing in a program: no binding, parameter, `fn`, record, enum or variant
     (`MZ0921`), because each can begin a line or an expression. A record field may use one
     (RFC-0011's `problem` record has a field `error`), because a field is only ever read after a
     dot.
+  - **`changes` is special only after a method's signature** (`fn bump changes self`, §11.2),
+    where nothing else can stand, so it may name anything: `let changes = …` is legal, as
+    `let result = …` is.
 
   `lex.rs`'s `KEYWORDS` list stays at 23. Whether some of them should become keywords, and what
   the remaining bans cost, is open (§20, Q12).
@@ -183,6 +198,8 @@ serialisable and describable across a UniFFI-shaped boundary, the property RFC-0
 | `map(K, V)`    | `record<K, V>`    | object when `K` is `text`; otherwise an array of pairs       |
 | `set(K)`       | `sequence<K>`     | array, in key order                                          |
 | `result(T, E)` | `[Throws=E]` on T | `{"ok": …}` or `{"error": …}`; never a response body as such |
+| a record       | `record`          | an object, fields in declaration order (RFC-0011 §4.1)       |
+| enum payload   | `enum` with data  | `{"circle": {"radius": 1.0}}`; a fieldless variant its name  |
 
 - **No tuple.** A tuple is a record whose fields have no names, so its meaning is positional.
   RFC-0008 §2 made field order part of a record's meaning precisely so that the names carry it.
@@ -296,20 +313,26 @@ never depends on remembering it.
 
 ### 3.5 Precedence
 
-Highest first. Every binary level is left-associative except comparison, which does not
-associate at all.
+Highest first. Every binary level is left-associative except `otherwise`, which is
+right-associative, and comparison, which does not associate at all.
 
-| Level | Operators                                                            |
-| ----- | -------------------------------------------------------------------- |
-| 1     | literals, names, `( … )`, `[ … ]`, calls `f(…)`, record construction |
-| 2     | postfix, left to right: `.field`, `.method(…)`, `[index]`            |
-| 3     | prefix `-` (numbers), prefix `try` (§12.2)                           |
-| 4     | `*`, `/`, `%`                                                        |
-| 5     | `+`, `-`                                                             |
-| 6     | `is`, `is not`, `<`, `<=`, `>`, `>=`, `in`, which do not chain       |
-| 7     | prefix `not`                                                         |
-| 8     | `and`                                                                |
-| 9     | `or`, never mixed with `and` without parentheses                     |
+| Level | Operators                                                                     |
+| ----- | ----------------------------------------------------------------------------- |
+| 1     | literals, names, `( … )`, `[ … ]`, calls `f(…)`, record construction          |
+| 2     | postfix, left to right: `.field`, `.method(…)`, `[index]`, `with (…)` (§11.1) |
+| 3     | prefix `-` (numbers), prefix `try` and its `via` (§12.2)                      |
+| 4     | `*`, `/`, `%`                                                                 |
+| 5     | `+`, `-`                                                                      |
+| 6     | `otherwise` (§8.1), right-associative                                         |
+| 7     | `is`, `is not`, `<`, `<=`, `>`, `>=`, `in`, which do not chain                |
+| 8     | prefix `not`                                                                  |
+| 9     | `and`                                                                         |
+| 10    | `or`, never mixed with `and` without parentheses                              |
+
+`otherwise` sits where Swift puts `??`: below arithmetic, so `xs[i] otherwise 0 + 1` reads
+`xs[i] otherwise (0 + 1)`, and above comparison, so `n otherwise 0 < 5` reads
+`(n otherwise 0) < 5`. It is the one right-associative level, so `a otherwise b otherwise 0`
+reads `a otherwise (b otherwise 0)`, a chain of fallbacks.
 
 `not x in xs` reads `not (x in xs)`, so Python's `x not in xs` is `MZ0910` with the `exact` fix
 `not x in xs`. An expression fits on one line (RFC-0001 §2: no continuation); one that does not is
@@ -334,19 +357,27 @@ is unchanged. `str(x)`, `String(x)` and `x.to_string()` are `MZ0962` with the `e
 
 ### 3.7 Calls, methods and indexing
 
-- **A call** is `f(a, b)`, positional, every argument given. Named arguments, default values and
-  variadic parameters are not forms (`MZ0905`, `MZ0903`), so a call site always shows every
-  argument, in the order the signature declares.
+- **A call** is `f(a, b = e)`: the first argument by position, **every later one labelled with
+  its parameter's name**, in the order the signature declares, and a parameter with a literal
+  default may be left out (§6.5). Variadic parameters are not a form (`MZ0903`). So a call site
+  shows what each argument means, in one order.
 - **An operation on a value is a method:** `xs.length()`, `s.split(",")`, `p.norm()`. The built-in
   operations (§4.4, §9, §10) and record methods (§11) share one call form, and Python's free
   functions `len(xs)` and `str(x)` are `MZ0962` with `exact` fixes. Parentheses are always
   written: `xs.length` is `MZ0962` with the `exact` fix `xs.length()`, because a bare `.name` is a
   field.
-- **Indexing** is `xs[i]` on a list, `s[i]` on text (a one-character `text`), and `m[k]` on a map.
-  An index outside the value, or a key not in the map, is a trap (§4.3). `xs.get(i)` and
-  `m.get(k)` return an `option` instead. Two forms for two intents: `[…]` says "I know it is
-  there", `.get` says "it may not be". A literal negative index (`xs[-1]`, Python's last
-  element) is `MZ0915`, with the `guess` fix `xs[xs.length() - 1]`.
+- **Indexing returns an option.** `xs[i]` on a list is `option(T)`, `s[i]` on text is
+  `option(text)` (one character), and `m[k]` on a map is `option(V)`: `none` when the index is
+  outside the value or the key is not in the map. The value is used as any option is, narrowed
+  (§8) or given a default, `xs[i] otherwise 0`. There is no `.get`: `xs.get(i)` and `m.get(k)`
+  are `MZ0962` with the `exact` fix `xs[i]`, so one intent has one form. A literal negative index
+  (`xs[-1]`, Python's last element) is `MZ0915`, with the `guess` fix `xs[xs.length() - 1]`.
+  _Amended from the survey (F2, §21):_ this draft first made `xs[i]` trap and `xs.get(i)`
+  return an option. Out-of-bounds access is 59.9% of LLM-written C++'s runtime errors in the
+  survey's one measured study (Coimbra 2026), and a reading that cannot fail silently is the
+  survey's answer. The cost is an `otherwise` or a `when` where the author knows the index is in
+  range (§20, Q22). Assigning through an index, `xs[i] = v`, still traps out of range (§4.3),
+  because a statement has no value to make optional.
 
 ### 3.8 The text form of a value
 
@@ -360,7 +391,7 @@ would be written in Mzizi:
 | `float`        | the algorithm below: `1.0`, `0.1`, `1.0e21`, `1.5e-7`, `inf`, `-inf`, `nan`                               |
 | `bool`         | `true`, `false`                                                                                           |
 | `text`         | itself at the top level; quoted with escapes inside a collection or record                                |
-| enum           | the variant's name                                                                                        |
+| enum           | the variant's name; a payload variant as it is built, `circle(radius = 1.0)` (§11.5)                      |
 | `option(T)`    | none at the top level: `print(x)` and `"{x}"` on an un-narrowed option are `MZ0710` (§8, RFC-0008's TY-6) |
 | inside a value | an option element or field of a list, map or record prints as its value, or `none`                        |
 | list, set      | `[1, 2, 3]`, a set in key order                                                                           |
@@ -403,6 +434,11 @@ either. That is a known gap, and allowing exponent literals is P2's question.
   `% -1`. The first does not fit in `int`. The second is `0` in arithmetic, but Rust's
   `checked_rem` returns `None` for it (checked with `rustc`), and the lowering does not
   special-case it, so it traps as an integer overflow, one rule for both.
+- **There is one division operator.** Python's floor division, `a // b` inside an expression,
+  is `MZ0910` with the `guess` fix `a / b`: a guess, because `/` truncates where `//` floors,
+  so the two differ on a negative operand. `//` after code is read as floor division only when
+  the rest of the line reads as one expression of the left operand's type; otherwise it is a
+  C or JavaScript comment after code (`let n = count // the total`), which is `MZ0911`'s.
 - A constant fault the checker can see, such as `x / 0` with a literal `0` or a literal that
   overflows when folded, is `MZ0915` at check time, so it never reaches a run.
 
@@ -437,9 +473,10 @@ The traps in M1:
 | integer overflow          | `+ - *`, unary `-`, `pow`, `abs` on `int`; `int` minimum `/ -1` and `% -1` |
 | integer division by zero  | `/`, `%` on `int`                                                          |
 | negative exponent         | `x.pow(n)` on `int` with `n` below zero                                    |
-| index out of range        | `xs[i]`, `s[i]`, `s.slice(a, b)`, `xs.slice(a, b)`                         |
-| key not in map            | `m[k]` as a value                                                          |
+| index out of range        | `xs[i] = v` only; reading `xs[i]`, `s[i]` or a slice gives `none` (§3.7)   |
 | float to int out of range | `f.to_int()` on `nan`, `inf`, or a value outside `int`                     |
+| invariant broken          | a record's `always` clause false after it is built or changed (§11.4)      |
+| no JSON form              | `v.to_json()` on a value holding `nan`, `inf` or `-inf` (§11.1; §20, Q9)   |
 
 RFC-0007 G2.5 says no panic may be reachable from surface code. A trap is not a Rust panic: the
 lowering never emits `panic!`, `unwrap` or `expect` (§14.3), and the trap is a function that
@@ -455,15 +492,16 @@ lowering does not have. That is a limit, stated rather than hidden (§20, Q16).
 
 ### 4.4 Conversions and numeric methods
 
-| Method                               | On             | Returns       | Notes                                              |
-| ------------------------------------ | -------------- | ------------- | -------------------------------------------------- |
-| `i.to_float()`                       | `int`          | `float`       | nearest `float`; exact up to 2^53                  |
-| `f.to_int()`                         | `float`        | `int`         | truncates toward zero; traps out of range or `nan` |
-| `f.round()`, `f.floor()`, `f.ceil()` | `float`        | `float`       | `round` takes half away from zero                  |
-| `x.abs()`, `x.min(y)`, `x.max(y)`    | `int`, `float` | the same type | `abs` traps on `int` minimum                       |
-| `x.pow(n)`                           | `int`, `float` | the same type | `n` is an `int`, ≥ 0 on `int`; see below           |
-| `f.sqrt()`                           | `float`        | `float`       | `nan` below zero, as IEEE                          |
-| `f.is_nan()`                         | `float`        | `bool`        | the only way to ask, since `nan is nan` is `false` |
+| Method                                              | On             | Returns       | Notes                                                         |
+| --------------------------------------------------- | -------------- | ------------- | ------------------------------------------------------------- |
+| `i.to_float()`                                      | `int`          | `float`       | nearest `float`; exact up to 2^53                             |
+| `f.to_int()`                                        | `float`        | `int`         | truncates toward zero; traps out of range or `nan`            |
+| `f.round()`, `f.floor()`, `f.ceil()`                | `float`        | `float`       | `round` takes half away from zero                             |
+| `x.abs()`, `x.min(y)`, `x.max(y)`                   | `int`, `float` | the same type | `abs` traps on `int` minimum                                  |
+| `x.pow(n)`                                          | `int`, `float` | the same type | `n` is an `int`, ≥ 0 on `int`; see below                      |
+| `f.sqrt()`                                          | `float`        | `float`       | `nan` below zero, as IEEE                                     |
+| `f.is_nan()`                                        | `float`        | `bool`        | the only way to ask, since `nan is nan` is `false`            |
+| `a.wrapping_add(b)`, `wrapping_sub`, `wrapping_mul` | `int`          | `int`         | two's-complement wrap, never a trap; for hashes and checksums |
 
 `pow` on `int` traps on overflow, and a negative `n` is a trap too (a literal one is `MZ0915`).
 `pow` on `float` is `x.powf(n.to_float())`: the exponent converts as `to_float` does, exactly up
@@ -471,8 +509,9 @@ to 2^53 and to the nearest `float` beyond it, so every `int` exponent has a defi
 including one outside Rust's `i32`. Rust's `powi` is not used: its precision is unspecified, and
 it takes an `i32`.
 
-That is the whole numeric surface in M1. Trigonometry, logarithms, bit operations and a decimal
-type are P2's `math` module.
+Wrapping is asked for by name at every use, so `+` never wraps by accident (survey F17). That is
+the whole numeric surface in M1. Trigonometry, logarithms, bit operations and a decimal type are
+P2's `math` module.
 
 ## 5. Bindings — _C2_
 
@@ -519,6 +558,18 @@ total = total + 1
   `const`, `val` and `auto` are `MZ0925` with the fix `let`; Rust's `let mut` and
   `mut` get `var`; Go's `x := e` gets `let x = e`. `+=`, `-=`, `*=`, `/=`, `++` and `--` are
   `MZ0918`, with the `exact` fix `x = x + 1` and so on.
+
+- **A binding nothing reads is an error**, `MZ0928`, as in Go (survey F21). A `let` or `var`
+  whose name is never read after its binding line, and a program's `use` line that nothing
+  needs, are each one `MZ0928`. The fix deletes the binding line and every later assignment to
+  the name, so that no assignment is left to an unbound name. It is `exact` when every value it
+  deletes is a literal, a name, a path or a bracket literal of those, since deleting them then
+  changes nothing the program does; it is a `guess` when one of them calls a function or could
+  trap, because deleting it removes the call or the trap. Parameters
+  and loop bindings are exempt: a parameter's name is part of the signature and every caller's
+  labels (§6.5), and a counted loop needs a name for its count, where Mzizi has no `_`. An error
+  rather than a warning, because a binding nobody reads is most often a typo for one somebody
+  does, and `mz fix` clears the `exact` cases without a model turn (§20, Q28).
 
 A `var` is the only mutable state in M1, and it is local to one call of one function. There is
 no global state, no static and no state shared between calls: G1.1 (component state) and P8
@@ -633,6 +684,71 @@ named function is also a unit a contract can attach to (RFC-0010 §2) and an IR 
 patch by name (RFC-0002 §2.1). The cost is real: a one-use helper takes three lines. Whether M2
 adds a lambda form is open (§20, Q7).
 
+### 6.5 Named arguments and defaults — _survey F3_
+
+```mz
+fn connect(host: text, port: int = 80, secure: bool = false): text
+  return "{host}:{port} secure {secure}"
+end fn connect
+
+fn main
+  print(connect("example.org"))
+  print(connect("example.org", secure = true))
+  print(connect("example.org", port = 8080, secure = true))
+  print(area(3.0, height = 4.0))
+end fn main
+```
+
+- **The first argument is given by position; every later argument is labelled** `name = value`,
+  with its parameter's name. The function's name usually says what the first argument is
+  (`greet(name)`, `parse_age(raw)`), and every later one is where positional calls go wrong:
+  `area(3.0, 4.0)` cannot say which is the height. That is Swift's rule, and Python's and C#'s
+  named arguments made the default. `=` is the label's spelling because it is the record
+  literal's (§11.1), so a record value and a call read alike; `:` means "has type" everywhere in
+  Mzizi, so Swift's and C#'s `height: 4.0` is not used.
+- **One name per parameter.** There is no separate external label (Swift's
+  `fn move(to target: point)`): the name a caller writes is the name the body reads. A second
+  name is `MZ0903`, with no fix, because which name to keep is the author's.
+- **Labelled arguments come in the order the signature declares**, skipping the defaulted ones
+  the call leaves out. Arguments are evaluated left to right as written (§6.3), and canonical
+  form writes them in declaration order (§17), so requiring that order is what keeps a reformat
+  from changing the order in which calls run. The survey's lowering line ("reordered to
+  declaration order") would have allowed any order; §21 records the change.
+- **A default is a literal**: an `int`, `float`, `bool` or `text` literal with no `{…}`, `none`,
+  `[]`, or a variant of an enum without payloads. Never an expression or a call, so there is
+  nothing to evaluate when the call is made, and Python's mutable-default trap (`def f(xs=[])`)
+  cannot be written; under value semantics a `[]` default is a fresh empty list at every call
+  anyway (§14.1). The first parameter has no default, since it is never labelled. A non-literal
+  default, or one on the first parameter, is `MZ0903`, with no fix.
+- **It applies to every call**: a user `fn`, a method (whose receiver is not an argument, so
+  `p.scaled(2.0)` and `p.moved(1.0, dy = 2.0)`), and the built-in functions and methods, whose
+  parameter names this RFC fixes: `range(0, to = n)`, `xs.slice(a, to = b)`,
+  `s.slice(a, to = b)`, `xs.fold(0, step = add)`, `s.replace(old, by = new)`. A one-argument call
+  has no label. A record value labels every field, the first one too (§11.1), because a record
+  has no name for its first field the way a function does.
+- **Labels are checked with exact fixes where the program is determined** (`MZ0927`):
+  - a positional argument after the first, `area(3.0, 4.0)`: `exact`, inserting the labels in
+    declaration order, when the count is right, since position then has one reading;
+  - Swift's and C#'s `height: 4.0`: `exact` `height = 4.0`;
+  - a label on the first argument: `exact`, deleting it, when it names the first parameter;
+  - an unknown label: RFC-0008 §5.2's nearest-name fix, `exact` or `guess` by that section's rule,
+    and `exact` as well when exactly one parameter is left unfilled and the value has its type;
+  - labelled arguments out of declaration order: `exact`, reordering them, when every argument is
+    a literal, a name or a path, so the order cannot change what runs; a `guess` otherwise;
+  - a label given twice: no fix, because which value is right is the author's.
+
+  A missing argument without a default, and too many arguments, stay `MZ0905`, which quotes the
+  signature.
+
+- **Lowering erases the labels.** The arguments are already in declaration order, and each
+  omitted default is written in at the call site as its literal (§14.2), so the Rust call is
+  positional and `rustc` sees nothing new.
+
+A contract `example` already names every parameter (`example a 2 b 3`, §15.1), the `name value`
+style the survey suggested sharing with calls (its §4.1 item 8). Calls keep `=` inside
+parentheses instead: a value that starts with a name (`k n + 1`) would make `name value` hard to
+read on one line.
+
 ## 7. Control flow in function bodies — _C4, CL-8_
 
 ### 7.1 `when`, `else when`, `else`
@@ -715,8 +831,9 @@ end
 ```
 
 - **`for each <name> in <expr>`** iterates a list, as in a view (RFC-0008 §3), and the key line
-  is a view's business only: a function's `for each` has none. `range(a, b)` is the list of `int`s
-  from `a` up to but not including `b`, so a counted loop is `for each i in range(0, n)`. A map
+  is a view's business only: a function's `for each` has none. `range(a, to = b)` is the list of
+  `int`s from `a` up to but not including `b`, so a counted loop is
+  `for each i in range(0, to = n)` (§6.5's labels). A map
   or a set is iterated through `m.keys()`, `m.values()` or `s.to_list()`, all in key order;
   `for each k in m` is `MZ0711` with the `exact` fix `m.keys()`. **The loop iterates the value
   `<expr>` had when the loop began**, so assigning to the list inside the body changes the next
@@ -728,7 +845,8 @@ end
   well. There is no `loop`, no `do … while` and no C-style `for (i = 0; …)`. `loop` is `MZ0934`
   with the `exact` fix `while true`; Python's `for x in xs` gets the `exact` fix inserting
   `each`, and TypeScript's `for (const x of xs)` gets `for each x in xs`; the C-style loop has
-  no fix, and the `say` names `range`. `range(n)` is `MZ0934` with the `exact` fix `range(0, n)`.
+  no fix, and the `say` names `range`. `range(n)` is `MZ0934` with the `exact` fix
+  `range(0, to = n)`.
 - **`break` leaves the innermost loop and `continue` starts its next pass.** Outside a loop each
   is `MZ0935`. Whether M1 keeps them is open (§20, Q3); they are in this design because the
   public suites' programs use them and a function written without them is longer.
@@ -793,9 +911,38 @@ on a line the reader cannot see from the `when`, so it is `MZ0710`, with no fix;
 the region first.
 
 An option is never used un-narrowed (`MZ0710`). A value of type `T` is wrapped implicitly where
-an `option(T)` is expected, so there is still no `some(…)` to write (RFC-0008 §5). `x.or(d)`, the
-value or a default, is the one option method in M1, because it is the shape most narrowing
-blocks reduce to.
+an `option(T)` is expected, so there is still no `some(…)` to write (RFC-0008 §5). `MZ0710`'s
+`say` names the two repairs, a guard and `otherwise`, and it carries no fix: the survey asked
+for an `exact` fix inserting the guard (F13), but what the guard's branch returns is the
+author's, so no fix can be exact (§21).
+
+### 8.1 `otherwise`: one word for a default — _survey F14_
+
+```mz
+let port = parse_port(raw) otherwise 80
+let first = names[0] otherwise "nobody"
+let label = nickname otherwise full_name otherwise "anonymous"
+```
+
+**`x otherwise d` is `x`'s value when it is present, and `d` when it is `none`.** `x` is an
+`option(T)`. `d` is a `T`, and the whole is a `T`; or `d` is itself an `option(T)`, and the whole
+is an `option(T)`, which is what lets a chain end in a value. **`d` is evaluated only when `x` is
+`none`**, as `??` is in Swift, C# and JavaScript: a default that calls a function or could trap
+runs only when it is used. Precedence is §3.5's level 6.
+
+This replaces the draft's `x.or(d)` method. `or` is already the boolean operator (§3.4), so
+`x.or(d)` beside `a or b` was one word with two meanings, HD-4's hazard; the survey's passes
+proposed `or` four times and `otherwise` once, and its own analysis (§4.1 item 3) picked
+`otherwise` for this reason. The idioms a model brings for it are `MZ0938`, each with the
+`exact` fix `x otherwise d`: `x ?? d`, `x.or(d)`, `x.unwrap_or(d)`, `x.get_or(d)`, and `x or d`
+or `x || d` with an option on the left. `otherwise` on a value that is not an option is
+`MZ0938` too, with the `exact` fix deleting `otherwise d`: `d` could never have been evaluated,
+so deleting it changes nothing.
+
+**The escape hatches the survey rejected stay out** (R1, R2): optional chaining `x?.f`, a
+force-unwrap `x!`, and `.unwrap()` or `.expect(…)` on an option are `MZ0939`, with no fix; the
+`say` names `when x is not none` and `otherwise`. Chaining hides which link was absent, and a
+force-unwrap is a halt the author chose not to handle, which §12.3 already refuses for results.
 
 ## 9. Collections — _C7_
 
@@ -825,20 +972,20 @@ is the Wave 1 C7 work's obligation (§18.2).
 
 The set M1 needs, all methods (§3.7):
 
-| Operation                | On             | Returns          | Notes                                                                      |
-| ------------------------ | -------------- | ---------------- | -------------------------------------------------------------------------- |
-| `c.length()`             | list, map, set | `int`            | `len`, `size`, `count`, `.length` are `MZ0962`, `exact`                    |
-| `c is none`              | list, map, set | `bool`           | emptiness (RFC-0008 §4); `is []`, `length() is 0`, `.is_empty()`: `MZ0962` |
-| `x in c`                 | list, set, map | `bool`           | element, or key; `.contains(x)`, `.includes(x)`, `.has(x)` are `MZ0962`    |
-| `xs[i]`, `xs.get(i)`     | list           | `T`, `option(T)` | §3.7; `[i]` traps out of range                                             |
-| `m[k]`, `m.get(k)`       | map            | `V`, `option(V)` | `[k]` traps on a missing key                                               |
-| `xs.slice(a, b)`         | list           | `list(T)`        | from `a` up to `b`; traps out of range                                     |
-| `m.keys()`, `m.values()` | map            | `list`           | in key order                                                               |
-| `s.to_list()`            | set            | `list(T)`        | in key order                                                               |
-| `xs.map(f)`              | list           | `list(U)`        | `f(x: T): U`                                                               |
-| `xs.filter(f)`           | list           | `list(T)`        | `f(x: T): bool`                                                            |
-| `xs.fold(init, f)`       | list           | `A`              | `f(acc: A, x: T): A`, left to right                                        |
-| `xs.join(sep)`           | `list(text)`   | `text`           |                                                                            |
+| Operation                | On             | Returns           | Notes                                                                      |
+| ------------------------ | -------------- | ----------------- | -------------------------------------------------------------------------- |
+| `c.length()`             | list, map, set | `int`             | `len`, `size`, `count()`, `.length` are `MZ0962`, `exact`                  |
+| `c is none`              | list, map, set | `bool`            | emptiness (RFC-0008 §4); `is []`, `length() is 0`, `.is_empty()`: `MZ0962` |
+| `x in c`                 | list, set, map | `bool`            | element, or key; `.contains(x)`, `.includes(x)`, `.has(x)` are `MZ0962`    |
+| `xs[i]`                  | list           | `option(T)`       | §3.7; `none` out of range; `.get(i)` is `MZ0962`, `exact` `xs[i]`          |
+| `m[k]`                   | map            | `option(V)`       | `none` for a missing key; `.get(k)` is `MZ0962`, `exact` `m[k]`            |
+| `xs.slice(a, to = b)`    | list           | `option(list(T))` | from `a` up to `b`; `none` when either end is out of range                 |
+| `m.keys()`, `m.values()` | map            | `list`            | in key order                                                               |
+| `s.to_list()`            | set            | `list(T)`         | in key order                                                               |
+| `xs.map(f)`              | list           | `list(U)`         | `f(x: T): U`                                                               |
+| `xs.filter(f)`           | list           | `list(T)`         | `f(x: T): bool`                                                            |
+| the named folds          | list           | see §9.4          | `count`, `sum`, `any`, `all`, `first`, `fold`, `sort_by`, `group_by`       |
+| `xs.join(sep)`           | `list(text)`   | `text`            |                                                                            |
 
 Mutation, on a `var` only (`MZ0960` otherwise, with the `exact` fix `let` → `var` when the
 binding is a `let`):
@@ -846,7 +993,7 @@ binding is a `let`):
 | Statement     | On   | Means                                              |
 | ------------- | ---- | -------------------------------------------------- |
 | `xs.push(v)`  | list | appends; `append` is `MZ0962` with the `exact` fix |
-| `xs[i] = v`   | list | replaces; traps out of range                       |
+| `xs[i] = v`   | list | replaces; traps out of range (§4.3)                |
 | `m[k] = v`    | map  | inserts or replaces                                |
 | `m.remove(k)` | map  | removes the key if present                         |
 | `s.insert(v)` | set  | adds                                               |
@@ -859,8 +1006,9 @@ ordered-map crate in the lowered package, which §13's dependency-free rule rule
 lowers to the standard library's `BTreeMap` and `BTreeSet`. The cost is that a Python-trained
 model expects insertion order (§20, Q9).
 
-Sorting, reversing, `first` and `last`, `zip`, list concatenation, `sum`, `min` and `max` over a
-list, and the rest of a collections library are P2's. `fold` covers each of them in the meantime.
+Reversing, `last`, `zip`, list concatenation, `min` and `max` over a list, and the rest of a
+collections library are P2's. §9.4's named folds, and `fold` itself, cover the commonest of them in
+the meantime.
 
 ### 9.3 `map`, `filter`, `fold`
 
@@ -878,7 +1026,7 @@ fn add(a: int, b: int): int
 end fn add
 
 fn sum_of_even_squares(xs: list(int)): int
-  return xs.filter(is_even).map(square).fold(0, add)
+  return xs.filter(is_even).map(square).fold(0, step = add)
 end fn sum_of_even_squares
 ```
 
@@ -886,8 +1034,9 @@ The function argument is a named `fn` (§6.4) whose signature must fit; a mismat
 quoting both signatures. They are the only higher-order operations in M1, and the only place a
 `fn` is a value. They are built in, and polymorphic in the element type the way `list(T)` itself
 is: user code still has no type parameters. JavaScript's `reduce(f, init)` is `MZ0962` with the
-`guess` fix `fold(init, f)` (a guess, because JavaScript's `reduce` without an initial value has
-no Mzizi equivalent).
+`guess` fix `fold(init, step = f)` (a guess, because JavaScript's `reduce` without an initial
+value has no Mzizi equivalent). In practice `xs.sum()` (§9.4) is this example's last stage; the
+`fold` shows the general form.
 
 **This is the duality RFC-0001 §1.2 excluded, kept on purpose.** `xs.map(square)` and a
 `for each` that pushes `square(x)` onto a `var` build the same list, so two forms exist for one
@@ -899,6 +1048,34 @@ No diagnostic steers between them, since neither is a defect. Whether that is wo
 form, or whether M1 keeps loops only and leaves `map` / `filter` / `fold` to P2, is the owner's
 (§20, Q19).
 
+### 9.4 The named folds — _survey F1_
+
+| Fold                      | On                         | Returns           | Means                                                                      |
+| ------------------------- | -------------------------- | ----------------- | -------------------------------------------------------------------------- |
+| `xs.count(f)`             | list                       | `int`             | how many elements `f` is `true` for                                        |
+| `xs.sum()`                | `list(int)`, `list(float)` | the element type  | `0` or `0.0` when empty; an `int` sum traps on overflow (§4.3)             |
+| `xs.any(f)`, `xs.all(f)`  | list                       | `bool`            | stop at the first answer; `any` is `false` and `all` is `true` when empty  |
+| `xs.first(f)`             | list                       | `option(T)`       | the first element `f` is `true` for, or `none`                             |
+| `xs.fold(init, step = f)` | list                       | `A`               | `f(acc: A, x: T): A`, left to right (§9.3)                                 |
+| `xs.sort_by(f)`           | list                       | `list(T)`         | ascending by `f(x: T): K`, `K` a key type (§2); stable, so ties keep order |
+| `xs.group_by(f)`          | list                       | `map(K, list(T))` | elements by `f(x: T): K`; each list keeps the elements' order              |
+
+**The set is closed.** Every incumbent offers a different, larger library of these, and a model
+samples across all of them (FM-1). The survey's one-line design names these eight, and this RFC
+takes them as they are: each answers a question that `map` and `filter` cannot, each has one name,
+and each takes a named `fn` (§6.4) or nothing. A fold from another language that has a direct
+equivalent is `MZ0962` with an `exact` fix: on a list, `find(f)` is `first(f)`, `some(f)` is
+`any(f)`, `every(f)` is `all(f)`, `sorted(xs, key = f)` and `sortedBy(f)` are `sort_by(f)`, and
+`count()` with no argument is `length()`. Any other name is `MZ0708`, with the nearest-name fix
+over list methods. `sort_by` with a function whose result has no order (a `float`, a record) is
+`MZ0964`, as a map key would be. Whether `min`, `max` and a key-less `sort` belong in the set is
+the owner's (§20, Q26).
+
+The survey left the form open (its §4.1 item 1): a `for each … keep` expression, methods taking
+a named function, or methods taking an inline function. This RFC keeps the second, because it is
+the only one consistent with no lambdas (§6.4, F20) that does not add a third loop form beside
+`for each` and `while`.
+
 ## 10. Text operations — _C6_
 
 `text` is UTF-8. **Lengths, indices and slices count Unicode scalar values**, Python's choice, so
@@ -909,7 +1086,7 @@ all methods:
 | Method                               | Returns         | Notes                                                       |
 | ------------------------------------ | --------------- | ----------------------------------------------------------- |
 | `s.length()`                         | `int`           | scalar values, not bytes                                    |
-| `s[i]`, `s.slice(a, b)`              | `text`          | traps out of range (§4.3)                                   |
+| `s[i]`, `s.slice(a, to = b)`         | `option(text)`  | `none` out of range (§3.7, survey F23)                      |
 | `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                      |
 | `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`       |
 | `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                             |
@@ -917,7 +1094,7 @@ all methods:
 | `s.chars()`                          | `list(text)`    | one element per scalar value                                |
 | `s.trim()`                           | `text`          | Unicode whitespace at both ends; `strip` is `MZ0962`        |
 | `s.to_upper()`, `s.to_lower()`       | `text`          | Unicode case mapping                                        |
-| `s.replace(from, to)`                | `text`          | every occurrence                                            |
+| `s.replace(old, by = new)`           | `text`          | every occurrence                                            |
 | `s.repeat(n)`                        | `text`          | `n` ≥ 0                                                     |
 | `s.parse_int()`                      | `option(int)`   | RFC-0011 §4.2's rule: `-`? then ASCII digits, fitting `int` |
 | `s.parse_float()`                    | `option(float)` | `-`? digits, `.` and digits optional; no exponent, no `inf` |
@@ -937,19 +1114,68 @@ decide (§20, Q20). Until then the C6 row does not turn ✅ on built-in methods 
 ### 11.1 Building and changing a record
 
 A record is RFC-0008 §2's declaration. In a program it can be built:
-`point(x = 1.0, y = 2.0)`. Every field is given, by name, exactly once, with a value of its type.
-A missing, unknown, repeated or ill-typed field is `MZ0808`, the code RFC-0011 §3 gave record
-literals, so one kind of mistake keeps one code. The record's name is used like a call, and the
-`=` reads as it does in a view attribute, "is set to"; Python's keyword arguments have the same
-shape. Canonical form writes the fields in declaration order (§17).
+`point(x = 1.0, y = 2.0)`. **Every field is given, by name, exactly once, in declaration order,
+with a value of its type** (survey F6). There are no zero values (survey R9, Go's): a field the
+author forgot is an error, never a silent `0` or `""`, and absence is a field of type
+`option(T)` given `none`. The record's name is used like a call, and the `=` reads as it does in
+a view attribute, "is set to", and as a call's labels do (§6.5).
+
+Every problem is `MZ0808`, the code RFC-0011 §3 gave record literals, so one kind of mistake keeps
+one code. Its fixes:
+
+- **Positional construction**, `point(1.0, 2.0)` (Python's dataclass, a C struct initialiser):
+  `exact`, inserting the field names in declaration order, when the count is right.
+- **Fields out of declaration order**: `exact`, reordering them, when every value is a literal,
+  a name or a path; a `guess` otherwise. Values are evaluated as written, and canonical form is
+  declaration order (§17), so the rule is §6.5's, for the same reason.
+- **An unknown field**: RFC-0008 §5.2's nearest-name fix.
+- **A missing field**: no fix, except a `guess` of `name = none` for an `option` field. The
+  survey asked for an `exact` fix (F6), but a value for a field the author left out is the
+  author's choice, and inventing one is R9's zero value by another route (§21).
+- **A repeated or ill-typed field**: no fix.
 
 That makes two spellings of a record value: this one, and RFC-0011's `problem error "x"` in a
 handler. Handlers are not changed here; whether they move to the parenthesised form, with an
 `exact` fix, when they adopt §3's expressions is part of §20 Q14.
 
 A record is a value. `var q = p` copies `p`, and `q.x = 3.0` changes `q` only (§14.1). Assigning
-to a field needs a `var` (`MZ0960`). There is no `with` or spread update: RFC-0001 §4.7 already
-made `...p` a diagnostic (`MZ0106`), and a `var` plus field assignments is the one form.
+to a field needs a `var` (`MZ0960`).
+
+**`p with (x = 3.0)` is a copy of `p` with the named fields replaced** (survey F7, C#'s `with`
+and Java's JEP 468). It is an expression, so it can be returned, bound or passed; `p` is not
+changed. The fields inside the parentheses follow the record literal's rules: names of `p`'s
+record, at least one, each at most once, in declaration order, every other field copied from
+`p`. It is a postfix form at §3.5's level 2, so `p with (x = 0.0).norm()` reads
+`(p with (x = 0.0)).norm()`. Its problems are `MZ0974`: `with` on a value that is not a record
+(no fix), an unknown field (the nearest-name fix), a field named twice (no fix), an empty
+`with ()` (`exact`, deleting it) and fields out of order (`exact` when the values are literals,
+names or paths). JavaScript's spread, `{...p, x: 3.0}`, keeps its code, `MZ0106`, and gains the
+`exact` fix `p with (x = 3.0)`; C#'s `p with { X = 3.0 }` braces are `MZ0937` with the `exact`
+fix to parentheses. A line that starts with `with` (Python's `with open(path) as f:`) is not this
+form: cleanup belongs to the compiler (survey R12), so it is a line no function body can read,
+`MZ0917`, whose `say` says so.
+
+This draft first had no `with`, and made a `var` and field assignments the one way to change a
+record. Both are now in the language, for different jobs: a field assignment changes a `var` in
+place, as a statement, and `with` makes a new value inside an expression, which is what a method
+returning a changed copy needs (`scaled` below). Whether field assignment should then go is the
+owner's (§20, Q29).
+
+**What every record has, with nothing to write** (survey F5). No derive list, no `@dataclass`,
+no `equals` or `toString` to write:
+
+- **Equality**: `a is b` compares every field, in declaration order (§3.3).
+- **A text form**, the debug text: `point(x = 1.0, y = 2.0)` (§3.8), so `print(p)` and `"{p}"`
+  work on every record.
+- **A JSON form**: `p.to_json()` is `text`, an object with the fields in declaration order, as
+  RFC-0011 §4.1 writes a response body (`none` is `null`, an enum is its variant's name). It
+  works on every type with a JSON form (§2), not only records. Reading JSON into a record is
+  P2's (survey F29), so a program can write JSON in M1 and not read it. A `float` that is `nan`
+  or infinite has no JSON form, and encoding one traps (§4.3) until the owner decides §20 Q9.
+
+The survey also lists hashing. A Mzizi map is ordered, never hashed (§9.2), so there is nothing
+to derive; a record is not a map key or set element in M1 (`MZ0964`), because ordering records
+would need a rule this RFC does not need yet.
 
 ### 11.2 Methods
 
@@ -975,10 +1201,34 @@ end
 - **The receiver is `self`, always written, never declared.** `self.x` reads a field; `self` in
   the parameter list (Python's) is `MZ0970` with the `exact` fix deleting it, and TypeScript's
   `this.x` gets the `exact` fix `self.x`. `self` outside a method is `MZ0970`.
-- **A method does not change its receiver.** `self` is a `let`: assigning to `self` or a field of
-  it is `MZ0971`, whose `say` names the form, returning a changed copy (`scaled` above). That
-  keeps a method call a pure read of its receiver, which is what lets the lowering pass it as
-  `&self` (§14.2) and keeps CL-4 out. Mutating methods on records are open (§20, Q6).
+- **A method does not change its receiver, unless it says `changes self`.** In an ordinary
+  method `self` is a `let`: assigning to `self` or a field of it is `MZ0971`, whose `say` names
+  the two forms, returning a changed copy (`scaled` above) or `changes self`, and whose `guess`
+  fix adds `changes self` (a guess, because it changes what callers may do). That keeps an
+  ordinary method call a pure read of its receiver, which is what lets the lowering pass it as
+  `&self` (§14.2) and keeps CL-4 out.
+- **`changes self` marks the method that mutates** (survey F8, Swift's `mutating`):
+
+  ```mz
+  record counter
+    field count: int
+
+    fn bump changes self
+      self.count = self.count + 1
+    end fn bump
+  end
+  ```
+
+  The words follow the signature, where a return type would stand, and a `changes self` method
+  has no return type, so a mutating call never also produces a value. It is called only as a
+  statement, `c.bump()`, on a `var`, as `xs.push(v)` is (§9.2), or, inside another
+  `changes self` method, on `self` or a field of it (`self.inner.bump()`), so mutating methods
+  compose: on a `let` it is `MZ0960` with the `exact` fix `var`, on `self` in a method without
+  `changes self` it is `MZ0971`, and as a value or with a return type it is `MZ0976`, with no fix. So a
+  line that changes a value always starts with that value's name. There is no `inout`
+  parameter: only the receiver can change. It lowers to `&mut self`. This answers §20 Q6 for
+  records, provisionally.
+
 - A method's name may not equal a field's (`MZ0970`), so `p.x` and `p.x()` never both exist.
 - Methods are designed for records wherever records live, and are built for programs first.
   Methods on enums, beside their static columns, are not in M1.
@@ -994,7 +1244,100 @@ is today.
 
 C8's "Done when" asks for "a record has a method; a generic function works for two types; an
 interface is satisfied". Wave 1 meets the first clause only, so **C8 cannot turn ✅ at M1** as the
-tracker defines M1 ("all of Tier 1 ✅"). That conflict is the owner's to resolve (§20, Q8).
+tracker defines M1 ("all of Tier 1 ✅"). That conflict is the owner's to resolve (§20, Q8), and
+§20 Q21 proposes the split: C8 for records and methods in M1, a new row for generics and
+interfaces after it. This RFC does not change the tracker's row.
+
+When they come, the survey's design holds (F25, F26): every type parameter names an interface,
+with no specialisation; an interface is nominal, declared in the record's own block, and a
+missing method is reported at the record with a stub fix. Structural typing, computation in
+types, extension methods and inheritance stay rejected (survey R4–R7).
+
+### 11.4 `always`: invariants checked when a value is built — _survey F33, RFC-0010 §3.3_
+
+```mz
+record span
+  field low: int
+  field high: int
+
+  contract
+    always low <= high
+  end
+end
+```
+
+- **A record's `always` clause holds for every value of it.** It is a `bool` expression of §3
+  over the record's fields, named bare as RFC-0010's subjects are, with literals, operators and
+  built-in methods. It may not call a user `fn` or method or use `try`, so checking it prints
+  nothing and returns nothing (`MZ0975`). RFC-0010's predicate words are §3.3's:
+  `count at_least 0` is `MZ0910` with the `exact` fix `count >= 0`, as in any expression. The
+  `contract` block is last in the record, after its methods.
+- **It is checked after every construction** (a record literal and a `with`), **after every field
+  assignment** from outside the record, **and at the end of every `changes self` method**, not
+  after each line inside one, so a method may pass through a broken state on its way to a good
+  one (Eiffel's rule). A broken invariant **traps** (§4.3): `MZ0991`, naming the record, the
+  clause and the position of the line that built or changed the value, and exit 101.
+- **It is checked in every build.** RFC-0010 §4.3 lowers `always` to `debug_assert!`; in a
+  program that would make a debug and a release build of one program behave differently, which
+  §13.1 rules out. This amends RFC-0010 §4.3 for programs (§20, Q25).
+- **What `mz check` sees, it reports.** A literal construction whose fields are all literals and
+  whose `always` folds to `false` is `MZ0975` at check time, as a constant fault is `MZ0915`.
+- RFC-0010 §3.3 says `always` is never the validation step for data crossing a boundary, and
+  that stands: P2's JSON reader rejects a value that breaks an invariant as it rejects a wrong
+  shape, and the trap is for a program that builds one itself.
+
+### 11.5 Enums with payloads — _survey F10, F11; RFC-0007 D1_
+
+```mz
+enum shape
+  circle(radius: float)
+  rect(width: float, height: float)
+  dot
+end
+
+fn area(s: shape): float
+  match s
+    case circle
+      return 3.14159 * s.radius * s.radius
+    case rect
+      return s.width * s.height
+    case dot
+      return 0.0
+  end
+end fn area
+```
+
+**One `enum` construct holds both static columns and per-value data**, which answers RFC-0007
+D1's open question (§20, Q24). A variant may declare **payload fields** in parentheses after its
+name, typed as a function's parameters are; its columns, if the enum has any, follow as today
+(`circle(radius: float) label "round"`). A columns-only enum is unchanged.
+
+- **Construction is a record literal**: `circle(radius = 1.0)`, or `shape.circle(radius = 1.0)`
+  where the bare name is ambiguous. Every field by name, in order, with `MZ0808` and its fixes
+  (§11.1). A payload variant written bare, with no fields, is `MZ0808`.
+- **A `case` names a variant and never binds a name** (survey F9). Inside `case circle` of
+  `match s`, with `s` a name or a path, `s` is narrowed to that variant and `s.radius` reads its
+  field, as `when x is not none` narrows an option (§8) and as TypeScript narrows a
+  discriminated union. `when s is circle` narrows its branch the same way. Reading a payload
+  field anywhere else is `MZ0973`, with a `guess` fix wrapping the line in `when s is circle`.
+  When the `match` is on a call or another expression, there is nothing to narrow, and the
+  `say` of `MZ0973` names the repair, binding it with `let` first. `case ok <name>` on a result
+  (§12.2) keeps its binding, because a result most often comes straight from a call.
+- `s is circle` with a payload variant on the right is a variant test, ignoring the fields;
+  `a is b` between two `shape` values compares variant and fields.
+- A payload enum has equality, a text form (`circle(radius = 1.0)`, §3.8) and a JSON form
+  (`{"circle": {"radius": 1.0}}`, §2: the shape `result` already has, so one rule covers both).
+  It is not a map key (`MZ0964`).
+- A payload field's type is any type a record field may have. A payload whose type holds its own
+  enum, directly or through `option`, is `MZ0973` in M1: Rust would need a `Box`, and recursive
+  data is a design of its own. Through `list` it is legal, since `Vec` is already indirect.
+- **`<enum>.variants()`** is the list of an enum's variants in declaration order (survey F11,
+  Swift's `allCases`), on an enum with no payload variant (`MZ0973` otherwise, since a payload
+  variant is not a value by itself). The survey names it `all`; this RFC does not, because
+  `xs.all(f)` is a fold (§9.4), and one word would mean two things by receiver.
+
+It lowers to a Rust enum with struct variants, each field owned, and the column accessors of
+RFC-0001 §5 beside it; the narrowed reads lower to the fields `match` binds (§14.2).
 
 ## 12. Errors — _C9, CL-3_
 
@@ -1068,9 +1411,20 @@ end fn total_age
   required (`MZ0930`).
 - **Propagation is the prefix `try`**: `try e` is `e`'s success value, and when `e` is an error it
   returns that error from the enclosing function at once. The enclosing function must return a
-  `result` with the same error type, and `e` must be a `result` (`MZ0951` otherwise, with no fix:
-  the repair is a signature change the author has to choose). There is no conversion between
-  error types in M1.
+  `result` with the same error type, and `e` must be a `result` (`MZ0951` otherwise). When the
+  error types differ, the conversion is written, never implicit: see `via` below.
+- **`try e via f` converts the error on its way out** (survey F15). `f` is a named `fn` of the
+  program taking `e`'s error type and returning the enclosing function's error type, so
+  `try parse_age(raw) via age_problem` returns `error(age_problem(p))` when `parse_age` fails
+  with `p`. Rust's `From` conversions happen out of sight, at the `?`; Go's `fmt.Errorf` wraps
+  by hand at every call. `via` is the one visible form, and `f` is named for the reason §6.4
+  gives. `via` belongs to its `try` and binds with it at §3.5's level 3, so
+  `try g() via f + 1` reads `(try g() via f) + 1`. `MZ0951`'s fix, when the error types differ,
+  is `via <f>`: `exact` when exactly one `fn` in the program has that signature, a `guess` when
+  several do, and absent when none does (the `say` names the signature to declare). Other
+  misuses of `via` are `MZ0955`: `via` without `try`, an `f` that is not a named `fn` or whose
+  signature does not fit (no fix), and `via` where the two error types already agree (`exact`,
+  deleting `via f`). The word is open (§20, Q27).
 - `try` is Zig's and Swift's word for exactly this. Rust's postfix `?` is `MZ0952` with the
   `exact` fix moving it to a prefix `try`: `?` is a symbol, and the lexer already reserves it to
   say "optional types are `option(T)`" (`MZ0104`). The collision is with TypeScript's and
@@ -1096,7 +1450,10 @@ A `let` may hold a result, so that the `match` can follow on its own line; the `
 value that must be matched or propagated before its block ends.
 
 `MZ0950`'s fix is a `guess` inserting `try` where the enclosing function returns a result with the
-same error type, and absent otherwise: propagating changes what the function does, so it is never
+same error type (or `try … via f` where §12.2's `via` fix applies). Otherwise it is a `guess`
+inserting a `match` stub on its own line, with `case ok <name>` and `case error <name>` and
+empty bodies for the author to fill (survey F16), which the next `mz check` reports until they
+are filled. Propagating or handling changes what the function does, so neither fix is ever
 `exact`. A returned result of the function's own type is not `MZ0950` at all (§12.1), so the fix
 never offers `return try r`. This is C9's "an unhandled error is a diagnostic". `.unwrap()` and `.expect(…)` are
 `MZ0952` with no fix: there is no way to turn an error into a halt on purpose, because a trap is
@@ -1242,14 +1599,21 @@ remedy, and is not in M1 (§20, Q15). Nothing in this RFC claims the lowered cod
 | `program p`                                       | a package `mz-p`: `Cargo.toml` (edition 2024, no dependencies, its own `[workspace]`) and `src/main.rs`                                                                      |
 | `fn main`                                         | `fn mz_main()` (or `-> Result<(), E>`), run by the generated `main` of §13.1 on a 64 MiB thread                                                                              |
 | `fn f(a: int): int`                               | `fn f(a: i64) -> i64`                                                                                                                                                        |
+| `f(a, b = e)`, a default left out                 | `f(a, e, <the default's literal>)`: labels erased, arguments already in declaration order, each omitted default written in (§6.5)                                            |
 | `int`, `float`, `bool`, `text`                    | `i64`, `f64`, `bool`, `String`                                                                                                                                               |
 | `list(T)`, `option(T)`                            | `Vec<T>`, `Option<T>`                                                                                                                                                        |
 | `map(K, V)`, `set(K)`                             | `std::collections::BTreeMap<K, V>`, `BTreeSet<K>`                                                                                                                            |
 | `result(T, E)`, `result(none, E)`                 | `Result<T, E>`, `Result<(), E>`                                                                                                                                              |
 | `enum` with columns                               | a fieldless `enum` and one `match` accessor per column (RFC-0001 §5)                                                                                                         |
 | `record`                                          | a `struct` with the same fields in the same order                                                                                                                            |
-| record methods                                    | an `impl` block; each method takes `&self`                                                                                                                                   |
-| `point(x = 1.0, y = 2.0)`                         | `Point { x: 1.0, y: 2.0 }`                                                                                                                                                   |
+| record methods                                    | an `impl` block; each method takes `&self`, and a `changes self` method `&mut self`                                                                                          |
+| `point(x = 1.0, y = 2.0)`                         | `Point { x: 1.0, y: 2.0 }`, then the record's `always` check when it has one (§11.4)                                                                                         |
+| `p with (x = e)`                                  | `{ let mut mz_w = p.clone(); mz_w.x = e; mz_w }`: the base first, then each field in order (§6.3), then the `always` check on `mz_w`                                         |
+| a record's `always` clauses                       | one generated `fn mz_always(&self, at: &MzAt)` that calls `mz_trap` when a clause is false, called at each site §11.4 lists                                                  |
+| `v.to_json()`                                     | a generated writer per type, with no crate: `mz_json(&v)` (§11.1)                                                                                                            |
+| an `enum` with payloads                           | a Rust `enum` with struct variants, `Circle { radius: f64 }`, and the column accessors beside it                                                                             |
+| `case circle` in `match s`, reading `s.radius`    | `match s.clone() { Shape::Circle { radius: mz_p1 } => { … } … }`, every narrowed read of `s.radius` lowered to `mz_p1.clone()`, so `s` itself stays whole inside the arm     |
+| `shape.variants()`                                | an associated `const MZ_VARIANTS: [Shape; n]` in `impl Shape`, so each enum has its own; `Shape::MZ_VARIANTS.to_vec()`                                                       |
 | `let` / `var` / assignment                        | `let` / `let mut` / `=`                                                                                                                                                      |
 | `a + b` on `int`                                  | `mz_add(a, b, &AT_12_9)`: `checked_add`, and a trap when it is `None` (§14.3)                                                                                                |
 | `a + b` on `float`                                | `a + b`                                                                                                                                                                      |
@@ -1266,22 +1630,28 @@ remedy, and is not in M1 (§20, Q15). Nothing in this RFC claims the lowered cod
 | `when p is none … else …`, `p` a name or path     | `match p.clone() { None => { … } Some(mut mz_n1) => { … } }`: inside the narrowed branch, every read of `p` lowers to `mz_n1`                                                |
 | `when p is not none … [else …]`                   | `if let Some(mut mz_n1) = p.clone() { … } else { … }`, reads of `p` again lowered to `mz_n1`                                                                                 |
 | a guard, `when p is none` that exits              | `let Some(mut mz_n1) = p.clone() else { <the guard's body, which ends in return, break or continue> };`, then as above to the block's end                                    |
-| `x.or(d)`                                         | `{ let mz_d = <d>; match x.clone() { Some(mz_v) => mz_v, None => mz_d } }`: `d` is evaluated first; `mz_` names cannot collide (§14.2)                                       |
+| `x otherwise d`                                   | `match x.clone() { Some(mz_v) => mz_v, None => <d> }` (`=> Some(mz_v)` when `d` is an `option(T)`): `d` is evaluated only in the `None` arm (§8.1)                           |
 | `match` on an enum or `bool`                      | `match`, with no `_` arm when the cases are exhaustive, so `rustc` re-checks exhaustiveness                                                                                  |
 | `match` on `int` / `text`                         | `match` / `match s.as_str()`, with `else` as `_`                                                                                                                             |
 | `match` on a result                               | `match r { Ok(name) => …, Err(name) => … }`                                                                                                                                  |
 | `for each x in xs`                                | `for x in xs.clone()`                                                                                                                                                        |
-| `range(a, b)` as a loop source                    | `a..b`, with no list built                                                                                                                                                   |
+| `range(a, to = b)` as a loop source               | `a..b`, with no list built                                                                                                                                                   |
 | `while` / `break` / `continue`                    | `while` / `break` / `continue`                                                                                                                                               |
 | `return v` in a result function                   | `return Ok(v);`, when `v` has the success type                                                                                                                               |
 | `return r`, `r` of the function's own result type | `return r;`: passed through, never wrapped (§12.1)                                                                                                                           |
 | `return error(e)`                                 | `return Err(e);`                                                                                                                                                             |
 | `try e`                                           | `e?`                                                                                                                                                                         |
-| `xs[i]`, `m[k]`, `s[i]`                           | generated helpers that return the element or trap, never Rust indexing                                                                                                       |
+| `try e via f`                                     | `e.map_err(f)?`                                                                                                                                                              |
+| `xs[i]`, `m[k]`                                   | `usize::try_from(i).ok().and_then(\|u\| xs.get(u)).cloned()`, `m.get(&k).cloned()`: an `Option`, never Rust indexing                                                         |
+| `xs[i] = v`                                       | a generated helper that replaces the element or traps (§4.3)                                                                                                                 |
 | `xs.map(f)`                                       | `xs.iter().cloned().map(f).collect::<Vec<_>>()`                                                                                                                              |
 | `xs.filter(f)`                                    | `xs.iter().cloned().filter(\|x\| f(x.clone())).collect::<Vec<_>>()`: Rust's `filter` passes `&T`                                                                             |
-| `xs.fold(init, f)`                                | `xs.iter().cloned().fold(init, f)`                                                                                                                                           |
-| `s.length()`, `s[i]`, `s.slice(a, b)`             | `chars()`-based helpers, counting scalar values (§10)                                                                                                                        |
+| `xs.fold(init, step = f)`                         | `xs.iter().cloned().fold(init, f)`                                                                                                                                           |
+| `count`, `any`, `all`, `first`                    | `iter()` with `filter(…).count()` (as `i64`), `any`, `all`, `find(…).cloned()`, each calling `f` on a clone                                                                  |
+| `xs.sum()`                                        | a loop through the `int` trap helper; on `float`, a loop adding from `0.0`, never `iter().sum()`, whose empty sum is `-0.0` (checked with `rustc` 1.97)                      |
+| `xs.sort_by(f)`, `xs.group_by(f)`                 | a clone sorted with the stable `sort_by_key`; a `BTreeMap` built by pushing in order                                                                                         |
+| `a.wrapping_add(b)` and the rest                  | `i64::wrapping_add` and the rest                                                                                                                                             |
+| `s.length()`, `s[i]`, `s.slice(a, to = b)`        | `chars()`-based helpers, counting scalar values (§10); `s[i]` and `slice` return an `Option`                                                                                 |
 | `s.find(t)`                                       | a helper walking `s.char_indices()`, testing `s.get(b..)` with `starts_with`; it returns the scalar index, never `str::find`'s byte offset                                   |
 | `x.pow(n)` on `int`                               | a helper over `checked_pow`, which takes a `u32`: it traps on `n < 0` or overflow, and above `u32::MAX` answers `x` of `0`, `1` and `-1` by rule (every other `x` overflows) |
 | `x.pow(n)` on `float`                             | `x.powf(n as f64)`: `as` from `i64` to `f64` rounds to nearest, which is `to_float` (§4.4)                                                                                   |
@@ -1392,14 +1762,14 @@ fills, the next family is `MZ10xx`.
 | -------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `MZ0901` | `mz check`    | a `program` line without a name, or a block a program cannot hold (`view`, `prop`, `route`, `emit`)                                                                                                                                                                            |
 | `MZ0902` | `mz check`    | no `fn main`, a second one, `main` with parameters, or a return type other than nothing or `result(none, E)`                                                                                                                                                                   |
-| `MZ0903` | `mz check`    | a malformed signature: `->` (`exact` `:`), `def` / `function` / `func` (`exact` `fn`), `()` on no parameters (`exact`), `: none` / `: void` (`exact`), an untyped parameter, a default value                                                                                   |
+| `MZ0903` | `mz check`    | a malformed signature: `->` (`exact` `:`), `def` / `function` / `func` (`exact` `fn`), `()` on no parameters (`exact`), `: none` / `: void` (`exact`), an untyped parameter, a non-literal default or one on the first parameter, a parameter with two names                   |
 | `MZ0904` | `mz check`    | two `fn`s, or a `fn` and a record or enum, with one name; a parameter named twice                                                                                                                                                                                              |
-| `MZ0905` | `mz check`    | a call with the wrong number or types of arguments, or a named argument                                                                                                                                                                                                        |
+| `MZ0905` | `mz check`    | a call with too many arguments, a missing argument that has no default, or an argument of the wrong type; the `say` quotes the signature                                                                                                                                       |
 | `MZ0906` | `mz check`    | a path through a function with a return type that reaches `end fn` without `return`; `exact` fix when the last line is a value of that type                                                                                                                                    |
 | `MZ0907` | `mz check`    | a statement after `return`, `break` or `continue` that can never run; `exact` fix deletes it                                                                                                                                                                                   |
 | `MZ0908` | `mz check`    | a `return` that does not fit its function: a value where none is returned, none where one is, or the wrong type                                                                                                                                                                |
 | `MZ0909` | `mz check`    | a `fn` used as a value outside `map` / `filter` / `fold`, a function argument whose signature does not fit, or a lambda                                                                                                                                                        |
-| `MZ0910` | `mz check`    | an operator spelt from another language: `==` `===` `!=` `!==` `&&` `\|\|` `!`, `x not in y`, `not a is b`, `at_least` in an expression — `exact` fixes                                                                                                                        |
+| `MZ0910` | `mz check`    | an operator spelt from another language: `==` `===` `!=` `!==` `&&` `\|\|` `!`, `x not in y`, `not a is b`, `at_least` in an expression — `exact` fixes; `a // b` (`guess` `a / b`, §4.1). `\|\|` or `or` with an option on the left is `MZ0938` instead, never both           |
 | `MZ0911` | `mz check`    | a comment Mzizi lacks: `//`, `#`, `/* … */` on one line — `exact` fix `##`                                                                                                                                                                                                     |
 | `MZ0912` | `mz check`    | operands of the wrong type: `int` with `float` (`exact` on a literal), `+` on text (`exact` to interpolation on names and literals), unlike types compared                                                                                                                     |
 | `MZ0913` | `mz check`    | a chained comparison (`guess`), or `and` mixed with `or` without parentheses (`exact`)                                                                                                                                                                                         |
@@ -1416,6 +1786,8 @@ fills, the next family is `MZ10xx`.
 | `MZ0924` | `mz check`    | a warning: a `var` never reassigned or mutated — `exact` fix `let`                                                                                                                                                                                                             |
 | `MZ0925` | `mz check`    | a binding form from another language: `const` `val` `auto` (`let`), `let mut` `mut` (`var`), `x := e` — `exact`                                                                                                                                                                |
 | `MZ0926` | `mz check`    | a binding with no value                                                                                                                                                                                                                                                        |
+| `MZ0927` | `mz check`    | a call's labels (§6.5): a positional argument after the first (`exact`), `name: v` (`exact` `name = v`), a label on the first argument (`exact` delete), an unknown label (nearest name), labels out of order, a label twice                                                   |
+| `MZ0928` | `mz check`    | a `let` or `var` nothing reads, or a `use` line nothing needs (§5.1): the fix deletes the binding and every assignment to it, `exact` when each deleted value is a literal, name, path or bracket literal, a `guess` otherwise. Parameters and loop bindings are exempt        |
 | `MZ0930` | `mz check`    | a `match` that misses a case: enum variants (named), `ok` or `error`, or `else` on `int` / `text`                                                                                                                                                                              |
 | `MZ0931` | `mz check`    | a case that can never be reached: listed twice, after `else`, or `else` when every variant is covered (`exact` fix deletes it)                                                                                                                                                 |
 | `MZ0932` | `mz check`    | a `when` or `match` used as a value where it cannot be, without `else` or exhaustiveness, with a branch that is not one value line, or with branches of different types                                                                                                        |
@@ -1424,39 +1796,53 @@ fills, the next family is `MZ10xx`.
 | `MZ0935` | `mz check`    | `break` or `continue` outside a loop                                                                                                                                                                                                                                           |
 | `MZ0936` | `mz check`    | an `else when` chain over one enum's variants (§7.1, CL-8): `guess` fix to `match`                                                                                                                                                                                             |
 | `MZ0937` | `mz check`    | block punctuation from another language: a trailing `:` or `{`, a `}` (`exact`: the closer the open block needs), `} else {`                                                                                                                                                   |
-| `MZ0950` | `mz check`    | an unhandled `result`: discarded, used as its success type, printed or compared, returned where the type differs; a result inside a result; `guess` fix inserts `try`                                                                                                          |
-| `MZ0951` | `mz check`    | `try` that cannot propagate: not in a result function, a different error type, or not on a result                                                                                                                                                                              |
+| `MZ0938` | `mz check`    | a default spelt from another language: `??`, `.or(d)`, `.unwrap_or(d)`, `.get_or(d)`, `or` / `\|\|` after an option (`exact` `otherwise`); `otherwise` after a value that is not an option (`exact` delete) (§8.1)                                                             |
+| `MZ0939` | `mz check`    | an option escape hatch the survey rejected: `x?.f`, a force-unwrap `x!`, `.unwrap()` or `.expect(…)` on an option; no fix, the `say` names `when x is not none` and `otherwise`                                                                                                |
+| `MZ0950` | `mz check`    | an unhandled `result`: discarded, used as its success type, printed or compared, returned where the type differs; a result inside a result; `guess` fix inserts `try` (or `try … via f`), or else a `match` stub                                                               |
+| `MZ0951` | `mz check`    | `try` that cannot propagate: not in a result function, a different error type (fix `via <f>`: `exact` when one `fn` fits, `guess` when several), or not on a result                                                                                                            |
 | `MZ0952` | `mz check`    | an error idiom from another language: `Ok(v)` / `ok(v)` (`v`), `Err(e)` (`error(e)`), `throw` / `raise`, postfix `?` (`try`) — `exact`; a `try` block, `.unwrap()`, `.expect()` with no fix                                                                                    |
 | `MZ0953` | `mz check`    | `error(e)` outside a result function, or with an `e` of the wrong type; a bare `ok` or `error` variant in a result function (`exact`: qualify it)                                                                                                                              |
 | `MZ0954` | `mz check`    | `return try r` with `try r` the whole value and `r` of the function's own result type: `exact` fix deletes `try` (§12.1)                                                                                                                                                       |
+| `MZ0955` | `mz check`    | a misused `via` (§12.2): without `try`, naming something that is not a `fn`, a `fn` whose signature does not fit; `via` where the error types already agree (`exact` delete)                                                                                                   |
 | `MZ0960` | `mz check`    | a mutation of something that is not a `var` — `exact` fix `var` when it is a `let`                                                                                                                                                                                             |
 | `MZ0961` | `mz check`    | a bracket literal that cannot be typed: `[]` with no context, mixed element types, entries mixed with elements, a repeated map key                                                                                                                                             |
 | `MZ0962` | `mz check`    | an operation spelt another way: `len(x)`, `.len()`, `.size()`, `.length`, `.append`, `.strip()`, `str(x)`; `.contains` on a collection; `t in s` on text (`s.contains(t)`); `is []`, `length() is 0`, `.is_empty()` (`is none`) — `exact` on names and paths                   |
 | `MZ0963` | `mz check`    | a tuple — name a record                                                                                                                                                                                                                                                        |
 | `MZ0964` | `mz check`    | a map key or set element type with no order                                                                                                                                                                                                                                    |
 | `MZ0970` | `mz check`    | a method declaration problem: `self` as a parameter (`exact`), `this.` (`exact` `self.`), a method named like a field, `self` outside one                                                                                                                                      |
-| `MZ0971` | `mz check`    | assignment to `self` or a field of it in a method                                                                                                                                                                                                                              |
+| `MZ0971` | `mz check`    | assignment to `self` or a field of it, or a `changes self` call on either, in a method without `changes self`; `guess` fix adds `changes self` (§11.2)                                                                                                                         |
 | `MZ0972` | `mz check`    | a declaration deferred past M1: type parameters, `class`, `interface`, `trait`, `impl`                                                                                                                                                                                         |
+| `MZ0973` | `mz check`    | an enum payload misused (§11.5): a payload field read where the variant is not narrowed (`guess`: wrap in `when s is <variant>`), a payload that holds its own enum, `variants()` on an enum with payloads                                                                     |
+| `MZ0974` | `mz check`    | a misused `with` (§11.1): not on a record, an unknown field (nearest name), a field named twice, `with ()` (`exact` delete), fields out of order (`exact` on literals, names, paths)                                                                                           |
+| `MZ0975` | `mz check`    | a record's `always` clause that is not a `bool`, calls a user `fn` or method, or uses `try`; a literal construction its `always` folds to `false` (§11.4)                                                                                                                      |
+| `MZ0976` | `mz check`    | a `changes self` method with a return type, or called where a value is expected (§11.2)                                                                                                                                                                                        |
 | `MZ0980` | `mz check`    | a print spelt from another language: `print(a, b)` (`exact` to one interpolated text), `console.log`, `println!`, `fmt.Println`, `puts`, `print x`                                                                                                                             |
 | `MZ0990` | `mz run`      | the lowered code did not compile: a compiler bug, reported with the `.mz` construct (not built yet: it names the program, §18.6) and `rustc`'s first message                                                                                                                   |
-| `MZ0991` | `mz run`      | a trap (§4.3): integer overflow, division by zero, a negative `int` exponent, an index or key out of range, a float out of `int`'s range                                                                                                                                       |
+| `MZ0991` | `mz run`      | a trap (§4.3): integer overflow, division by zero, a negative `int` exponent, `xs[i] = v` out of range, a float out of `int`'s range, a broken `always` invariant, a non-finite float in `to_json()`                                                                           |
 | `MZ0992` | `mz run`      | `main` returned an error (§12.5)                                                                                                                                                                                                                                               |
 | `MZ0993` | `mz run`      | the runtime failed: the lowered program panicked, or its thread could not start; exit 70 (§13.1)                                                                                                                                                                               |
 | `MZ0994` | `mz contract` | an in-process evaluation spent its 10,000,000 steps, or went 10,000 calls deep, without finishing (§15.1)                                                                                                                                                                      |
 
-`MZ0927`–`MZ0929`, `MZ0938`–`MZ0949`, `MZ0955`–`MZ0959`,
-`MZ0965`–`MZ0969`, `MZ0973`–`MZ0979`, `MZ0981`–`MZ0989` and `MZ0995`–`MZ0999` are left free, for
-the waves to claim within their group.
+`MZ0929`, `MZ0940`–`MZ0949`, `MZ0956`–`MZ0959`, `MZ0965`–`MZ0969`, `MZ0977`–`MZ0979`,
+`MZ0981`–`MZ0989` and `MZ0995`–`MZ0999` are left free, for the waves to claim within their
+group. The survey amendment (§21) took `MZ0927`, `MZ0928`, `MZ0938`, `MZ0939`, `MZ0955` and
+`MZ0973`–`MZ0976` from this list.
+
+The survey amendment widens `MZ0962` without changing its row: `.get(i)` and `.get(k)` (`exact`
+`xs[i]`, §3.7), `count()` with no argument (`exact` `length()`), and on a list `find(f)`,
+`some(f)`, `every(f)` and `sorted` (`exact` to §9.4's folds). `MZ0927`'s reordering fix is `exact`
+only when every argument is a literal, a name or a path (§6.5).
 
 **Existing codes reused, so one kind of mistake keeps one code wherever it is made:** `MZ0101`
 (a camelCase name, now also in function bodies), `MZ0103` (an `int` literal too large, including `int`'s minimum written as one, §3.1), `MZ0104`
 (a character Mzizi does not use, for what is left after the operators above), `MZ0105` (a type
-spelt with symbols), `MZ0106` (a spread), `MZ0407` (`if`, now also in function bodies), `MZ0701`
+spelt with symbols), `MZ0106` (a spread, with the `exact` fix `p with (…)` in a program, §11.1), `MZ0407` (`if`, now also in function bodies), `MZ0701`
 (an unknown type), `MZ0704` (a duplicate record, field or enum), `MZ0207` and `MZ0208` (an `end fn` with the wrong name, or a bare `end` closing a `fn`, §1), `MZ0308` (a record body line that is neither a field nor, in a program, a method), `MZ0707` (a name bound nowhere),
 `MZ0708` (no such field, variant, column, **or method**: the nearest-name fix covers methods too),
 `MZ0710` (an un-narrowed option, now also in `print` and `{…}`), `MZ0713` (shadowing, now also in function bodies, §5.3), `MZ0711` (a value of the wrong kind, including `for each` over
 a map), `MZ0712` (a condition that is not a `bool`: truthiness), `MZ0714` (a malformed `{…}`),
-`MZ0808` (a record literal), `MZ0613` (no evaluated contract clause), and RFC-0010's contract
+`MZ0808` (a record literal or a payload variant's, with §11.1's fixes), `MZ0964` (also a
+`sort_by` key or a record as a key), `MZ0613` (no evaluated contract clause), and RFC-0010's contract
 codes.
 
 All follow RFC-0001 §4: `say` at most 200 characters and quoting the source, deterministic order,
@@ -1491,13 +1877,17 @@ not exist yet, so this is the form `mz fmt` will produce and that examples and g
 | an assignment      | `x = e`, `x.f = e`, `xs[i] = e`                                                                              |
 | binary operators   | one space either side; unary `-` with no space; `not` and `try` followed by one space                        |
 | parentheses        | only where precedence needs them, and always where `and` meets `or`                                          |
-| calls and methods  | `f(a, b)`, `x.m(a)`: no space before `(`, one after each `,`                                                 |
+| calls and methods  | `f(a, b = e)`, `x.m(a)`: no space before `(`, one after each `,` and around `=`                              |
+| a default          | `port: int = 80`, one space either side of `=`                                                               |
+| `with`             | `p with (x = 1.0)`, one space either side of `with`                                                          |
+| `otherwise`        | `x otherwise d`, one space either side of `otherwise`                                                        |
+| `changes self`     | `fn bump changes self`, after the parameters, where a return type would stand                                |
 | literals           | `[1, 2, 3]`, `["a": 1]`, `[]`; floats with no trailing zeros past the first (`1.0`, `1.5`, not `1.50`)       |
 | a record value     | `point(x = 1.0, y = 2.0)`, fields in declaration order                                                       |
 | `when`             | `when`, `else when`, `else` and `end` at one indent; branch bodies two deeper                                |
 | `match`            | `match` and `end` at one indent; `case` and `else` two deeper; case bodies two deeper again                  |
 | a loop             | `for each x in e` / `while c`, body two deeper, bare `end`                                                   |
-| a record's methods | after its fields, one blank line between them                                                                |
+| a record's methods | after its fields, one blank line between them; its `contract` (with `always`) last                           |
 | a contract         | last inside its `fn`, or last inside the program                                                             |
 | text               | `"…"` with the escapes of §3.1; `{e}` with no spaces inside the braces                                       |
 
@@ -1552,11 +1942,34 @@ stay 🟡 or 📝 until Tier 1 lowers whole.
 | C1 + C5 | `float` and §4 whole, interpolation of any expression, §3.8's text forms, the rest of §3.5, `MZ0911`, `MZ0913`, `MZ0914`, `MZ0918`                                                             | C1: an example computes and prints a value from an expression, and `mz check` types it. C5: `float` exists, and tests pin overflow (exit 101, `MZ0991`), integer and float division by zero, and `nan` |
 | C4      | `else when`, `match` and exhaustiveness, the variant-chain check (`MZ0936`), `when` / `match` as values, `for each` and `while` in function bodies, `break`, `continue`, early `return`        | all four work in a function body, and a non-exhaustive `match` is `MZ0930`; `MZ0930`–`MZ0937` each have a test                                                                                         |
 | C9      | `result`, `error(…)`, `try`, `case ok` / `case error`, `main` returning a result, `MZ0950`–`MZ0954`, `MZ0992`. Rebases on C4 for `match`                                                       | a function returns an error that its caller handles with `match` and another propagates with `try`, and an unhandled error is `MZ0950`                                                                 |
-| C7      | bracket literals, `map`, `set`, indexing, §9.2's operations, `in`, `map` / `filter` / `fold`, `range`, `MZ0909`, `MZ0960`–`MZ0964`; `MZ0105` moves to the type parser with its tests unchanged | `map(K, V)` exists, and an example builds a list and a map and transforms them in a function                                                                                                           |
-| C8      | record construction (`MZ0808`), methods, `self`, `MZ0970`–`MZ0972`                                                                                                                             | **a record has a method**. The row stays 🟡: its generic-function and interface clauses are deferred (§11.3, §20 Q8)                                                                                   |
+| C7      | bracket literals, `map`, `set`, option indexing (§3.7), §9.2's operations, `in`, `map` / `filter`, §9.4's eight folds, `range`, `MZ0909`, `MZ0960`–`MZ0964`; `MZ0105` moves to the type parser | `map(K, V)` exists, and an example builds a list and a map and transforms them in a function                                                                                                           |
+| C8      | §11 whole: construction (`MZ0808`), `with`, equality, text and JSON, methods, `self`, `changes self`, `always`, enum payloads and `variants()`, `MZ0970`–`MZ0976`. Rebases on C4 for `match`   | **a record has a method**. The row stays 🟡: its generic-function and interface clauses are deferred (§11.3; §20 Q8, Q21)                                                                              |
+
+C7's tests also show that `xs[i]` out of range is `none` and each fold on an empty and a non-empty
+list; `MZ0105`'s tests stay unchanged. C8's also show that a missing field is `MZ0808`, that `with`
+leaves its source unchanged, and that a broken `always` exits 101.
 
 All five touch `expr.rs`. The order they merge in is the owner's; each rebases on whatever merged
 before it, and none rewrites another's codes.
+
+**C7 and C8 are built after the survey amendment (§21)**, so their pull requests build the
+amended design directly. Rows that were built, or in flight, before it take the amendment as
+follow-up pull requests, each on top of its row's work, so that no in-flight branch has to
+change course:
+
+| Follow-up   | Builds                                                                                                                                                                                     | Done when, and its test                                                                                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| C3 labels   | §6.5's labels and literal defaults, `MZ0927`; `MZ0903` and `MZ0905` lose Wave 0's "a named argument" text                                                                                  | a call with a default left out and one with labels both run; `mz fix` turns `area(3.0, 4.0)` into `area(3.0, height = 4.0)`, and the result checks clean                                               |
+| C2 unused   | `MZ0928`, with its `exact` and `guess` deletions                                                                                                                                           | an unread `let` is `MZ0928`, `mz fix` deletes it, and an unread loop binding or parameter is not reported                                                                                              |
+| C4 options  | §8 whole: `option(T)` in function bodies, `when x is not none`, the guard that narrows the rest of its block, `otherwise` (§8.1), `MZ0938`, `MZ0939`; the draft's `x.or(d)` is never built | a guard `when x is none … return … end` narrows `x` for the rest of its block; `otherwise` evaluates its right side only on `none` (a test with a trapping default); and `x ?? d` gets the `exact` fix |
+| C9 `via`    | `try … via f`, `MZ0955`, `MZ0951`'s `via` fix and `MZ0950`'s `match` stub                                                                                                                  | a function propagates an error of another type through `via`, and `mz fix` inserts `via` when one `fn` fits                                                                                            |
+| C5 wrapping | `wrapping_add`, `wrapping_sub`, `wrapping_mul`, and `a // b` as `MZ0910`                                                                                                                   | the three wrap at `int`'s limits without a trap                                                                                                                                                        |
+
+Where the row's own pull request has not opened when this amendment is accepted, it builds the
+follow-up itself instead. No committed example calls a function with two or more arguments
+(`examples/hello.mz` and `examples/fib.mz` were checked), so the C3 follow-up changes no example;
+the tests in `compiler/tests/program.rs` that call `add(a: int, b: int)` positionally move to
+labels in that pull request.
 
 ### 18.3 Wave 2
 
@@ -1650,8 +2063,12 @@ in `compiler/tests/program.rs`; nothing measured.
   (`LANGUAGE-TRACKER.md`, "The measurement"), and nothing has run. Each `exact` fix for a prior's
   idiom removes a round trip by design; whether it helps a model is the measurement.
 - That the lowered code is fast, or that value semantics costs nothing (§14.1).
-- That traps are the right answer for overflow, division by zero and out-of-range indexing. They
-  are this design's answer, and §20 Q2 asks the owner.
+- That traps are the right answer for overflow, division by zero, an assignment out of range and
+  a broken invariant. They are this design's answer, and §20 Q2 asks the owner.
+- That the survey's features help a model write Mzizi. The survey (§21) records what ten
+  languages chose and what failure modes were reported for them; its measured findings were
+  measured on those languages, not on Mzizi, and none of the amendments has been tried by a
+  model.
 - That the evaluator and the lowering agree beyond the cases CI runs both on (§15.3).
 
 ## 20. Open questions for the owner
@@ -1671,13 +2088,15 @@ owner's yes, no or change before the wave that builds it.**
    today: move them to the echo with an `exact` fix, or keep two closers for one construct?
 5. **Equality as `is`.** `is` and `is not`, with `==` an `exact`-fixed `MZ0910` (§3.3), rather
    than adding `==`.
-6. **Mutability.** `let` and `var`, with assignment to a `var` only, and methods that cannot
-   change `self` (§5.1, §11.2). Should a method be able to change its receiver on a `var`?
+6. **Mutability.** `let` and `var`, with assignment to a `var` only (§5.1). The survey amendment
+   answers the second half provisionally: a method changes its receiver only when it says
+   `changes self`, is called as a statement, and only on a `var` (§11.2). Accept, or keep every
+   method read-only?
 7. **No lambdas in M1.** `map`, `filter` and `fold` take a named `fn` (§6.4). Add a lambda form
    for M2, or never?
-8. **C8 and M1.** C8's "Done when" includes a generic function and an interface, which the owner
-   deferred past M1. Split C8 into a methods row (in M1) and a generics row (after it), or change
-   M1's definition from "all of Tier 1 ✅"?
+8. **C8 and M1.** Q21 makes this a concrete proposal. C8's "Done when" includes a generic function
+   and an interface, which the owner deferred past M1. Split C8 into a methods row (in M1) and a
+   generics row (after it), or change M1's definition from "all of Tier 1 ✅"?
 9. **Map and set order.** Key order (§9.2), lowering to `BTreeMap`, rather than insertion order,
    which needs a crate. And what JSON form a non-finite `float` takes (§2).
 10. **Integer division.** Truncation toward zero (§4.1), Rust's rule, against Python's floor.
@@ -1713,8 +2132,107 @@ owner's yes, no or change before the wave that builds it.**
 19. **`map`, `filter` and `fold` beside loops.** They are a second form for what `for each` and
     `push` already do, the iterator-chain vs loop duality RFC-0001 §1.2 excluded (§9.3). Keep
     both in M1, as this RFC does, or keep loops only and leave the three to P2, which would
-    leave C7's "map, filter, fold" unmet in M1?
+    leave C7's "map, filter, fold" unmet in M1? §9.4's named folds widen the same duality
+    (`xs.count(f)` beside a counting loop), so the answer covers them too.
 20. **C6 and P2.** C6's "Done when" says the text operations exist "in the standard library (P2)
     with tests". §10 builds them as built-in methods with tests, before P2 exists. Do built-in
     methods meet C6, or does C6 wait for P2? If the first, the tracker's wording should change
     to say so, by the owner's decision, before C6 turns ✅.
+21. **Split C8.** Q21 to Q29 come from the survey amendment (§21); this one is the concrete
+    proposal Q8 asks for. The owner deferred generics ("methods for now", issue #69), and C8's
+    "Done when" still names a generic function and an interface, so C8 cannot turn ✅ in M1 and M1
+    ("all of Tier 1 ✅") cannot be reached. Proposed: C8 becomes "**Records and methods**", Done
+    when "a record is built by field name and copied with `with`; a record has a method; a broken
+    `always` invariant is reported", in M1; and a new row, "**Generics and interfaces**", Done when
+    "a generic function works for two types; an interface is satisfied", outside Tier 1 and after
+    M1, carrying survey F25 and F26. This RFC does not edit `LANGUAGE-TRACKER.md`; the owner's
+    answer does, in its own pull request.
+22. **Indexing returns an option** (§3.7, survey F2). This reverses the draft's trapping `xs[i]`
+    and drops `.get`. The cost is an `otherwise` or a guard wherever the author knows the index is
+    in range, the commonest case in loops over `range(0, to = xs.length())`. Accept, or keep the
+    draft's two forms?
+23. **Labels on every call** (§6.5, survey F3). Every argument after the first is labelled,
+    built-ins included (`range(0, to = n)`, `xs.fold(0, step = add)`), and labels follow the
+    declaration order. A two-argument call is longer than in any incumbent but Swift. Accept;
+    exempt built-ins; or allow labels in any order and give up a reformat that never changes
+    evaluation order?
+24. **Enum payloads** (§11.5, RFC-0007 D1). One `enum` construct for columns and payloads; a
+    `case` narrows instead of binding; JSON as `{"variant": {…}}`. Accept, or keep payloads
+    out of M1 and leave D1 open?
+25. **`always` in every build** (§11.4). This amends RFC-0010 §4.3, which checks `always` in
+    debug builds only, and makes a broken invariant a trap, which Q2's question about traps
+    covers too. Accept for programs, and should services follow?
+26. **The fold set** (§9.4). Closed at the survey's eight. `min`, `max`, a key-less `sort` and a
+    descending sort are not in it, so `xs.sort_by(f)` needs a key `fn` even on `list(int)`. Add
+    any of them, or keep the eight?
+27. **`via` and where `try` may stand** (§12.2). `via` names an error conversion; is the word
+    right? And the survey (its §4.1 item 4) proposed that `try` only lead a line or a binding,
+    after the Go team's lesson that `try()` hid control flow inside expressions; this RFC keeps
+    `try` as a prefix anywhere in an expression (`try a() + try b()`), because it is a visible
+    word, not a call. Keep, or restrict it?
+28. **Unused bindings are errors** (§5.1, survey F21, Go's rule). An error blocks `mz run` on a
+    half-written function; a warning would not. Error, as proposed, or warning?
+29. **Field assignment beside `with`** (§11.1). `q.x = 3.0` on a `var` and `q with (x = 3.0)`
+    both make a changed record, one as a statement and one as a value. Keep both, or keep `with`
+    only and make field assignment `MZ0960` with an `exact` fix to `q = q with (x = 3.0)`?
+
+## 21. Reconciliation with the top-10 language survey
+
+`design/LANGUAGE-SURVEY.md` (PR #75, not merged yet; design input, nothing measured) lists
+what RFC-0013 must design (its §3.1, F1–F26) and decide (its §4.1). This table compares each row
+with this RFC as it now stands. "Kept" means the RFC already had the survey's design before the
+amendment; "amended" means this amendment added or changed it; "departs" means the RFC chose
+otherwise, for the reason given.
+
+| Survey row                            | Where here     | Status                                                                                                                                                                                                                                                                |
+| ------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1 collection transforms, named folds | §9.3, §9.4     | amended: the eight folds; the form is methods taking a named `fn` (the survey left it open)                                                                                                                                                                           |
+| F2 safe indexing, a deterministic map | §3.7, §9.2     | amended: `xs[i]` and `m[k]` return an option, `.get` is gone; key order was kept                                                                                                                                                                                      |
+| F3 named arguments and defaults       | §6.5           | amended. Departs in two places: labels in declaration order, so a reformat never changes evaluation order; an unknown label's fix is `exact` only where one label fits (§5.2's nearest-name rule, or one unfilled parameter of the value's type), a `guess` otherwise |
+| F4 interpolation only                 | §3.6           | kept                                                                                                                                                                                                                                                                  |
+| F5 records with value equality        | §11.1          | amended: equality and the text form were there; `to_json()` added; hashing has nothing to attach to, since maps are ordered                                                                                                                                           |
+| F6 construction by field name         | §11.1          | amended: declaration order and positional construction's `exact` fix. Departs: a missing field has no `exact` fix, because inventing its value is R9's zero value                                                                                                     |
+| F7 copy-and-update                    | §11.1          | amended: `p with (x = v)`, in the record literal's own syntax, where the survey's placeholder was `entry with version "2.0"`                                                                                                                                          |
+| F8 methods, `changes self`            | §11.2          | amended: `changes self`, statement-only, on a `var`                                                                                                                                                                                                                   |
+| F9 exhaustive `match`                 | §7.2           | kept. The survey's open point 5: no guards in M1 (the Python and C# passes, against Java's), and `else` stays legal on an enum without a warning, see below                                                                                                           |
+| F10 enum payloads                     | §11.5          | amended: one construct (D1); a `case` narrows rather than binds                                                                                                                                                                                                       |
+| F11 closed literal sets, `all`        | §11.5          | amended, renamed: `variants()`, because `all(f)` is a fold                                                                                                                                                                                                            |
+| F12 no null                           | §8             | kept                                                                                                                                                                                                                                                                  |
+| F13 flow-sensitive narrowing          | §8             | kept (positive form and guard). Departs: `MZ0710` has no `exact` fix, because the guard's branch is the author's                                                                                                                                                      |
+| F14 one default word                  | §8.1           | amended: `otherwise`, replacing `x.or(d)`, evaluated only on `none`                                                                                                                                                                                                   |
+| F15 errors as values, one word        | §12            | kept `try`; amended with `via` for an explicit error mapping                                                                                                                                                                                                          |
+| F16 an ignored result is an error     | §12.3          | kept; amended with the `match`-stub fix                                                                                                                                                                                                                               |
+| F17 integers that never wrap silently | §4.1, §4.4     | kept; amended with the named `wrapping_*` methods and `a // b` as `MZ0910`. `%` stays the remainder's spelling (§3.2's case for symbols)                                                                                                                              |
+| F18 floats and decimals               | §4.2, §4.4     | kept: `float` named; `decimal` decided against for M1 (P2's `math`)                                                                                                                                                                                                   |
+| F19 local inference                   | §5.1, §6.1     | kept. Departs: a redundant annotation is left to `mz fmt` (T2), not reported by `mz check`, since it is not an error                                                                                                                                                  |
+| F20 functions as values, no lambdas   | §6.4           | kept                                                                                                                                                                                                                                                                  |
+| F21 unused bindings are errors        | §5.1           | amended: `MZ0928`, exempting parameters and loop bindings                                                                                                                                                                                                             |
+| F22 compile-time evaluation           | §4.1, §15.1    | departs: `mz check` folds constants (`MZ0915`, `MZ0975`) but never runs a function; `example` clauses run in `mz contract`, under its step bound, so a check is always fast                                                                                           |
+| F23 Unicode-correct text              | §10            | kept: scalar values (§20 Q11); amended so `s[i]` and `s.slice` return an option                                                                                                                                                                                       |
+| F24 a fast edit-run loop              | §13            | kept                                                                                                                                                                                                                                                                  |
+| F25, F26 generics and interfaces      | §11.3          | kept deferred; the survey's design recorded for when they come; the tracker conflict is §20 Q21                                                                                                                                                                       |
+| F33 `always` invariants (Tier 2 row)  | §11.4          | amended for records: checked at construction, in every build                                                                                                                                                                                                          |
+| R1–R12 rejected features              | §8.1, §11, §16 | kept rejected: R1–R2 `?.`, `!`, `.unwrap()` (`MZ0939`, `MZ0952`); R3 §14.1; R4–R7 §11.3; R8 no form; R9 §11.1; R10 `end` blocks; R11 §12.1; R12 a `with` line (§11.1)                                                                                                 |
+
+**Where the survey's own sources disagreed, and what this RFC picked:**
+
+- **The default word** (survey §4.1 item 3): `otherwise`, not `or`, because `or` is §3.4's
+  boolean operator.
+- **The fold form** (item 1): methods taking a named `fn`, the one form consistent with no
+  lambdas that adds no third loop.
+- **Guards in `case`** (item 5): none in M1. A guarded case does not cover its variant, so the
+  checker would have to prove guards exhaustive or give up `MZ0930`'s precision.
+- **`else` over an enum** (item 5): legal, and no warning. A `match` that picks one variant out of
+  twelve would otherwise list eleven, which pushes authors back to the `when` chain `MZ0936`
+  rejects, and a warning that fires on correct code teaches authors to ignore warnings.
+- **The record syntax** (item 8): the survey suggested one `name value` style shared with
+  contract examples; this RFC uses `name = value` inside parentheses for calls, records and
+  `with` alike (§6.5's last paragraph says why), and contract examples keep `name value`.
+- **The propagation word** (item 4): `try`, the five-pass majority; whether it may stand inside
+  an expression is §20 Q27.
+- **Enum payloads** (item 6): one construct, §20 Q24.
+- **Numbers** (item 7): already decided in §4, unchanged: overflow traps in every build,
+  division truncates, no `decimal` in M1.
+- **Text** (item 9): interpolation of any expression without a string literal inside, and scalar
+  values, both unchanged.
+- **Generics** (item 10): deferred, with the tracker conflict put to the owner as §20 Q21.
