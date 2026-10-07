@@ -1,0 +1,5 @@
+# Changes to CI, release and security policy need the owner's review (#62). This file
+# only takes effect where a ruleset requires code-owner review.
+/.github/       @bryanfawcett
+/deny.toml      @bryanfawcett
+/SECURITY.md    @bryanfawcett

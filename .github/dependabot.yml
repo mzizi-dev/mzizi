@@ -1,0 +1,23 @@
+# Dependabot (#62). Security updates are on in the repository settings for every
+# ecosystem. This file adds version updates for GitHub Actions only, so the SHA pins in
+# .github/workflows (required by the org's Semgrep rule and by `workflow audit`) do not
+# go stale. Cargo and npm are left to security updates alone: the runner's exact pins
+# and the React arm's registry-lockfile pins are deliberate (see their Cargo.toml and
+# README), so routine bumps would be noise.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: weekly
+      day: monday
+    # A new action release waits a week before Dependabot proposes it, so a hijacked
+    # release has time to be caught and pulled first.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
