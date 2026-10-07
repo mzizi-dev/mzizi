@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — the workflows are pinned, audited and kept current (2026-10-07)
+
+- **Every action in `.github/workflows` is pinned to a commit SHA**, with the ref it was read from in a comment: `actions/checkout` v5.1.0, `dtolnay/rust-toolchain` stable and `Swatinem/rust-cache` v2.9.2 (#62). Every checkout that does not push sets `persist-credentials: false`. Before this, 11 `uses:` lines in `ci.yml` and `changelog.yml` were mutable tags, which the org's Semgrep rule fails as soon as a pull request touches the file.
+- **A new `workflow audit` job in `supply-chain.yml` runs zizmor 1.30.1** over the workflows, failing on template injection, unpinned or impostor actions, persisted credentials, over-broad permissions and dangerous triggers. On 2026-10-07 it reported 18 findings on `staging` (12 high, 6 medium) and none after this change. `main-release.yml`'s `workflow_run` trigger is suppressed on its line with the reason: it only checks out a commit pushed to `main`.
+- **`.github/dependabot.yml`** proposes GitHub Actions updates to `staging` weekly, a week after each release (`cooldown`). Cargo and npm stay on security updates only, because their pins are deliberate.
+- **`.github/CODEOWNERS`** names the owner for `.github/`, `deny.toml` and `SECURITY.md`. It takes effect only where a ruleset requires code-owner review.
+
 ### Changed — RFC-0012 §8 surveys prior art (2026-10-07)
 
 - **RFC-0012 (the harness) §8 now compares the design with six outside systems** (Refs #48): the Language Server Protocol and rust-analyzer, Roslyn, the TypeScript language service, `rustc --error-format=json` and `cargo --message-format=json`, MCP servers for languages and toolchains, Unison's codebase manager, and Go's `go/analysis` as a plugin host with static composition. For each it says what the RFC takes and how it differs. It also checks the RFC's claim that the harness is part of the language: none of the six systems specifies its machine interface as part of its language, so the claim is stated as a design goal with three conditions, none of which exists yet. The TypeScript row adds a constraint: a plugin's checks must reach `mz check --agent`, because TypeScript's plugins are never loaded by `tsc`. §9 gains question 8, whether to build an LSP server as a client of the harness. `mzizi-dev/agent-tools`' `docs/rfc-harness-plugins.md` still has not been read in full: this session was refused access to the private repository, and §8 says so. **Design only.** It is a reading of documentation, it measures nothing, and no code changes.
