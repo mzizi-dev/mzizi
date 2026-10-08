@@ -775,8 +775,10 @@ impl Lower<'_> {
                 let at = self.site(e);
                 format!("mz_repeat({r}, {}, {at})", arg(0))
             }
-            // The checker admits no other name on text.
-            _ => format!("{r}.{name}()"),
+            // The checker admits no other name on text, and a test lowers every name in
+            // `text::METHODS`; a method added there without an arm here fails to build
+            // (`MZ0990`) with this message, rather than lowering to the wrong call.
+            _ => format!("compile_error!(\"mz: no lowering for the text method `{name}`\")"),
         }
     }
 
