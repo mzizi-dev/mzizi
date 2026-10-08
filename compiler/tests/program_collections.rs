@@ -378,9 +378,29 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
     ] {
         fixed_by(&wrap(body), "MZ0962", want);
     }
-    // With `==` or `!=` written too, that operator's `MZ0910` is still reported, its fix
-    // covered by the whole comparison's: one `mz fix` pass still ends clean.
+    // With `==`, `!=` or `not a is b` written too, that operator's `MZ0910` is folded into
+    // the whole comparison's fix (`lib.rs`): one diagnostic, and one `mz fix` pass.
     for (body, want) in [
+        (
+            "let xs = [1]\nprint(not xs.length() is 0)",
+            "print(xs is not none)",
+        ),
+        (
+            "let xs = [1]\nprint(not xs.length() is not 0)",
+            "print(xs is none)",
+        ),
+        (
+            "let xs = [1]\nprint(not len(xs) is 0)",
+            "print(xs is not none)",
+        ),
+        (
+            "let xs = [1]\nprint(not xs.count() is 0)",
+            "print(xs is not none)",
+        ),
+        (
+            "let xs = [1]\nprint(not xs.size() > 0)",
+            "print(xs is none)",
+        ),
         ("let xs = [1]\nprint(len(xs) == 0)", "print(xs is none)"),
         (
             "let xs = [1]\nprint(xs.len() != 0)",
@@ -395,12 +415,13 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
             "when xs is none",
         ),
     ] {
-        let src = wrap(body);
-        let after = apply_exact_fixes(&src, &check(&src, "t.mz"));
-        let again = check(&after, "t.mz");
-        assert_eq!(again.error_count(), 0, "{after}\n{:#?}", again.diagnostics);
-        assert!(after.contains(want), "expected `{want}` in:\n{after}");
+        fixed_by(&wrap(body), "MZ0962", want);
     }
+    // On a receiver that is not a name or a path the rewrite is a guess, so it folds
+    // nothing: the parser's `exact` `MZ0910` stays, and `mz fix` applies that one.
+    let src = wrap("let xs = [1]\nprint(not xs.map(double).length() is 0)");
+    let codes: Vec<_> = errors(&src).into_iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0910", "MZ0962"], "{src}");
     // JavaScript's `reduce(f, init)` is a guess: without `init` it has no equivalent.
     guessed(
         &wrap("let xs = [1]\nprint(xs.reduce(add, 0))"),
@@ -453,7 +474,7 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
 #[test]
 fn mz_fix_converges_in_one_pass_on_another_languages_emptiness() {
     let src = wrap(
-        "let xs = [1]\nwhen len(xs) == 0\n  print(0)\nend\nprint(xs.count() is 0)\nprint(len(xs) == 0)\nprint(xs.size() > 0)\nprint(sorted(xs, key = double))",
+        "let xs = [1]\nwhen len(xs) == 0\n  print(0)\nend\nprint(xs.count() is 0)\nprint(len(xs) == 0)\nprint(xs.size() > 0)\nprint(sorted(xs, key = double))\nprint(not xs.length() is 0)\nprint(not xs.length() is not 0)\nprint(not len(xs) is 0)",
     );
     let dir = std::env::temp_dir().join(format!("mz-collections-fix-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
@@ -483,6 +504,10 @@ fn mz_fix_converges_in_one_pass_on_another_languages_emptiness() {
         "print(xs.sort_by(double))",
     ] {
         assert!(after.contains(want), "expected `{want}` in:\n{after}");
+    }
+    // Every length spelling is gone, not left half-rewritten for a second pass.
+    for gone in ["len(", ".length()", ".count()", ".size()", "not xs"] {
+        assert!(!after.contains(gone), "`{gone}` left in:\n{after}");
     }
 }
 
