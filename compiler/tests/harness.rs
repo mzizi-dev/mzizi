@@ -31,36 +31,79 @@ fn src_dir() -> PathBuf {
 
 /// Every `MZ` + four digits on a line of compiler source that is not a comment.
 fn emitted_codes() -> BTreeMap<String, String> {
+    codes_under(vec![src_dir()])
+}
+
+/// [`emitted_codes`] over the given files and directories (searched recursively), each
+/// code with the first file that names it.
+fn codes_under(roots: Vec<PathBuf>) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
-    let mut stack = vec![src_dir()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
+    let mut stack = roots;
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                stack.push(entry.unwrap().path());
+            }
+            continue;
+        }
+        // The registry itself is not evidence that a code is emitted.
+        if path.extension().is_none_or(|e| e != "rs") || path.ends_with("harness.rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        for line in text.lines() {
+            if line.trim_start().starts_with("//") {
                 continue;
             }
-            // The registry itself is not evidence that a code is emitted.
-            if path.extension().is_none_or(|e| e != "rs") || path.ends_with("harness.rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).unwrap();
-            for line in text.lines() {
-                if line.trim_start().starts_with("//") {
-                    continue;
-                }
-                let b = line.as_bytes();
-                for i in 0..b.len().saturating_sub(5) {
-                    if &b[i..i + 2] == b"MZ" && b[i + 2..i + 6].iter().all(u8::is_ascii_digit) {
-                        let code = line[i..i + 6].to_string();
-                        out.entry(code)
-                            .or_insert_with(|| path.file_name().unwrap().to_string_lossy().into());
-                    }
+            let b = line.as_bytes();
+            for i in 0..b.len().saturating_sub(5) {
+                if &b[i..i + 2] == b"MZ" && b[i + 2..i + 6].iter().all(u8::is_ascii_digit) {
+                    let code = line[i..i + 6].to_string();
+                    let file = path.strip_prefix(src_dir()).unwrap_or(&path);
+                    out.entry(code)
+                        .or_insert_with(|| file.to_string_lossy().into());
                 }
             }
         }
     }
     out
+}
+
+/// The source a `program` passes through, from `mz check` to `mz run`, relative to
+/// `compiler/src`: the lexer (`parse::parse_program` hands a file that starts `program`
+/// to the program parser straight after it), the program parser, the program checker, the
+/// expression and number modules they share, the lowering, and `main.rs`, where `mz run`
+/// reports `MZ0990`. A code written in any of them is one a program can raise. `lib.rs` and
+/// `parse.rs` are left out: past the lexer, their codes are the component and service
+/// parsers' and resolvers'.
+const PROGRAM_SOURCES: &[&str] = &[
+    "lex.rs",
+    "expr.rs",
+    "numbers.rs",
+    "numbers",
+    "parse/program.rs",
+    "parse/program",
+    "program.rs",
+    "program",
+    "run.rs",
+    "run",
+    "main.rs",
+];
+
+/// Every code a program can raise, by [`PROGRAM_SOURCES`].
+fn program_codes() -> BTreeMap<String, String> {
+    let roots: Vec<PathBuf> = PROGRAM_SOURCES
+        .iter()
+        .map(|p| {
+            let path = src_dir().join(p);
+            assert!(
+                path.exists(),
+                "{p} is gone: name the program pipeline's files in PROGRAM_SOURCES again"
+            );
+            path
+        })
+        .collect();
+    codes_under(roots)
 }
 
 #[test]
@@ -114,10 +157,38 @@ fn every_registered_or_pending_code_is_still_emitted() {
 
 #[test]
 fn every_program_code_is_registered_not_pending() {
-    // The brief for this slice: each `MZ09xx` code the program checker emits has an entry.
-    for c in emitted_codes().keys().filter(|c| c.starts_with("MZ09")) {
-        assert!(harness::code_entry(c).is_some(), "{c} has no entry");
+    // Any code a program can raise has a full entry, reported in a program: the `MZ09xx`
+    // codes and the shared ones a program reuses alike. Only the component and service
+    // codes may wait on the pending list. (This test once looked at `MZ09xx` alone, and
+    // `MZ0301`, `MZ0302`, `MZ0303` and `MZ0704`, which a program's enums raise, stayed
+    // pending.)
+    let program = program_codes();
+    // The scan covers the program pipeline: every `MZ09xx` code anywhere in the compiler,
+    // the range RFC-0013 reserves for programs, is in a file it reads.
+    for (c, file) in emitted_codes()
+        .iter()
+        .filter(|(c, _)| c.starts_with("MZ09"))
+    {
+        assert!(
+            program.contains_key(c),
+            "{c} (in {file}) is outside PROGRAM_SOURCES: add its file there"
+        );
     }
+    let mut wrong = Vec::new();
+    for (c, file) in &program {
+        match harness::code_entry(c) {
+            None if PENDING_CODES.contains(&c.as_str()) => wrong.push(format!(
+                "{c} (in {file}) is pending, and a program can raise it: register it in CODES"
+            )),
+            None => wrong.push(format!("{c} (in {file}) has no entry")),
+            Some(e) if !e.kinds.contains(&"program") => wrong.push(format!(
+                "{c} (in {file}) is raised in a program, and its entry's kinds are {:?}",
+                e.kinds
+            )),
+            Some(_) => {}
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
 #[test]
@@ -734,13 +805,12 @@ fn every_operator_the_lexer_reads_names_an_entry_and_is_reported_so() {
 /// `PENDING_CODES` on 2026-10-08. The list may only shrink: a code leaves it when its entry
 /// is registered, and a new code is registered, never added here.
 const PENDING_SNAPSHOT: &[&str] = &[
-    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0301", "MZ0302", "MZ0303", "MZ0304", "MZ0305",
-    "MZ0307", "MZ0308", "MZ0309", "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404",
-    "MZ0405", "MZ0406", "MZ0408", "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602",
-    "MZ0603", "MZ0605", "MZ0606", "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0704",
-    "MZ0705", "MZ0706", "MZ0709", "MZ0710", "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802",
-    "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811",
-    "MZ0812",
+    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0304", "MZ0305", "MZ0307", "MZ0308", "MZ0309",
+    "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404", "MZ0405", "MZ0406", "MZ0408",
+    "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
+    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
+    "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
+    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 #[test]
