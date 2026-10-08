@@ -570,7 +570,10 @@ pub const FEATURES: &[Feature] = &[
         ],
         teach: "A program declares an enum with one snake_case variant name per line, closed by a bare `end`. A variant may carry columns, each a name and a literal (`negative say \"is below zero\"`); every variant has the same columns, each of one type, and `p.say` reads one, with no parentheses. A variant is written bare (`circle`) where the type expected settles its enum (a comparison's other side, a `case`, an annotated binding, an assignment, a `return`, an argument), and as `<enum>.<variant>` where two enums share it. Variants compare with `is` and order by declaration, and print as their names.",
         types: "Each enum is its own type; its variants are its values. A column has its literals' type.",
-        codes: &["MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0711"],
+        codes: &[
+            "MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0711", "MZ0704", "MZ0301", "MZ0302",
+            "MZ0303",
+        ],
         examples: &[
             run(MATCH, MATCH_OUT),
             run(VALUES, VALUES_OUT),
@@ -839,6 +842,30 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    print(1)\n  end\nend program t\n",
     ),
     code(
+        "MZ0301",
+        "RFC-0001 §1.3, RFC-0013 §7.2, §18.6",
+        NONE,
+        ALL_KINDS,
+        "an `enum` line with no name, or a line in an enum that is not a variant name",
+        "program t\n  enum e\n    a\n    1\n  end\n  fn main\n    print(a)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0302",
+        "RFC-0001 §1.3, RFC-0013 §16, §18.6",
+        NONE,
+        ALL_KINDS,
+        "a variant's column with no value; in a program a column's value is a literal: a text with no `{…}`, an `int` or a `bool`",
+        "program t\n  enum e\n    a say x\n    b say \"y\"\n  end\n  fn main\n    print(a.say)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0303",
+        "RFC-0001 §1.3, RFC-0013 §16, §18.6",
+        NONE,
+        ALL_KINDS,
+        "a variant missing a column another variant of its enum has: every variant has every column",
+        "program t\n  enum e\n    a say \"x\"\n    b\n  end\n  fn main\n    print(a.say)\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0306",
         "RFC-0001 §4",
         NONE,
@@ -877,6 +904,14 @@ pub const CODES: &[Code] = &[
         ALL_KINDS,
         "an unknown type; the fix names the nearest one",
         "program t\n  fn main\n  end fn main\n  fn f(n: integer): int\n    return 1\n  end fn f\nend program t\n",
+    ),
+    code(
+        "MZ0704",
+        "RFC-0008 §6, RFC-0013 §16, §18.6",
+        NONE_EXACT,
+        ALL_KINDS,
+        "a name declared twice: in a program, an enum, a variant of one enum (the exact fix deletes its line) or a column of one variant; in a component or service, a type, a `prop` or a record field, or a type named like a built-in",
+        "program t\n  enum e\n    a\n    a\n  end\n  fn main\n    print(a)\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0707",
@@ -1296,13 +1331,12 @@ pub const CODES: &[Code] = &[
 /// [`CODES`], and the drift test fails on any code that is on neither list. Kept sorted, and
 /// frozen: `compiler/tests/harness.rs` holds a snapshot it may only shrink from.
 pub const PENDING_CODES: &[&str] = &[
-    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0301", "MZ0302", "MZ0303", "MZ0304", "MZ0305",
-    "MZ0307", "MZ0308", "MZ0309", "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404",
-    "MZ0405", "MZ0406", "MZ0408", "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602",
-    "MZ0603", "MZ0605", "MZ0606", "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0704",
-    "MZ0705", "MZ0706", "MZ0709", "MZ0710", "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802",
-    "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811",
-    "MZ0812",
+    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0304", "MZ0305", "MZ0307", "MZ0308", "MZ0309",
+    "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404", "MZ0405", "MZ0406", "MZ0408",
+    "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
+    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
+    "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
+    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 /// The registered code, if any.
