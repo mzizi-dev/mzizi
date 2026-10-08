@@ -143,6 +143,20 @@ pub(super) fn check_enums(
     diags
 }
 
+/// What a branch of a block used as a value is read against: `want`, or, when nothing is
+/// expected, the type of the branches before it for a bracket literal, so that
+/// `when c` / `[1]` / `else` / `[]` gives its `[]` a type (RFC-0013 §9.1).
+fn branch_want(want: Ty, so_far: Option<Ty>, branch: &Expr) -> Ty {
+    match (want, so_far) {
+        (Ty::Nothing, Some(t))
+            if matches!(branch.kind, ExprKind::List(_) | ExprKind::MapLit(_)) =>
+        {
+            t
+        }
+        _ => want,
+    }
+}
+
 /// Whole lines `first` to `last`, with the last one's line ending, for a fix that deletes
 /// them.
 fn lines(first: u32, last: u32) -> Span {
@@ -798,12 +812,13 @@ impl FnCheck<'_> {
                 }
                 Ty::Enum(intern(enum_name))
             }
-            _ => self.block_value(e, Ty::Error),
+            _ => self.block_value(e, Ty::Nothing),
         }
     }
 
     /// A `when` or `match` used as a value, each branch read against `want`, the type
-    /// expected where the block stands (`Ty::Error` when nothing is expected).
+    /// expected where the block stands (`Ty::Nothing` when nothing is expected, `Ty::Error`
+    /// when what was expected was already reported).
     fn block_value(&mut self, e: &Expr, want: Ty) -> Ty {
         match &e.kind {
             ExprKind::When { arms, otherwise } => {
@@ -811,11 +826,11 @@ impl FnCheck<'_> {
                 for (c, v) in arms {
                     let t = self.expr(c);
                     self.condition(c, t, "when");
-                    let vt = self.expr_want(v, want);
+                    let vt = self.expr_want(v, branch_want(want, ty, v));
                     self.branch(&mut ty, v, vt, "when");
                 }
                 if let Some(o) = otherwise {
-                    let vt = self.expr_want(o, want);
+                    let vt = self.expr_want(o, branch_want(want, ty, o));
                     self.branch(&mut ty, o, vt, "when");
                 }
                 ty.unwrap_or(Ty::Error)
@@ -832,12 +847,12 @@ impl FnCheck<'_> {
                 for a in arms {
                     self.scopes.push(Vec::new());
                     self.bind_case(a, t);
-                    let vt = self.expr_want(&a.body, want);
+                    let vt = self.expr_want(&a.body, branch_want(want, ty, &a.body));
                     self.end_scope();
                     self.branch(&mut ty, &a.body, vt, "match");
                 }
                 if let Some(o) = otherwise {
-                    let vt = self.expr_want(&o.body, want);
+                    let vt = self.expr_want(&o.body, branch_want(want, ty, &o.body));
                     self.branch(&mut ty, &o.body, vt, "match");
                 }
                 ty.unwrap_or(Ty::Error)

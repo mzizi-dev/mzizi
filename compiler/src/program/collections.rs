@@ -106,10 +106,7 @@ impl<'a> FnCheck<'a> {
                 }
                 _ => {
                     // The first element that is not itself `[]` fixes the type of the rest.
-                    let anchor = items
-                        .iter()
-                        .position(|i| !matches!(&i.kind, ExprKind::List(v) if v.is_empty()))
-                        .unwrap_or(0);
+                    let anchor = items.iter().position(|i| !is_empty_bracket(i)).unwrap_or(0);
                     let t0 = self.expr(&items[anchor]);
                     let mut mixed = None;
                     for (k, item) in items.iter().enumerate() {
@@ -153,10 +150,19 @@ impl<'a> FnCheck<'a> {
                         (k, v)
                     }
                     _ => {
-                        let k0 = self.expr(&entries[0].0);
-                        let v0 = self.expr(&entries[0].1);
+                        // The first entry with no `[]` in it fixes the types of the rest,
+                        // as a list's first element that is not `[]` does.
+                        let anchor = entries
+                            .iter()
+                            .position(|(k, v)| !is_empty_bracket(k) && !is_empty_bracket(v))
+                            .unwrap_or(0);
+                        let k0 = self.expr(&entries[anchor].0);
+                        let v0 = self.expr(&entries[anchor].1);
                         let mut mixed = None;
-                        for (key, value) in &entries[1..] {
+                        for (n, (key, value)) in entries.iter().enumerate() {
+                            if n == anchor {
+                                continue;
+                            }
                             let k = self.expr_want(key, k0);
                             let v = self.expr_want(value, v0);
                             if mixed.is_none()
@@ -166,8 +172,8 @@ impl<'a> FnCheck<'a> {
                                 mixed = Some(key);
                             }
                         }
-                        if self.element_kind(&entries[0].0, k0)
-                            | self.element_kind(&entries[0].1, v0)
+                        if self.element_kind(&entries[anchor].0, k0)
+                            | self.element_kind(&entries[anchor].1, v0)
                         {
                             return Ty::Error;
                         }
@@ -187,7 +193,7 @@ impl<'a> FnCheck<'a> {
                         if !k0.is_key() {
                             self.err(
                                 "MZ0964",
-                                entries[0].0.span,
+                                entries[anchor].0.span,
                                 format!(
                                     "a map's keys are kept in key order, and {} has no order to keep — a key is an int, a text, a bool or an enum (RFC-0013 §2)",
                                     k0.name()
@@ -219,10 +225,7 @@ impl<'a> FnCheck<'a> {
                 if kt.has_error() || vt.has_error() {
                     return Ty::Error;
                 }
-                if let Ty::List(_) | Ty::Set(_) = want {
-                    // A map literal where a list or set is expected: the caller reports it.
-                    return Ty::map(kt, vt);
-                }
+                // A map literal where a list or set is expected: the caller reports it.
                 Ty::map(kt, vt)
             }
             _ => Ty::Error,
@@ -397,7 +400,8 @@ impl<'a> FnCheck<'a> {
     }
 
     /// `c is []` and `c.length() is 0`, with their negations: `MZ0962`, whose fix writes
-    /// `c is none` (RFC-0013 §3.3). `None` when the comparison is not one of these.
+    /// `c is none` (RFC-0013 §3.3). On a value that is not a collection, the comparison is
+    /// checked here, its operand typed once. `None` when the comparison is not one of these.
     pub(super) fn emptiness_idiom(
         &mut self,
         e: &Expr,
@@ -413,7 +417,13 @@ impl<'a> FnCheck<'a> {
             (_, ExprKind::List(items)) if items.is_empty() => {
                 let t = self.expr(lhs);
                 if !t.is_collection() {
-                    return if t.has_error() { Some(Ty::Bool) } else { None };
+                    if !self.unnarrowed(lhs, t, "`is` compares values") {
+                        // `[]` read against `t`: one mismatch (`MZ0711`), or silence when
+                        // `t` was already reported.
+                        let r = self.bracket(rhs, if t.has_error() { Ty::Error } else { t });
+                        self.binary(e, op, lhs, rhs, t, r);
+                    }
+                    return Some(Ty::Bool);
                 }
                 let fixed = format!("{} {word} none", operand_text(lhs));
                 self.err_fix(
@@ -428,13 +438,21 @@ impl<'a> FnCheck<'a> {
             }
             (
                 ExprKind::Method {
-                    recv, name, args, ..
+                    recv,
+                    name,
+                    name_span,
+                    args,
+                    called,
+                    ..
                 },
                 ExprKind::Int(0),
             ) if name == "length" && args.is_empty() => {
                 let t = self.expr(recv);
                 if !t.is_collection() {
-                    return if t.has_error() { Some(Ty::Bool) } else { None };
+                    let lt = self.method_on(lhs, recv, t, name, *name_span, args, *called);
+                    let r = self.expr(rhs);
+                    self.binary(e, op, lhs, rhs, lt, r);
+                    return Some(Ty::Bool);
                 }
                 let fixed = format!("{} {word} none", operand_text(recv));
                 self.err_fix(
@@ -451,21 +469,36 @@ impl<'a> FnCheck<'a> {
         }
     }
 
-    /// `not c.is_empty()`: one `MZ0962`, whose fix writes `c is not none`. `None` when the
-    /// operand is not that.
-    pub(super) fn not_is_empty(&mut self, e: &Expr, operand: &Expr) -> Option<Ty> {
+    /// `not c.is_empty()`: one `MZ0962`, whose fix writes `c is not none`. On a value that
+    /// is not a collection, the `not` and its method are checked here, the receiver typed
+    /// once.
+    pub(super) fn not_is_empty(&mut self, e: &Expr, operand: &Expr) -> Ty {
         let ExprKind::Method {
-            recv, name, args, ..
+            recv,
+            name,
+            name_span,
+            args,
+            called,
+            ..
         } = &operand.kind
         else {
-            return None;
+            return self.expr(operand);
         };
-        if name != "is_empty" || !args.is_empty() {
-            return None;
-        }
         let t = self.expr(recv);
         if !t.is_collection() {
-            return if t.has_error() { Some(Ty::Bool) } else { None };
+            let mt = self.method_on(operand, recv, t, name, *name_span, args, *called);
+            if mt != Ty::Bool && !mt.has_error() {
+                self.err(
+                    "MZ0912",
+                    e.span,
+                    format!(
+                        "`not` takes a bool, and `{}` is {}",
+                        canonical(operand),
+                        mt.name()
+                    ),
+                );
+            }
+            return Ty::Bool;
         }
         let fixed = format!("{} is not none", operand_text(recv));
         self.err_fix(
@@ -476,7 +509,7 @@ impl<'a> FnCheck<'a> {
             fixed,
             path_confidence(recv),
         );
-        Some(Ty::Bool)
+        Ty::Bool
     }
 
     /// `x in c` (RFC-0013 §3.3): an element of a list or a set, or a key of a map. A
@@ -484,6 +517,14 @@ impl<'a> FnCheck<'a> {
     /// whose fix is `s.contains(t)`.
     pub(super) fn in_expr(&mut self, e: &Expr, lhs: &Expr, rhs: &Expr) -> Ty {
         let l = self.expr(lhs);
+        if self.unnarrowed(lhs, l, "`in` asks about a value") {
+            // The collection is read on its own, not against an option's type.
+            match rhs.kind {
+                ExprKind::List(_) | ExprKind::MapLit(_) => self.bracket(rhs, Ty::Error),
+                _ => self.expr(rhs),
+            };
+            return Ty::Bool;
+        }
         let r = if matches!(rhs.kind, ExprKind::List(_)) && !l.has_error() {
             self.expr_want(rhs, Ty::list(l))
         } else {
@@ -501,9 +542,7 @@ impl<'a> FnCheck<'a> {
             }
             return Ty::Bool;
         }
-        if self.unnarrowed(lhs, l, "`in` asks about a value")
-            | self.unnarrowed(rhs, r, "`in` asks about a collection")
-        {
+        if self.unnarrowed(rhs, r, "`in` asks about a collection") {
             return Ty::Bool;
         }
         self.binary(e, BinOp::In, lhs, rhs, l, r)
@@ -1214,18 +1253,6 @@ impl<'a> FnCheck<'a> {
                 );
                 Some(Ty::Error)
             }
-            "length" if !called => {
-                let fixed = format!("{r}.length()");
-                self.err_fix(
-                    "MZ0962",
-                    name_span,
-                    format!("`.length` is a method, and a method is always called with parentheses: `{fixed}`"),
-                    Span::single(name_span.end_line, name_span.end_col, 0),
-                    "()",
-                    Confidence::Exact,
-                );
-                Some(Ty::Int)
-            }
             _ => None,
         }
     }
@@ -1255,7 +1282,14 @@ impl<'a> FnCheck<'a> {
                 if x.has_error() {
                     self.err("MZ0962", at, say);
                 } else {
-                    self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+                    // Python's `len` counts a text's scalar values, as `length()` does (C6), on
+                    // any text; a collection's rewrite around its receiver is exact on a path.
+                    let conf = if t == Ty::Text {
+                        Confidence::Exact
+                    } else {
+                        path_confidence(x)
+                    };
+                    self.err_fix("MZ0962", at, say, at, fixed, conf);
                 }
                 Some(Ty::Int)
             }
@@ -1320,4 +1354,9 @@ fn is_literal(e: &Expr) -> bool {
         } => matches!(operand.kind, ExprKind::Int(_)),
         _ => false,
     }
+}
+
+/// `[]`, whose type comes from where it stands.
+fn is_empty_bracket(e: &Expr) -> bool {
+    matches!(&e.kind, ExprKind::List(v) if v.is_empty())
 }

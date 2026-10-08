@@ -1306,10 +1306,7 @@ impl<'a> FnCheck<'a> {
             ExprKind::Unary {
                 op: UnOp::Not,
                 operand,
-            } if self.is_empty_call(operand) => match self.not_is_empty(e, operand) {
-                Some(t) => t,
-                None => self.method_expr(operand),
-            },
+            } if self.is_empty_call(operand) => self.not_is_empty(e, operand),
             ExprKind::Unary { op, operand } => {
                 if *op == UnOp::Not {
                     self.mark_tight(operand);
@@ -1404,19 +1401,6 @@ impl<'a> FnCheck<'a> {
     /// Whether `e` is `x.is_empty()`, whose negation is one idiom (`MZ0962`).
     fn is_empty_call(&self, e: &Expr) -> bool {
         matches!(&e.kind, ExprKind::Method { name, args, called: true, .. } if name == "is_empty" && args.is_empty())
-    }
-
-    /// [`Self::expr`] on a method call, named so a caller's arm reads.
-    fn method_expr(&mut self, e: &Expr) -> Ty {
-        let t = self.expr(e);
-        if t != Ty::Bool && !t.has_error() {
-            self.err(
-                "MZ0912",
-                e.span,
-                format!("`not` takes a bool, and `{}` is {}", canonical(e), t.name()),
-            );
-        }
-        Ty::Bool
     }
 
     /// The type of a binary expression whose operands are typed, with its diagnostics.
@@ -1890,7 +1874,7 @@ impl<'a> FnCheck<'a> {
     /// parentheses, which the parser reads as a dotted path (`errors::field`) and hands here
     /// when `recv` is a number.
     #[allow(clippy::too_many_arguments)]
-    fn method_on(
+    pub(super) fn method_on(
         &mut self,
         e: &Expr,
         recv: &Expr,

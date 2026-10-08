@@ -621,12 +621,13 @@ impl Lower<'_> {
                 .fns
                 .get(name.as_str())
                 .map_or(Ty::Nothing, |f| f.ret.map_or(Ty::Nothing, |r| r.ty)),
+            // The receiver's type once: a chain of methods is typed in linear time.
             ExprKind::Method {
                 recv, name, args, ..
-            } if self.ty(recv).is_collection() => self.method_ty(self.ty(recv), name, args),
-            ExprKind::Method { recv, name, .. } => {
-                crate::expr::method_signature(self.ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
-            }
+            } => match self.ty(recv) {
+                rt if rt.is_collection() => self.method_ty(rt, name, args),
+                rt => crate::expr::method_signature(rt, name).map_or(Ty::Error, |(_, ret)| ret),
+            },
             ExprKind::Unary {
                 op: UnOp::Neg,
                 operand,
@@ -793,7 +794,7 @@ impl Lower<'_> {
             return self.text_method(e, recv, name, args);
         }
         if rt.is_collection() {
-            return self.method_call(e, recv, name, args);
+            return self.method_call(e, recv, rt, name, args);
         }
         let r = self.atom(recv);
         // A receiver that folded to a negative constant is `-4i64`, and Rust reads

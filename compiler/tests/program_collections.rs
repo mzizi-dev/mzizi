@@ -707,3 +707,88 @@ fn an_index_assignment_out_of_range_and_an_int_sum_overflow_trap_with_101() {
         );
     }
 }
+
+// ------------------------------------------------------------------- review cases
+
+#[test]
+fn a_literal_branch_of_a_block_value_takes_the_type_of_the_branches_before_it() {
+    clean(&wrap(
+        "let n = 3\nlet xs = when n > 2\n  [1]\nelse\n  []\nend\nprint(xs)",
+    ));
+    // The first branch has nothing before it to take a type from.
+    one(
+        &wrap("let n = 3\nlet xs = when n > 2\n  []\nelse\n  [1]\nend\nprint(xs)"),
+        "MZ0961",
+    );
+    // A map literal's first entry with no `[]` in it fixes the rest, as a list's does.
+    clean(&wrap("let m = [\"a\": [], \"b\": [1]]\nprint(m)"));
+}
+
+#[test]
+fn an_idiom_on_a_value_that_is_not_a_collection_reports_its_operand_once() {
+    // `double(true)` is one `MZ0905`, reported once; `[]` against an int is one mismatch.
+    let found = errors(&wrap("let n = double(true) is []\nprint(n)"));
+    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0905", "MZ0711"], "{found:#?}");
+    // An option on the left of `in` is its one `MZ0710`; the literal is read on its own.
+    one(
+        &wrap("let m = [\"a\": 1]\nprint(m[\"a\"] in [1, 2])"),
+        "MZ0710",
+    );
+    // `len` on text is C6's `length()`, which counts scalar values as Python's `len` does.
+    fixed_by(
+        &wrap("let s = \"hello\"\nprint(len(s))"),
+        "MZ0962",
+        "print(s.length())",
+    );
+    guessed(
+        &wrap("let xs = [1]\nprint(len(xs.map(double)))"),
+        "MZ0962",
+        "xs.map(double).length()",
+    );
+}
+
+#[test]
+fn an_operator_assignment_through_an_index_is_one_mz0918_with_a_guess() {
+    // `xs[i]` is an option, so the default is the author's: a guess, and the `var` counts
+    // as changed, so it is not also `MZ0924`.
+    guessed(
+        &wrap("var xs = [1, 2]\nxs[0] += 1\nprint(xs)"),
+        "MZ0918",
+        "xs[0] = (xs[0] otherwise 0) + 1",
+    );
+    guessed(
+        &wrap("var xs = [1.5]\nxs[0]++\nprint(xs)"),
+        "MZ0918",
+        "xs[0] = (xs[0] otherwise 0) + 1",
+    );
+    assert!(
+        one(
+            &wrap("var xs = [1]\nlet n = 2\nxs[0] *= n\nprint(xs)"),
+            "MZ0918"
+        )
+        .fix
+        .is_none()
+    );
+}
+
+#[test]
+fn an_option_of_an_option_takes_a_default_of_either_type() {
+    let src = wrap(
+        "let m = [\"a\": 1, \"c\": 3]\nlet xs = [m[\"a\"], m[\"b\"]]\nlet y = xs[0] otherwise m[\"c\"]\nlet z = xs[1] otherwise m[\"c\"]\nlet w = xs[5] otherwise m[\"c\"]\nprint([y, z, w])\nprint(xs[5] otherwise 0 is 0)",
+    );
+    one(&src, "MZ0912");
+    let src = wrap(
+        "let m = [\"a\": 1, \"c\": 3]\nlet xs = [m[\"a\"], m[\"b\"]]\nlet y = xs[0] otherwise m[\"c\"]\nlet z = xs[1] otherwise m[\"c\"]\nlet w = xs[5] otherwise m[\"c\"]\nprint([y, z, w])",
+    );
+    clean(&src);
+    let Some(out) = mz_run_src("nested_options", &src) else {
+        return;
+    };
+    assert_eq!(
+        stdout(&out),
+        "[1, none, 3]\n",
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
