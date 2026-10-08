@@ -2504,8 +2504,18 @@ nothing measured.
   `for each` entry's list form; and code entries for `MZ0710` (off the pending list),
   `MZ0960`, `MZ0961`, `MZ0963` and `MZ0964`, each with a trigger. `examples/collections.mz`
   and two smaller programs are the runnable examples, with their output compared.
-- **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and the text
-  methods (C6); `p in "a" "b"` as `MZ0910` (§3.3); `xs[i] += 1` as `MZ0918` (it is
+- **Beside C6 (#98, which merged first; this branch rebased onto it).** C6's text `length`
+  keeps the harness entry `length`, and a collection's is `collection length`.
+  `xs.len()`, `.size()` and `.count()` on a collection are `exact` to `length()` on a name or
+  a path, since each counts elements as `length()` does; C6's review made the text forms a `guess` where the
+  units differ. `len(x)` is `exact` on text (Python counts scalar values, as `length()`
+  does) and on a collection that is a name or a path. `t in s` on text is `MZ0962` with the
+  `exact` fix `s.contains(t)`, C6's method, so the fix now leads to a program that checks.
+  C6's methods that return an option or a list (`s[i]`, `slice`, `find`, `parse_int`,
+  `parse_float`, `split`, `chars`) still report `MZ0919` (`text::WAITING`): C7 builds the
+  options and lists they need, and a follow-up builds them.
+- **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and C6's
+  methods that return an option or a list (above); `p in "a" "b"` as `MZ0910` (§3.3); `xs[i] += 1` as `MZ0918` (it is
   `MZ0917`); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
 
 ## 19. What this RFC does not claim

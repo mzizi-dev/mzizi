@@ -382,9 +382,12 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
         "MZ0962",
         "xs.map(double) is none",
     );
-    // `in` on text is a substring, the method `s.contains(t)` (§3.3, built with text, C6).
-    let d = one(&wrap("let s = \"abc\"\nprint(\"a\" in s)"), "MZ0962");
-    assert_eq!(d.fix.expect("exact").replace, "s.contains(\"a\")");
+    // `in` on text is a substring, C6's method `s.contains(t)` (§3.3).
+    fixed_by(
+        &wrap("let s = \"abc\"\nprint(\"a\" in s)"),
+        "MZ0962",
+        "print(s.contains(\"a\"))",
+    );
     // A key-less sort is not in the set (§20 Q26): no fix.
     assert!(
         one(&wrap("let xs = [1]\nprint(sorted(xs))"), "MZ0962")
