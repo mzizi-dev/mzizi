@@ -21,6 +21,10 @@ carry no pull request number.
 
 - **`LANGUAGE-TRACKER.md` splits C8**, by the owner's decision of 2026-10-08 on RFC-0013 §20 Q21 (#69). C8 becomes "User types: records and methods", done when a record is built by field name and copied with `with`, a record has a method, and a broken `always` invariant is reported, each with its language-harness entries; it stays 🟡, and is part of M1. The new row **P12, "Generics and interfaces"** (❌), carries the deferred clauses ("a generic function works for two types; an interface is satisfied") and comes after M1. RFC-0013 §11 and §20 Q21 record the decision. Nothing is built by this change.
 
+### Fixed — the tracker's H1 row says the 70 harness codes are on `main` (2026-10-08)
+
+- **`LANGUAGE-TRACKER.md` row H1** still said "70 diagnostic codes on `staging` … 66 on `main`" and "51 codes (55 on `main`)" after the 2026-10-08 release (#96) carried #93 to `main`. It now says 70 codes and 51 pending, with `MZ0301`, `MZ0302`, `MZ0303` and `MZ0704` registered by #93. Read from `mz harness definition` on `main` (`dc156c5`): 137 entries, 70 codes, 51 pending. Nothing else changes.
+
 ## 2026-10-08
 
 ### Changed
