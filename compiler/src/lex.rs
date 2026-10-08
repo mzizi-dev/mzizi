@@ -45,8 +45,8 @@ pub enum Tok {
     Dot,
     /// An operator, lexed only in a `program` file (RFC-0013 §3): `+ - * / % < <= > >=`, and
     /// the spellings other languages use that a program's parser repairs (`==`, `!=`, `&&`,
-    /// `||`, `!`, `->`, `+=`, …). In a component or a service these characters are still
-    /// `MZ0104`, with today's text.
+    /// `||`, `!`, `->`, `+=`, Rust's postfix `?`, …). In a component or a service these
+    /// characters are still `MZ0104`, with today's text.
     Op(&'static str),
     /// End of a logical line.
     Newline,
@@ -336,7 +336,7 @@ fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
 /// The operators a `program` lexes, longest first, so `<=` is one token and not `<` `=`.
 pub const OPERATORS: &[&str] = &[
     "===", "!==", "==", "!=", "<=", ">=", "->", "=>", "&&", "||", "+=", "-=", "*=", "/=", "++",
-    "--", "**", "+", "-", "*", "/", "%", "<", ">", "!",
+    "--", "**", "+", "-", "*", "/", "%", "<", ">", "!", "?",
 ];
 
 /// A number in a program (RFC-0013 §3.1), starting at `bytes[i]`: a digit, or a `.` before a

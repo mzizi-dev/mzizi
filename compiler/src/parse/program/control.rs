@@ -13,7 +13,7 @@ use super::{
     Stop, Tok, canonical, describe, join, word,
 };
 use crate::expr::{Arm, ElseArm};
-use crate::program::{ElseWhen, EnumDecl};
+use crate::program::{ElseWhen, EnumDecl, Variant};
 
 /// Words that start a statement, which a branch of a `when` or `match` used as a value
 /// cannot hold (`MZ0932`): its branch is one line, an expression.
@@ -24,8 +24,9 @@ const STATEMENT_WORDS: &[&str] = &[
 
 /// What a `case` line turned out to be.
 enum Header {
-    /// `case v1 v2 …`: the values and the line's span.
-    Values(Vec<Expr>, Span),
+    /// `case v1 v2 …`: the values, the line's span, and the name a result's case binds
+    /// (`case ok v`).
+    Values(Vec<Expr>, Span, Option<(String, Span)>),
     /// An `else` spelt from another language (`default:`, `case _`, `_ =>`), repaired.
     Else(Span),
 }
@@ -525,7 +526,7 @@ impl P {
         loop {
             match stop {
                 Stop::Case(_) => match self.case_header() {
-                    Header::Values(values, span) => {
+                    Header::Values(values, span, binding) => {
                         let (b, s, last) = body(self);
                         arms.push(Arm {
                             values,
@@ -533,6 +534,7 @@ impl P {
                             body: b,
                             last_line: last.unwrap_or(span.start_line),
                             after_else: otherwise.is_some(),
+                            binding,
                         });
                         stop = s;
                     }
@@ -713,9 +715,10 @@ impl P {
                     );
                 }
                 let span = values.last().map_or(case_at, |v| join(case_at, v.span));
+                let binding = self.result_case_binding(&mut values);
                 self.trailing_block_punctuation();
                 self.finish_line("a `case` line");
-                Header::Values(values, span)
+                Header::Values(values, span, binding)
             }
         }
     }
@@ -1066,7 +1069,8 @@ impl P {
 
     // ------------------------------------------------------------ enum
 
-    /// `enum <name>`, one variant per line, then a bare `end`. The cursor is on `enum`.
+    /// `enum <name>`, one variant per line with its literal columns, then a bare `end`.
+    /// The cursor is on `enum`.
     pub(super) fn enum_decl(&mut self) -> Option<EnumDecl> {
         let enum_at = self.bump().span;
         let (name, name_span) = match self.peek().clone() {
@@ -1128,19 +1132,14 @@ impl P {
                 Tok::Doc(_) => self.recover_line(),
                 Tok::Ident(v) => {
                     self.bump();
-                    variants.push((v.clone(), at));
-                    if !self.at_line_end() {
-                        let line_end = self.line_end_span();
-                        self.err(
-                            "MZ0919",
-                            join(at, line_end),
-                            format!(
-                                "a column on a variant (`{v} label \"…\"`) is designed for a program's enums (RFC-0013 §14.2) but not built yet — a program's enum lists one variant name per line"
-                            ),
-                        );
-                        self.skipped.push((at.start_line, at.start_line));
-                    }
-                    self.recover_line();
+                    // Its columns (RFC-0001 §1.3, RFC-0013 §12.1): `say "is below zero"`.
+                    let columns = self.columns(&v);
+                    variants.push(Variant {
+                        name: v,
+                        span: at,
+                        columns,
+                    });
+                    self.finish_line("a variant's columns");
                 }
                 other => {
                     self.err(

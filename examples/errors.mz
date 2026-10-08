@@ -1,0 +1,47 @@
+## Checks ages: one function fails with an error, its callers handle it with `match` or
+## propagate it with `try`, and `main` itself returns a result (RFC-0013 §12).
+program errors
+
+  enum age_problem
+    negative say "is below zero"
+    too_old  say "is above 150"
+  end
+
+  fn main: result(none, age_problem)
+    print(describe(42))
+    print(describe(-3))
+    print(describe(200))
+    let total = try total_age(20, 22)
+    print("20 and 22 make {total}")
+    match total_age(20, 151)
+      case ok sum
+        print("20 and 151 make {sum}")
+      case error problem
+        print("20 and 151 were rejected: {problem} {problem.say}")
+    end
+  end fn main
+
+  fn check_age(n: int): result(int, age_problem)
+    when n < 0
+      return error(negative)
+    end
+    when n > 150
+      return error(too_old)
+    end
+    return n
+  end fn check_age
+
+  fn describe(n: int): text
+    match check_age(n)
+      case ok age
+        return "age {age} is fine"
+      case error problem
+        return "{n} is rejected: {problem} {problem.say}"
+    end
+  end fn describe
+
+  fn total_age(a: int, b: int): result(int, age_problem)
+    return try check_age(a) + try check_age(b)
+  end fn total_age
+
+end program errors
