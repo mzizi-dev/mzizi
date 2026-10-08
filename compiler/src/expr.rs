@@ -518,7 +518,15 @@ pub fn canonical(e: &Expr) -> String {
                 r
             };
             if *called {
-                let args: Vec<String> = args.iter().map(canonical).collect();
+                // A labelled argument is written with its label (RFC-0013 §6.5, §10).
+                let args: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(k, a)| match crate::text::label(name, k) {
+                        Some(label) => format!("{label} = {}", canonical(a)),
+                        None => canonical(a),
+                    })
+                    .collect();
                 format!("{r}.{name}({})", args.join(", "))
             } else {
                 format!("{r}.{name}")
@@ -683,6 +691,13 @@ pub fn int_op(op: BinOp, a: i64, b: i64) -> Result<i64, Fault> {
         _ => return Err(Fault::Overflow),
     };
     r.ok_or(Fault::Overflow)
+}
+
+/// A built-in method's signature on a receiver of type `recv`: the numeric methods of
+/// RFC-0013 §4.4 and the text methods of §10. Its parameters' types and what it returns, or
+/// `None` when `recv` has no method `name`.
+pub fn method_signature(recv: Ty, name: &str) -> Option<(Vec<Ty>, Ty)> {
+    crate::numbers::method(recv, name).or_else(|| crate::text::method(recv, name))
 }
 
 /// Whether a value of this type has a text form (RFC-0013 §3.8), so it can be printed or
