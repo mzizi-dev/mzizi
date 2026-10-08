@@ -1083,21 +1083,21 @@ the only one consistent with no lambdas (§6.4, F20) that does not add a third l
 character. There is no `char` type: one character is a `text` of length 1. The minimum C6 needs,
 all methods:
 
-| Method                               | Returns         | Notes                                                       |
-| ------------------------------------ | --------------- | ----------------------------------------------------------- |
-| `s.length()`                         | `int`           | scalar values, not bytes                                    |
-| `s[i]`, `s.slice(a, to = b)`         | `option(text)`  | `none` out of range (§3.7, survey F23)                      |
-| `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                      |
-| `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`       |
-| `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                             |
-| `s.split(sep)`                       | `list(text)`    | `sep` is not empty; `s.split("")` is `MZ0915` when literal  |
-| `s.chars()`                          | `list(text)`    | one element per scalar value                                |
-| `s.trim()`                           | `text`          | Unicode whitespace at both ends; `strip` is `MZ0962`        |
-| `s.to_upper()`, `s.to_lower()`       | `text`          | Unicode case mapping                                        |
-| `s.replace(old, by = new)`           | `text`          | every occurrence                                            |
-| `s.repeat(n)`                        | `text`          | `n` ≥ 0                                                     |
-| `s.parse_int()`                      | `option(int)`   | RFC-0011 §4.2's rule: `-`? then ASCII digits, fitting `int` |
-| `s.parse_float()`                    | `option(float)` | `-`? digits, `.` and digits optional; no exponent, no `inf` |
+| Method                               | Returns         | Notes                                                                                                                                                               |
+| ------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s.length()`                         | `int`           | scalar values, not bytes                                                                                                                                            |
+| `s[i]`, `s.slice(a, to = b)`         | `option(text)`  | `none` out of range (§3.7, survey F23)                                                                                                                              |
+| `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                                                                                                                              |
+| `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`                                                                                                               |
+| `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                                                                                                                                     |
+| `s.split(sep)`                       | `list(text)`    | `sep` is not empty; `s.split("")` is `MZ0915` when literal                                                                                                          |
+| `s.chars()`                          | `list(text)`    | one element per scalar value                                                                                                                                        |
+| `s.trim()`                           | `text`          | Unicode whitespace at both ends; `strip` is `MZ0962`                                                                                                                |
+| `s.to_upper()`, `s.to_lower()`       | `text`          | Unicode case mapping                                                                                                                                                |
+| `s.replace(old, by = new)`           | `text`          | every occurrence                                                                                                                                                    |
+| `s.repeat(n)`                        | `text`          | `n` ≥ 0                                                                                                                                                             |
+| `s.parse_int()`                      | `option(int)`   | RFC-0011 §4.2's rule: `-`? then ASCII digits, fitting `int`                                                                                                         |
+| `s.parse_float()`                    | `option(float)` | `-`? digits, then an optional `.` only if at least one digit follows it; a digit is required before the `.`, so `"1."` and `".5"` are `none`; no exponent, no `inf` |
 
 `parse_int` reuses RFC-0011 §4.2's rule on purpose, so a query parameter and a parsed string agree
 (HD-4): `"0x10"`, `"1e2"`, `" 7 "` and `"1.5"` are all `none`. Formatting is interpolation (§3.6);
