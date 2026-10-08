@@ -218,6 +218,20 @@ impl Lower<'_> {
                 let r = self.atom(rhs);
                 Some(format!("{} {rust_op} {r}", self.path(e, &v)))
             }
+            // Two bare variants: the one that belongs to exactly one enum names the enum
+            // the other is read against, as the checker reads it.
+            (Some(a), Some(b)) => {
+                let owner = |n: &str| variant_owner(self.enums, n, None).ok();
+                let e = match (owner(&a), owner(&b)) {
+                    (Some(e), None) | (None, Some(e)) => e,
+                    _ => return None,
+                };
+                Some(format!(
+                    "{} {rust_op} {}",
+                    self.path(e, &a),
+                    self.path(e, &b)
+                ))
+            }
             _ => None,
         }
     }

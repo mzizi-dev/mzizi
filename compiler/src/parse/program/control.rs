@@ -245,8 +245,23 @@ impl P {
             // TypeScript's `for … of` iterates values, as `for each` does; its `for … in`
             // iterates keys or indices, so that rewrite is only a guess.
             let of = self.is_word("of");
-            self.bump();
+            let of_at = self.bump().span;
             let source = self.expr();
+            if self.dropped_between(of_at, source.span) {
+                // `for (const x of [1, 2])`: the loop is TypeScript's, and its list is not
+                // what the parser read, so the rewrite cannot be written for it.
+                let line_end = self.line_end_span();
+                self.err(
+                    "MZ0934",
+                    join(for_at, line_end),
+                    format!(
+                        "`for (… {} …)` is TypeScript's — write `for each {name} in <list>`",
+                        if of { "of" } else { "in" }
+                    ),
+                );
+                let source = self.error_expr(source.span);
+                return self.for_tail(at, name, name_span, source, fn_name);
+            }
             if matches!(self.peek(), Tok::RParen) {
                 let close = self.bump().span;
                 let fixed = format!("for each {name} in {}", canonical(&source));
@@ -336,9 +351,34 @@ impl P {
             self.skip_open_block();
             return None;
         }
-        self.bump();
+        let in_at = self.bump().span;
         let source = self.expr();
+        let source = self.unless_dropped(in_at, source);
         self.for_tail(at, name, name_span, source, fn_name)
+    }
+
+    /// `source`, read after `from` on one line, or an error value when the lexer dropped a
+    /// character between them (`MZ0104`) or respelt the source's first tokens (`MZ0105`):
+    /// `for each k in [1, 2]` reads as `1` without its `[`, and a fix built on that `1`
+    /// would write over what the author meant. The line has its diagnostic already, so its
+    /// leftovers are not a second one.
+    fn unless_dropped(&mut self, from: Span, source: Expr) -> Expr {
+        if !self.dropped_between(from, source.span) {
+            return source;
+        }
+        self.failed = true;
+        self.error_expr(source.span)
+    }
+
+    /// Whether the lexer dropped or respelt anything after `from` and up to where `to`
+    /// starts, on one line.
+    fn dropped_between(&self, from: Span, to: Span) -> bool {
+        self.dropped.iter().any(|d| {
+            d.start_line == from.end_line
+                && d.start_line == to.start_line
+                && d.start_col >= from.end_col
+                && d.start_col <= to.start_col
+        })
     }
 
     /// The end of a `for each` line, from its source on, and its body.
