@@ -1172,10 +1172,10 @@ pub const CODES: &[Code] = &[
     ),
     code(
         "MZ0918",
-        "RFC-0013 §5.1, §16",
-        EXACT,
+        "RFC-0013 §5.1, §9.2, §16",
+        ALL_FIXES,
         PROGRAM,
-        "`+=`, `-=`, `*=`, `/=`, `++` or `--`; the exact fix writes `x = x + 1`",
+        "`+=`, `-=`, `*=`, `/=`, `++` or `--`; the exact fix writes `x = x + 1`. On `xs[i]`, an option, the fix is a guess, `xs[i] = (xs[i] otherwise 0) + 1`, and there is none when no default can be guessed",
         "program t\n  fn main\n    var n = 1\n    n += 1\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
