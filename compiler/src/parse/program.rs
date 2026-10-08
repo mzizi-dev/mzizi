@@ -8,7 +8,7 @@
 //! Spellings from other languages (`==`, `&&`, `->`, `def`, `console.log`, `x = 1` with no
 //! binding) are repaired in the tree as they are reported, so the checker sees the program
 //! the `exact` fix would produce and reports nothing more about that line (RFC-0013 §16).
-//! Forms RFC-0013 designs that are not built yet (methods on text, lists, a program's
+//! Forms RFC-0013 designs that are not built yet (text methods that return an option or a list, lists, a program's
 //! `contract`, …) are one `MZ0919` each, naming the form, and their block is skipped.
 //! C4's control flow (§7: `else when`, `match`, `for each`, `while`, `break`, `continue`,
 //! `when` and `match` as values, and the `enum`s a `match` needs) is read by [`control`],
@@ -23,8 +23,10 @@ use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
 
 use super::MAX_NESTING;
 
+mod collections;
 mod control;
 mod errors;
+mod records;
 
 use errors::Known;
 
@@ -78,6 +80,7 @@ pub(super) fn parse(
     };
     let fn_names: Rc<[String]> = declared("fn").into();
     let enum_names: Rc<[String]> = declared("enum").into();
+    let record_names: Rc<[String]> = records::declared_records(&tokens).into();
     // Characters the lexer dropped (`MZ0104`) or respelt (`MZ0105`), so a line read
     // without them can tell.
     let dropped: Vec<Span> = lex_diags
@@ -89,6 +92,7 @@ pub(super) fn parse(
         dropped,
         fn_names,
         enum_names,
+        record_names,
         match_open: 0,
         block_value: None,
         pending_skip: false,
@@ -190,6 +194,8 @@ struct P {
     fn_names: Rc<[String]>,
     /// Every `enum` name in the file: a type may name one declared later.
     enum_names: Rc<[String]>,
+    /// Every `record` name in the file, for the same reason, and for a record literal.
+    record_names: Rc<[String]>,
     /// How many `match` blocks are open, so a `case` line ends the block it is in only
     /// when a `match` is there to take it.
     match_open: usize,
@@ -435,6 +441,7 @@ impl P {
             docs,
             fns: Vec::new(),
             enums: Vec::new(),
+            records: Vec::new(),
             stray_statements: false,
         };
         let mut stray: Option<(Span, u32)> = None;
@@ -475,7 +482,7 @@ impl P {
                     }
                 }
                 Tok::Keyword("fn") => {
-                    if let Some(f) = self.function() {
+                    if let Some(f) = self.function(false) {
                         program.fns.push(f);
                     }
                 }
@@ -492,7 +499,7 @@ impl P {
                         "fn",
                         Confidence::Exact,
                     );
-                    if let Some(f) = self.function() {
+                    if let Some(f) = self.function(false) {
                         program.fns.push(f);
                     }
                 }
@@ -506,7 +513,9 @@ impl P {
                     self.not_built("a `contract` block in a program (RFC-0013 §15.1)", true)
                 }
                 Tok::Ident(w) if w == "record" => {
-                    self.not_built("a `record` in a program (RFC-0013 §11)", true)
+                    if let Some(r) = self.record_decl() {
+                        program.records.push(r);
+                    }
                 }
                 Tok::Ident(w) if w == "test" && matches!(self.peek_at(1), Tok::Str(_)) => {
                     self.not_built("a `test` block (RFC-0013 §15.2)", true)
@@ -668,7 +677,7 @@ impl P {
 
     /// `fn name(a: int): int` … `end fn name`. The cursor is on `fn` (or the `def` it
     /// stands for).
-    fn function(&mut self) -> Option<FnDecl> {
+    fn function(&mut self, is_method: bool) -> Option<FnDecl> {
         let fn_at = self.bump().span;
         self.keyword_names.truncate(self.keyword_fns);
         let (name, name_span) = match self.peek().clone() {
@@ -700,8 +709,38 @@ impl P {
                 return None;
             }
         };
-        let params = self.params(&name);
-        let ret = self.return_type(&name);
+        let deep_before = self.too_deep;
+        let params = self.params(&name, is_method);
+        if is_method && self.is_word("changes") {
+            // RFC-0013 §11.2: a method that changes its receiver is designed, not built.
+            let at = self.span();
+            self.err(
+                "MZ0919",
+                join(at, self.line_end_span()),
+                "a method that changes `self` (`fn … changes self`) is designed (RFC-0013 §11.2) but not built yet — a method returns a changed copy, with `with`, and its body is skipped",
+            );
+            // Kept with its signature and no body, flagged as skipped, so a call to it is
+            // checked against the signature and reports nothing more.
+            self.skip_fn_body();
+            return Some(FnDecl {
+                name,
+                name_span,
+                params,
+                ret: None,
+                body: Vec::new(),
+                end_span: name_span,
+                skipped: true,
+            });
+        }
+        let mut ret = self.return_type(&name);
+        // A type past the nesting cap (`MZ0411`) cut the signature short: what it returns
+        // was not read, so it is unknown, and its `return`s say nothing more.
+        if !deep_before && self.too_deep && ret.is_none() {
+            ret = Some(TypeRef {
+                ty: Ty::Error,
+                span: name_span,
+            });
+        }
         self.ret = ret.map(|r| r.ty);
         self.trailing_block_punctuation();
         self.finish_line(&format!("the signature of `fn {name}`"));
@@ -750,6 +789,11 @@ impl P {
         })
     }
 
+    /// A record's `fn`: read as any `fn` is, with `self` as its receiver.
+    fn method(&mut self) -> Option<FnDecl> {
+        self.function(true)
+    }
+
     fn skip_fn_body(&mut self) {
         let first = self.span().start_line;
         self.recover_line();
@@ -765,7 +809,7 @@ impl P {
         self.skipped.push((first, self.span().start_line));
     }
 
-    fn params(&mut self, fn_name: &str) -> Vec<Param> {
+    fn params(&mut self, fn_name: &str, is_method: bool) -> Vec<Param> {
         let mut params = Vec::new();
         if !matches!(self.peek(), Tok::LParen) {
             return params;
@@ -819,7 +863,24 @@ impl P {
                     return params;
                 }
             };
-            let ty = if matches!(self.peek(), Tok::Colon) {
+            // A method's receiver is written `self`, never declared (RFC-0013 §11.2): a
+            // `self` parameter is `MZ0970`, and the parameter is not kept.
+            let receiver = is_method && name == "self";
+            let ty = if receiver {
+                self.err(
+                    "MZ0970",
+                    span,
+                    "a method's receiver is `self`, which is never declared — delete it from the parameters",
+                );
+                if matches!(self.peek(), Tok::Colon) {
+                    self.bump();
+                    let _ = self.type_ref("a parameter's `:`");
+                }
+                TypeRef {
+                    ty: Ty::Error,
+                    span,
+                }
+            } else if matches!(self.peek(), Tok::Colon) {
                 self.bump();
                 self.type_ref("a parameter's `:`")
             } else {
@@ -851,7 +912,9 @@ impl P {
                     self.bump();
                 }
             }
-            params.push(Param { name, span, ty });
+            if !receiver {
+                params.push(Param { name, span, ty });
+            }
             match self.peek() {
                 Tok::Comma => {
                     self.bump();
@@ -938,10 +1001,42 @@ impl P {
         Some(self.type_ref("`:`"))
     }
 
-    /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, or
-    /// `result(T, E)` (RFC-0013 §12.1).
+    /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, `result(T, E)`
+    /// (RFC-0013 §12.1), or `list(T)`, `map(K, V)` or `set(K)` (§2, §9). A type spelt with
+    /// brackets, `[T]` or `T[]`, is one `MZ0105` whose `exact` fix writes `list(T)`: in a
+    /// program the repair is the type parser's, since `[` is also a list literal (§9.1).
     fn type_ref(&mut self, after: &str) -> TypeRef {
+        // Each type nested in another is a level of the program's nesting budget, so
+        // `list(list(…))` of any depth costs no more stack than the cap allows (`MZ0411`).
         let at = self.span();
+        if self.nest >= PROGRAM_NESTING {
+            let span = join(at, self.line_end_span());
+            self.report_too_deep(span, "the rest of this line");
+            self.failed = true;
+            while !self.at_line_end() {
+                self.bump();
+            }
+            self.skipped.push((at.start_line, at.start_line));
+            return TypeRef {
+                ty: Ty::Error,
+                span,
+            };
+        }
+        self.nest += 1;
+        let first = self.diags.len();
+        let t = self.type_ref_inner(after);
+        let t = self.symbolic_type(t, first);
+        self.nest -= 1;
+        t
+    }
+
+    /// [`P::type_ref`] without the one `MZ0105` for the whole type.
+    pub(super) fn type_ref_inner(&mut self, after: &str) -> TypeRef {
+        let at = self.span();
+        if matches!(self.peek(), Tok::LBracket) {
+            let t = self.bracket_type(at, after);
+            return self.list_suffix(t);
+        }
         let Some(name) = word(self.peek()).map(str::to_string) else {
             let found = describe(self.peek());
             self.err(
@@ -958,9 +1053,13 @@ impl P {
         if name == "result" && matches!(self.peek(), Tok::LParen) {
             return self.result_type(at);
         }
+        if Ty::CONSTRUCTORS.contains(&name.as_str()) && matches!(self.peek(), Tok::LParen) {
+            let t = self.constructor_type(&name, at);
+            return self.list_suffix(t);
+        }
         let mut span = at;
         if matches!(self.peek(), Tok::LParen) {
-            // `list(int)`, `option(text)`: later waves'.
+            // `int(…)` and the like: not a type constructor.
             let mut depth = 0;
             loop {
                 match self.peek() {
@@ -985,6 +1084,7 @@ impl P {
         let ty = match name.as_str() {
             _ if surface.is_some() => surface.unwrap_or(Ty::Error),
             n if span == at && self.enum_names.iter().any(|e| e == n) => Ty::Enum(intern(n)),
+            n if span == at && self.record_names.iter().any(|r| r == n) => Ty::Record(intern(n)),
             "result" => {
                 self.err(
                     "MZ0306",
@@ -993,12 +1093,23 @@ impl P {
                 );
                 Ty::Error
             }
-            "list" | "option" | "map" | "set" => {
+            n if Ty::CONSTRUCTORS.contains(&n) => {
                 self.err(
-                    "MZ0919",
+                    "MZ0306",
                     span,
                     format!(
-                        "`{name}` is designed (RFC-0013 §2) but not built yet — a program has int, float, bool, text, its enums and `result(T, E)`"
+                        "`{n}` names its {}: `{}`",
+                        if n == "map" {
+                            "key and value types"
+                        } else {
+                            "element type"
+                        },
+                        match n {
+                            "map" => "map(<key>, <value>)",
+                            "set" => "set(<key>)",
+                            "option" => "option(<type>)",
+                            _ => "list(<type>)",
+                        }
                     ),
                 );
                 Ty::Error
@@ -1013,7 +1124,7 @@ impl P {
                     _ => None,
                 };
                 let say = format!(
-                    "`{other}` is not a type here — the types are int, float, bool, text, the program's enums and `result(T, E)`"
+                    "`{other}` is not a type here — the types are int, float, bool, text, the program's enums, `list(T)`, `map(K, V)`, `set(K)` and `result(T, E)`"
                 );
                 match alias {
                     Some(a) => {
@@ -1027,7 +1138,7 @@ impl P {
             }
         };
         self.question_after_type();
-        TypeRef { ty, span }
+        self.list_suffix(TypeRef { ty, span })
     }
 
     /// `MZ0937`: a trailing `:` on a block line (Python). The fix deletes it.
@@ -1259,6 +1370,22 @@ impl P {
 
     /// An assignment, a Go `:=`, an operator-assignment, a print idiom, or an expression.
     fn simple_statement(&mut self, tok: &Tok, at: Span) -> Option<StmtKind> {
+        if matches!(tok, Tok::Ident(_)) && matches!(self.peek_at(1), Tok::LBracket) {
+            return self.index_statement(at);
+        }
+        // `p.x = value`: a field of a record (RFC-0013 §11.1).
+        if let Tok::Ident(name) = tok
+            && matches!(self.peek_at(1), Tok::Dot)
+            && let Tok::Ident(field) = self.peek_at(2).clone()
+            && matches!(self.peek_at(3), Tok::Equals)
+        {
+            let name = name.clone();
+            self.bump();
+            self.bump();
+            let field_span = self.span();
+            self.bump();
+            return Some(self.field_assignment(name, at, field, field_span));
+        }
         if let Tok::Ident(name) = tok {
             let name = name.clone();
             match (self.peek_at(1).clone(), self.peek_at(2).clone()) {
@@ -1896,6 +2023,10 @@ impl P {
                 }
                 BinOp::Is
             }
+            Tok::Keyword("in") => {
+                self.bump();
+                BinOp::In
+            }
             Tok::Op(o @ ("<" | "<=" | ">" | ">=")) => {
                 self.bump();
                 match o {
@@ -1939,11 +2070,14 @@ impl P {
     }
 
     fn cmp_expr(&mut self) -> Expr {
-        let lhs = self.add_expr();
+        let lhs = self.otherwise_expr();
+        if self.is_word("not") && matches!(self.peek_at(1), Tok::Keyword("in")) {
+            return self.not_in(lhs);
+        }
         let Some((op, op_at)) = self.cmp_op() else {
             return lhs;
         };
-        let rhs = self.add_expr();
+        let rhs = self.otherwise_expr();
         let mut height = 0;
         if self.chain_too_deep(&mut height, &lhs, &rhs, op_at) {
             return self.error_expr(join(lhs.span, rhs.span));
@@ -1955,7 +2089,7 @@ impl P {
                 ExprKind::Binary { rhs, .. } => (**rhs).clone(),
                 _ => unreachable!("links are binary"),
             };
-            let rhs = self.add_expr();
+            let rhs = self.otherwise_expr();
             // `a < b < c < …` is repaired to `a < b and b < c and …`, a tree one level
             // deeper per link, over the deepest link.
             let link = binary(op, op_at, middle, rhs);
@@ -1988,7 +2122,7 @@ impl P {
         chain
     }
 
-    fn add_expr(&mut self) -> Expr {
+    pub(super) fn add_expr(&mut self) -> Expr {
         let mut lhs = self.mul_expr();
         let mut height = 0;
         loop {
@@ -2117,6 +2251,9 @@ impl P {
             Tok::LParen => {
                 self.bump();
                 let inner = self.expr();
+                if matches!(self.peek(), Tok::Comma) {
+                    return self.tuple(at);
+                }
                 if matches!(self.peek(), Tok::RParen) {
                     let close = self.bump().span;
                     Expr {
@@ -2141,14 +2278,13 @@ impl P {
             }
             Tok::Ident(name) => self.name_or_call(name, at),
             Tok::Keyword(k @ ("when" | "match")) => return self.misplaced_block_value(k, at),
+            Tok::LBracket => self.bracket_literal(at),
             Tok::Keyword("none") => {
                 self.bump();
-                self.err(
-                    "MZ0919",
-                    at,
-                    "`none` is an option's absence, and options in a function body are designed (RFC-0013 §8) but not built yet",
-                );
-                self.error_expr(at)
+                Expr {
+                    kind: ExprKind::None,
+                    span: at,
+                }
             }
             other => {
                 if !self.failed {
@@ -2202,6 +2338,7 @@ impl P {
                 name_span: at,
                 args: vec![exponent],
                 called: true,
+                unlabelled: false,
             },
         };
         let d = Diagnostic::error(
@@ -2289,16 +2426,16 @@ impl P {
                 span: at,
             };
         }
+        // `point(x = 1.0, y = 2.0)`: a record built by field name (RFC-0013 §11.1).
+        if self.record_names.contains(&name) {
+            return self.record_literal(name, at);
+        }
         if let Some(e) = self.constructor_idiom(&name, at) {
             return e;
         }
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
-        let (args, close) = if name == "range" {
-            self.args_labelled(Some((1, "to")))
-        } else {
-            self.args()
-        };
+        let (args, close, labelled) = self.args_labelled(P::call_label(&name), false);
         let span = join(at, close);
         if name == "print" || name == "puts" {
             return self.print_call(at, &name, args, span);
@@ -2308,6 +2445,7 @@ impl P {
                 name,
                 name_span: at,
                 args,
+                labelled,
             },
             span,
         }
@@ -2315,20 +2453,30 @@ impl P {
 
     /// `(a, b)`: the cursor is on `(`. Returns the arguments and the `)`'s span.
     fn args(&mut self) -> (Vec<Expr>, Span) {
-        self.args_labelled(None)
+        let (args, close, _) = self.args_labelled(None, false);
+        (args, close)
     }
 
     /// [`P::args`], where `label` is an argument's position and the one label it may carry.
-    fn args_labelled(&mut self, label: Option<(usize, &str)>) -> (Vec<Expr>, Span) {
+    /// Also says whether that label was written. With `misspelt`, another name in that
+    /// label's place is `MZ0927` with that label as its fix (a method's, RFC-0013 §10);
+    /// without it, as for `range` since C4, it is a named argument (`MZ0905`).
+    pub(super) fn args_labelled(
+        &mut self,
+        label: Option<(usize, &str)>,
+        misspelt: bool,
+    ) -> (Vec<Expr>, Span, bool) {
         let open = self.bump().span;
         let mut args = Vec::new();
+        let mut labelled = false;
         if matches!(self.peek(), Tok::RParen) {
-            return (args, self.bump().span);
+            return (args, self.bump().span, labelled);
         }
         loop {
             if let (Tok::Ident(n), Tok::Equals) = (self.peek(), self.peek_at(1))
                 && label == Some((args.len(), n.as_str()))
             {
+                labelled = true;
                 self.bump();
                 self.bump();
             } else if let (Tok::Ident(n), Tok::Colon) = (self.peek(), self.peek_at(1))
@@ -2348,6 +2496,30 @@ impl P {
                     Confidence::Exact,
                 );
                 self.failed = false;
+                labelled = true;
+                self.bump();
+                self.bump();
+            } else if let (Tok::Ident(n), Tok::Equals) =
+                (self.peek().clone(), self.peek_at(1).clone())
+                && misspelt
+                && let Some((at_arg, want)) = label
+                && at_arg == args.len()
+            {
+                // `s.replace(a, with = b)`: this argument takes one label, so another
+                // name is a misspelling of it (RFC-0013 §16, `MZ0927`), and the fix is that
+                // label. The label is read, so the call is one diagnostic.
+                let at = self.span();
+                self.err_fix(
+                    "MZ0927",
+                    at,
+                    format!(
+                        "`{n} = …` names no parameter — this argument is labelled `{want} = …`"
+                    ),
+                    at,
+                    want,
+                    Confidence::Exact,
+                );
+                labelled = true;
                 self.bump();
                 self.bump();
             } else if let (Tok::Ident(n), Tok::Equals) =
@@ -2364,12 +2536,17 @@ impl P {
                 self.bump();
                 self.bump();
             }
-            args.push(self.expr());
+            if self.at_lambda() {
+                let lambda = self.lambda();
+                args.push(lambda);
+            } else {
+                args.push(self.expr());
+            }
             match self.peek() {
                 Tok::Comma => {
                     self.bump();
                 }
-                Tok::RParen => return (args, self.bump().span),
+                Tok::RParen => return (args, self.bump().span, labelled),
                 other => {
                     if !self.failed {
                         let s = self.span();
@@ -2387,7 +2564,7 @@ impl P {
                     while !self.at_line_end() {
                         self.bump();
                     }
-                    return (args, end);
+                    return (args, end, labelled);
                 }
             }
         }
@@ -2403,6 +2580,7 @@ impl P {
                     name: "print".to_string(),
                     name_span: name_at,
                     args,
+                    labelled: false,
                 },
                 span,
             };
@@ -2462,6 +2640,7 @@ impl P {
                 name: "print".to_string(),
                 name_span: name_at,
                 args: vec![arg],
+                labelled: false,
             },
             span,
         }
@@ -2593,6 +2772,7 @@ impl P {
             keyword_fns: self.keyword_fns,
             fn_names: Rc::clone(&self.fn_names),
             enum_names: Rc::clone(&self.enum_names),
+            record_names: Rc::clone(&self.record_names),
             match_open: 0,
             block_value: None,
             pending_skip: false,
@@ -2645,6 +2825,13 @@ fn depth(e: &Expr) -> usize {
             }
             ExprKind::Unary { operand, .. } => todo.push((operand, d + 1)),
             ExprKind::Field { base, .. } => todo.push((base, d + 1)),
+            ExprKind::Record { fields, .. } => {
+                todo.extend(fields.iter().map(|f| (&f.value, d + 1)));
+            }
+            ExprKind::With { base, fields } => {
+                todo.push((base, d + 1));
+                todo.extend(fields.iter().map(|f| (&f.value, d + 1)));
+            }
             ExprKind::Call { args, .. } => todo.extend(args.iter().map(|a| (a, d + 1))),
             ExprKind::Method { recv, args, .. } => {
                 todo.push((recv, d + 1));
@@ -2673,10 +2860,22 @@ fn depth(e: &Expr) -> usize {
                 }
                 todo.extend(otherwise.iter().map(|o| (&o.body, d + 1)));
             }
+            ExprKind::List(items) => todo.extend(items.iter().map(|a| (a, d + 1))),
+            ExprKind::MapLit(entries) => {
+                for (k, v) in entries {
+                    todo.push((k, d + 1));
+                    todo.push((v, d + 1));
+                }
+            }
+            ExprKind::Index { base, index } => {
+                todo.push((base, d + 1));
+                todo.push((index, d + 1));
+            }
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::Bool(_)
             | ExprKind::Name(_)
+            | ExprKind::None
             | ExprKind::Variant { .. }
             | ExprKind::Error => {}
         }
