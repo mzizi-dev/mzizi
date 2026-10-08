@@ -491,7 +491,8 @@ impl P {
         // `exact` fixes overlap: `x??` is `try try x`.
         let mut question: Option<usize> = None;
         loop {
-            if matches!(self.peek(), Tok::Op("?") | Tok::Dot | Tok::LBracket) {
+            if matches!(self.peek(), Tok::Op("?") | Tok::Dot | Tok::LBracket) || self.with_follows()
+            {
                 links += 1;
                 if links > super::MAX_NESTING {
                     // The line is not read, so nothing on it is reported but `MZ0411`.
@@ -547,6 +548,18 @@ impl P {
                         kind: ExprKind::Unary {
                             op: UnOp::Try,
                             operand: Box::new(e),
+                        },
+                    };
+                }
+                (Tok::Ident(w), Tok::LParen) if w == "with" => {
+                    // `p with (x = 3.0)`: a copy of a record with fields replaced (§11.1).
+                    self.bump();
+                    let (fields, close) = self.field_inits();
+                    e = Expr {
+                        span: join(e.span, close),
+                        kind: ExprKind::With {
+                            base: Box::new(e),
+                            fields,
                         },
                     };
                 }

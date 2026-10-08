@@ -57,7 +57,7 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow, errors and collections, wave 2 text (part)";
+pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow, errors, collections and records, wave 2 text (part)";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -256,6 +256,8 @@ pub struct Command {
 const HELLO: &str = include_str!("../../examples/hello.mz");
 const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
 const FIB: &str = include_str!("../../examples/fib.mz");
+const RECORDS: &str = include_str!("../../examples/records.mz");
+const RECORDS_OUT: &str = include_str!("../../examples/records.expected");
 const TEXT_OPS: &str = include_str!("../../examples/text.mz");
 const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
 const FIB_OUT: &str = include_str!("../../examples/fib.expected");
@@ -599,6 +601,71 @@ pub const FEATURES: &[Feature] = &[
         ],
     },
     Feature {
+        name: "record",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11, §18.6",
+        grammar: &[
+            "record <name>\n  field <field>: <type>\n  fn <method>(<params>): <type>\n    …\n  end fn <method>\n  contract\n    always <bool>\n  end\nend",
+            "<record>(<field> = <value>, …)",
+            "<value> with (<field> = <value>, …)",
+            "<value>.<field>",
+            "<value>.<method>(<args>)",
+        ],
+        teach: "A program declares a record with `record <name>` and a bare `end`. Each `field <name>: <type>` line names a field, and a value is built by naming every field once, in declaration order: `point(x = 1.0, y = 2.0)`. There are no zero values: a field left out is an error, and a field that may be absent is an `option`. `p with (x = 3.0)` is a copy of `p` with `x` replaced, and `p` is unchanged. A `fn` inside the record is a method, called on a value as `p.norm()`; its receiver is `self`, always written and never declared, and a method reads `self` and returns a value, since assigning to `self` is an error (a method that changes `self` is designed, not built: it returns a changed copy with `with`). A `contract` block of `always <bool>` lines holds for every value: a value that breaks one traps when it is built or changed (exit 101), and a literal that breaks one is an error at check time. A clause reads the fields and calls nothing. Records compare with `is`, print as `point(x = 1.0, y = 2.0)`, and are copied when read.",
+        types: "Each record is its own type. `p.x` has the field's declared type, and `p.m()` the method's return type. A record is not a map key or a set element, and holds no record of itself except through a `list`.",
+        codes: &[
+            "MZ0808", "MZ0921", "MZ0904", "MZ0950", "MZ0970", "MZ0971", "MZ0974", "MZ0975",
+            "MZ0708", "MZ0905", "MZ0711", "MZ0712", "MZ0707", "MZ0917", "MZ0301", "MZ0310",
+            "MZ0206", "MZ0919", "MZ0960", "MZ0991",
+        ],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "record literal",
+        kind: Kind::Function,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §11.4",
+        grammar: &["<record>(<field> = <value>, …)"],
+        teach: "A record's name, called with every field by name, builds a value of it: `span(low = 2, high = 9)`. Each field is given once, in declaration order, with a value of its type; a positional value, a repeated or unknown field, and a field left out are `MZ0808`, and an unknown field's guess is its nearest name. A literal whose fields are all literals and that breaks an `always` clause is `MZ0975` at check time, as it would trap every time it ran.",
+        types: "`<record>(…)` → the record's type",
+        codes: &["MZ0808", "MZ0975", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "with",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §3.5",
+        grammar: &["<record> with (<field> = <value>, …)"],
+        teach: "`p with (x = 3.0)` is a copy of the record `p` with the named fields replaced, and `p` itself is not changed. It is a postfix form that binds like a method call, so `p with (x = 0.0).norm()` calls `norm` on the copy. Its fields follow the record literal's rules: names of `p`'s record, at least one, each once, in declaration order, and each value of its type. Its mistakes are `MZ0974`. The copy is checked by the record's `always` clauses, as a literal is.",
+        types: "`<record> with (…)` → the same record's type",
+        codes: &["MZ0974", "MZ0975", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "field",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §12.1",
+        grammar: &["<value>.<field>"],
+        teach: "`value.name` with no parentheses reads a column of an enum value (RFC-0013 §12.1) or a field of a record (§11.1). A record's field has its declared type, and is copied out when that type is not `Copy`. A method is called with parentheses, `p.norm()`, and named without them it is `MZ0708`; a name that is no field is `MZ0708` with the nearest field's name as its guess.",
+        types: "`<record>.<field>` → the field's type; `<enum>.<column>` → the column's type",
+        codes: &["MZ0708", "MZ0950"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "field assignment",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §11.4",
+        grammar: &["<var>.<field> = <value>"],
+        teach: "`p.x = 3.0` replaces one field of a record held by a `var`, and changes that `var` only. On a `let` it is an error whose exact fix makes the binding a `var` (`MZ0960`), as for a list. The record's `always` clauses are checked after the change, and a broken one traps (exit 101) at this line. Assigning to `self` is `MZ0971` in a method, which returns a changed copy with `with` instead.",
+        types: "The value has the field's type. The record is a `var` and is changed in place.",
+        codes: &["MZ0960", "MZ0711", "MZ0708", "MZ0971", "MZ0970", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
         name: "result",
         kind: Kind::Declaration,
         depth: Depth::Full,
@@ -794,6 +861,7 @@ pub const COMMANDS: &[Command] = &[
 
 const PROGRAM: &[&str] = &["program"];
 const ALL_KINDS: &[&str] = &["program", "component", "service"];
+const PROGRAM_SERVICE: &[&str] = &["program", "service"];
 const NONE: &[FixKind] = &[FixKind::None];
 const EXACT: &[FixKind] = &[FixKind::Exact];
 const NONE_EXACT: &[FixKind] = &[FixKind::None, FixKind::Exact];
@@ -1035,6 +1103,14 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    print(\"{}\")\n  end fn main\nend program t\n",
     ),
     code(
+        "MZ0808",
+        "RFC-0011 §3, RFC-0013 §11.1, §16",
+        NONE_GUESS,
+        PROGRAM_SERVICE,
+        "a record built wrong: a positional value, a field the record lacks (its nearest name is the guess), a field given twice, fields out of order, a field left out, or a value of the wrong type; a service's record literal with a field that has no value",
+        "program t\n  record point\n    field x: float\n    field y: float\n  end\n  fn main\n    print(point(x = 1.0))\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0901",
         "RFC-0013 §1, §16",
         NONE,
@@ -1183,7 +1259,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "designed in RFC-0013, not built yet, reported once: `option(T)` written as a type, `none` as a value and narrowing an option; indexing text and text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`; a `record`; a `use` line; a `test` block; a `contract` block in a program or on a `fn`",
+        "not built yet (RFC-0013), reported once: `option(T)` as a type, `none` as a value, narrowing an option; indexing text and text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`; a method that changes `self`; a record that holds itself; a `use` line; a `test` block; a `contract` block",
         "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1399,6 +1475,38 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(s: set(float)): int\n    return 1\n  end fn f\nend program t\n",
     ),
     code(
+        "MZ0970",
+        "RFC-0013 §11.2, §16",
+        NONE,
+        PROGRAM,
+        "`self` where it is not a method's receiver: as a parameter (`fn norm(self)`, delete it), or read outside a method. A method's receiver is written `self` and never declared, and a method's name cannot be a field's",
+        "program t\n  fn main\n    print(self)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0971",
+        "RFC-0013 §11.2, §16",
+        NONE,
+        PROGRAM,
+        "a method assigns to `self` or one of its fields. A method reads its receiver: it returns a changed copy with `with`. A method that changes `self` (`changes self`) is designed but not built (MZ0919)",
+        "program t\n  record counter\n    field count: int\n    fn bump\n      self.count = self.count + 1\n    end fn bump\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0974",
+        "RFC-0013 §11.1, §16",
+        NONE_GUESS,
+        PROGRAM,
+        "a `with` that cannot copy a record: on a value that is not a record, with no fields, a field the record does not have (the nearest name is its guess), a field replaced twice, fields out of declaration order, or a value of the wrong type",
+        "program t\n  record point\n    field x: float\n    field y: float\n  end\n  fn main\n    let p = point(x = 1.0, y = 2.0)\n    print(p with (z = 3.0))\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0975",
+        "RFC-0013 §11.4, §16",
+        NONE,
+        PROGRAM,
+        "an `always` clause that cannot hold or cannot be checked: a literal record that breaks it (it traps every time it runs), or a clause that calls a `fn` or a method, builds or copies a record, or uses `try`",
+        "program t\n  record span\n    field low: int\n    field high: int\n    contract\n      always low <= high\n    end\n  end\n  fn main\n    print(span(low = 3, high = 1))\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0980",
         "RFC-0013 §1, §16",
         NONE_EXACT,
@@ -1449,7 +1557,7 @@ pub const PENDING_CODES: &[&str] = &[
     "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
     "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0713",
     "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807",
-    "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
+    "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 /// The registered code, if any.
@@ -1620,7 +1728,8 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
         | Ty::List(_)
         | Ty::Option(_)
         | Ty::Map(_)
-        | Ty::Set(_) => None,
+        | Ty::Set(_)
+        | Ty::Record(_) => None,
     }
 }
 
@@ -2117,6 +2226,7 @@ pub fn statement_entry(kind: &crate::program::StmtKind) -> &'static str {
         StmtKind::Break => "break",
         StmtKind::Continue => "continue",
         StmtKind::IndexAssign { .. } => "indexed assignment",
+        StmtKind::FieldAssign { .. } => "field assignment",
     }
 }
 
@@ -2145,7 +2255,10 @@ pub fn expression_entry(kind: &crate::expr::ExprKind) -> &'static str {
         ExprKind::Call { .. } => "fn",
         ExprKind::Unary { op, .. } => unop_entry(*op).0,
         ExprKind::Binary { op, .. } => op.text(),
-        ExprKind::Variant { .. } | ExprKind::Field { .. } => "enum",
+        ExprKind::Variant { .. } => "enum",
+        ExprKind::Field { .. } => "field",
+        ExprKind::Record { .. } => "record literal",
+        ExprKind::With { .. } => "with",
         ExprKind::When { .. } | ExprKind::Match { .. } => "when or match as a value",
         ExprKind::List(_) | ExprKind::MapLit(_) => "bracket literal",
         ExprKind::Index { .. } => "index",

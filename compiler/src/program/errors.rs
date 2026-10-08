@@ -292,6 +292,7 @@ impl FnCheck<'_> {
                 }
                 Ty::Error
             }
+            Ty::Record(r) => self.record_field(base, r, name, name_span),
             t if t.as_result().is_some() => {
                 // `try` binds looser than a dot, so the `guess` that propagates is
                 // `(try base).name`, not `try base.name`.

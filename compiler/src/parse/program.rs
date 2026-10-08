@@ -26,6 +26,7 @@ use super::MAX_NESTING;
 mod collections;
 mod control;
 mod errors;
+mod records;
 
 use errors::Known;
 
@@ -79,6 +80,7 @@ pub(super) fn parse(
     };
     let fn_names: Rc<[String]> = declared("fn").into();
     let enum_names: Rc<[String]> = declared("enum").into();
+    let record_names: Rc<[String]> = records::declared_records(&tokens).into();
     // Characters the lexer dropped (`MZ0104`) or respelt (`MZ0105`), so a line read
     // without them can tell.
     let dropped: Vec<Span> = lex_diags
@@ -90,6 +92,8 @@ pub(super) fn parse(
         dropped,
         fn_names,
         enum_names,
+        record_names,
+        in_method: false,
         match_open: 0,
         block_value: None,
         pending_skip: false,
@@ -191,6 +195,11 @@ struct P {
     fn_names: Rc<[String]>,
     /// Every `enum` name in the file: a type may name one declared later.
     enum_names: Rc<[String]>,
+    /// Every `record` name in the file, for the same reason, and for a record literal.
+    record_names: Rc<[String]>,
+    /// Whether the `fn` being read is a record's method, whose receiver is `self` and
+    /// never a parameter (RFC-0013 §11.2).
+    in_method: bool,
     /// How many `match` blocks are open, so a `case` line ends the block it is in only
     /// when a `match` is there to take it.
     match_open: usize,
@@ -436,6 +445,7 @@ impl P {
             docs,
             fns: Vec::new(),
             enums: Vec::new(),
+            records: Vec::new(),
             stray_statements: false,
         };
         let mut stray: Option<(Span, u32)> = None;
@@ -507,7 +517,9 @@ impl P {
                     self.not_built("a `contract` block in a program (RFC-0013 §15.1)", true)
                 }
                 Tok::Ident(w) if w == "record" => {
-                    self.not_built("a `record` in a program (RFC-0013 §11)", true)
+                    if let Some(r) = self.record_decl() {
+                        program.records.push(r);
+                    }
                 }
                 Tok::Ident(w) if w == "test" && matches!(self.peek_at(1), Tok::Str(_)) => {
                     self.not_built("a `test` block (RFC-0013 §15.2)", true)
@@ -703,6 +715,17 @@ impl P {
         };
         let deep_before = self.too_deep;
         let params = self.params(&name);
+        if self.in_method && self.is_word("changes") {
+            // RFC-0013 §11.2: a method that changes its receiver is designed, not built.
+            let at = self.span();
+            self.err(
+                "MZ0919",
+                join(at, self.line_end_span()),
+                "a method that changes `self` (`fn … changes self`) is designed (RFC-0013 §11.2) but not built yet — a method returns a changed copy, with `with`, and its body is skipped",
+            );
+            self.skip_fn_body();
+            return None;
+        }
         let mut ret = self.return_type(&name);
         // A type past the nesting cap (`MZ0411`) cut the signature short: what it returns
         // was not read, so it is unknown, and its `return`s say nothing more.
@@ -758,6 +781,14 @@ impl P {
             end_span,
             skipped,
         })
+    }
+
+    /// A record's `fn`: read as any `fn` is, with `self` as its receiver.
+    fn method(&mut self) -> Option<FnDecl> {
+        self.in_method = true;
+        let m = self.function();
+        self.in_method = false;
+        m
     }
 
     fn skip_fn_body(&mut self) {
@@ -829,7 +860,24 @@ impl P {
                     return params;
                 }
             };
-            let ty = if matches!(self.peek(), Tok::Colon) {
+            // A method's receiver is written `self`, never declared (RFC-0013 §11.2): a
+            // `self` parameter is `MZ0970`, and the parameter is not kept.
+            let receiver = self.in_method && name == "self";
+            let ty = if receiver {
+                self.err(
+                    "MZ0970",
+                    span,
+                    "a method's receiver is `self`, which is never declared — delete it from the parameters",
+                );
+                if matches!(self.peek(), Tok::Colon) {
+                    self.bump();
+                    let _ = self.type_ref("a parameter's `:`");
+                }
+                TypeRef {
+                    ty: Ty::Error,
+                    span,
+                }
+            } else if matches!(self.peek(), Tok::Colon) {
                 self.bump();
                 self.type_ref("a parameter's `:`")
             } else {
@@ -861,7 +909,9 @@ impl P {
                     self.bump();
                 }
             }
-            params.push(Param { name, span, ty });
+            if !receiver {
+                params.push(Param { name, span, ty });
+            }
             match self.peek() {
                 Tok::Comma => {
                     self.bump();
@@ -1031,6 +1081,7 @@ impl P {
         let ty = match name.as_str() {
             _ if surface.is_some() => surface.unwrap_or(Ty::Error),
             n if span == at && self.enum_names.iter().any(|e| e == n) => Ty::Enum(intern(n)),
+            n if span == at && self.record_names.iter().any(|r| r == n) => Ty::Record(intern(n)),
             "result" => {
                 self.err(
                     "MZ0306",
@@ -1318,6 +1369,19 @@ impl P {
     fn simple_statement(&mut self, tok: &Tok, at: Span) -> Option<StmtKind> {
         if matches!(tok, Tok::Ident(_)) && matches!(self.peek_at(1), Tok::LBracket) {
             return self.index_statement(at);
+        }
+        // `p.x = value`: a field of a record (RFC-0013 §11.1).
+        if let Tok::Ident(name) = tok
+            && matches!(self.peek_at(1), Tok::Dot)
+            && let Tok::Ident(field) = self.peek_at(2).clone()
+            && matches!(self.peek_at(3), Tok::Equals)
+        {
+            let name = name.clone();
+            self.bump();
+            self.bump();
+            let field_span = self.span();
+            self.bump();
+            return Some(self.field_assignment(name, at, field, field_span));
         }
         if let Tok::Ident(name) = tok {
             let name = name.clone();
@@ -2359,6 +2423,10 @@ impl P {
                 span: at,
             };
         }
+        // `point(x = 1.0, y = 2.0)`: a record built by field name (RFC-0013 §11.1).
+        if self.record_names.contains(&name) {
+            return self.record_literal(name, at);
+        }
         if let Some(e) = self.constructor_idiom(&name, at) {
             return e;
         }
@@ -2701,6 +2769,8 @@ impl P {
             keyword_fns: self.keyword_fns,
             fn_names: Rc::clone(&self.fn_names),
             enum_names: Rc::clone(&self.enum_names),
+            record_names: Rc::clone(&self.record_names),
+            in_method: self.in_method,
             match_open: 0,
             block_value: None,
             pending_skip: false,
@@ -2753,6 +2823,13 @@ fn depth(e: &Expr) -> usize {
             }
             ExprKind::Unary { operand, .. } => todo.push((operand, d + 1)),
             ExprKind::Field { base, .. } => todo.push((base, d + 1)),
+            ExprKind::Record { fields, .. } => {
+                todo.extend(fields.iter().map(|f| (&f.value, d + 1)));
+            }
+            ExprKind::With { base, fields } => {
+                todo.push((base, d + 1));
+                todo.extend(fields.iter().map(|f| (&f.value, d + 1)));
+            }
             ExprKind::Call { args, .. } => todo.extend(args.iter().map(|a| (a, d + 1))),
             ExprKind::Method { recv, args, .. } => {
                 todo.push((recv, d + 1));

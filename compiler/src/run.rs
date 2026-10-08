@@ -29,12 +29,13 @@ use std::process::Command;
 
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, fold};
 use crate::numbers::FLOAT_TEXT_RUNTIME;
-use crate::program::{EnumDecl, FnDecl, Program, Stmt, StmtKind};
+use crate::program::{EnumDecl, FnDecl, Program, RecordDecl, Stmt, StmtKind};
 use crate::text::OPS_RUNTIME;
 
 mod collections;
 mod control;
 mod errors;
+mod records;
 
 /// The generated package, as `(relative path, contents)` pairs.
 #[derive(Debug, PartialEq)]
@@ -248,7 +249,8 @@ pub fn lower(p: &Program, source: &str) -> Package {
     let mut lw = Lower {
         fns: &fns,
         enums: &p.enums,
-        rust_enums: control::rust_enum_names(&p.enums),
+        records: &p.records,
+        rust_enums: control::rust_enum_names(&p.enums, &p.records),
         types: BTreeMap::new(),
         sites: Vec::new(),
         ret: Ty::Nothing,
@@ -257,6 +259,9 @@ pub fn lower(p: &Program, source: &str) -> Package {
     for e in &p.enums {
         lw.enum_decl(e, &mut body);
         lw.enum_columns(e, &mut body);
+    }
+    for r in &p.records {
+        lw.record_decl(r, &mut body);
     }
     for f in &p.fns {
         lw.function(f, &mut body);
@@ -387,7 +392,9 @@ fn rust_cmp_op(op: BinOp) -> &'static str {
 /// A Mzizi name as a Rust identifier.
 fn ident(name: &str) -> String {
     match name {
-        "crate" | "self" | "super" | "Self" => format!("mz_kw_{name}"),
+        // A method's receiver is `self` in Rust too (RFC-0013 §11.2); no Mzizi binding is.
+        "self" => "self".to_string(),
+        "crate" | "super" | "Self" => format!("mz_kw_{name}"),
         n if RUST_KEYWORDS.contains(&n) => format!("r#{n}"),
         n => n.to_string(),
     }
@@ -406,7 +413,9 @@ struct Lower<'a> {
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
     /// The program's enums, which a bare variant name resolves against.
     enums: &'a [EnumDecl],
-    /// Each enum's Rust name, and each of its variants' (RFC-0013 §14.2).
+    /// The program's records, whose fields and methods a value of their type has (§11).
+    records: &'a [RecordDecl],
+    /// Each enum's and each record's Rust name, and each enum's variants' (RFC-0013 §14.2).
     rust_enums: BTreeMap<String, (String, BTreeMap<String, String>)>,
     /// The type of every binding in the function being lowered. A name is bound at most
     /// once in a function (RFC-0013 §5.3), so one map per function is exact.
@@ -425,7 +434,7 @@ impl Lower<'_> {
             Ty::Float => "f64".to_string(),
             Ty::Bool => "bool".to_string(),
             Ty::Text => "String".to_string(),
-            Ty::Enum(e) => self
+            Ty::Enum(e) | Ty::Record(e) => self
                 .rust_enums
                 .get(e)
                 .map_or_else(|| "()".to_string(), |(n, _)| n.clone()),
@@ -552,6 +561,16 @@ impl Lower<'_> {
             StmtKind::Expr(e) => {
                 let _ = writeln!(out, "{pad}{};", self.expr(e));
             }
+            StmtKind::FieldAssign {
+                name,
+                name_span,
+                field,
+                field_span: _,
+                value,
+            } => {
+                let line = self.field_assign(name, *name_span, field, value);
+                let _ = writeln!(out, "{pad}{line}");
+            }
             StmtKind::IndexAssign {
                 name,
                 name_span,
@@ -626,6 +645,7 @@ impl Lower<'_> {
                 recv, name, args, ..
             } => match self.ty(recv) {
                 rt if rt.is_collection() => self.method_ty(rt, name, args),
+                Ty::Record(_) => self.record_method_ty(self.ty(recv), name),
                 rt => crate::expr::method_signature(rt, name).map_or(Ty::Error, |(_, ret)| ret),
             },
             ExprKind::Unary {
@@ -638,6 +658,8 @@ impl Lower<'_> {
                 operand,
             } => self.ty(operand).as_result().map_or(Ty::Error, |(ok, _)| ok),
             ExprKind::Field { base, name, .. } => self.field_ty(base, name),
+            ExprKind::Record { name, .. } => Ty::Record(crate::expr::intern(name)),
+            ExprKind::With { base, .. } => self.ty(base),
             ExprKind::Binary { op, lhs, .. } if op.is_arithmetic() => self.ty(lhs),
             ExprKind::Binary { .. } => Ty::Bool,
             ExprKind::Error => Ty::Error,
@@ -741,6 +763,8 @@ impl Lower<'_> {
                 operand,
             } => self.try_expr(operand),
             ExprKind::Field { base, name, .. } => self.field(base, name),
+            ExprKind::Record { name, fields, .. } => self.record_literal(e, name, fields),
+            ExprKind::With { base, fields } => self.with_expr(e, base, fields),
             ExprKind::Unary {
                 op: UnOp::Neg,
                 operand,
@@ -791,6 +815,9 @@ impl Lower<'_> {
     /// with the expression's site.
     fn method(&mut self, e: &Expr, recv: &Expr, name: &str, args: &[Expr]) -> String {
         let rt = self.ty(recv);
+        if let Ty::Record(_) = rt {
+            return self.record_method_call(recv, rt, name, args);
+        }
         if rt == Ty::Text {
             return self.text_method(e, recv, name, args);
         }
