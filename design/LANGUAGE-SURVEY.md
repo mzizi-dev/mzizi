@@ -35,7 +35,7 @@ This file feeds three design documents:
   written.
 - **A future Tier 2 RFC** (P1–P11). It may split, for example a separate concurrency RFC for P9.
 - **A future Tier 3 RFC** (H1, T1–T10). Parts already live in RFC-0001 (canonical form) and
-  RFC-0012 (the harness).
+  RFC-0012 (the language harness).
 
 ## 2. Method and sources
 

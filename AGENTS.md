@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 385 tests (516 in the workspace)
+cargo test                                                              # 402 tests (533 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -61,6 +61,9 @@ cargo run --bin mz -- ir              ../primitives/card.mz
 cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
 cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
 cargo run --bin mz -- run            ../examples/fib.mz                  # lower a program, build it, run it
+cargo run --bin mz -- harness version                                  # protocol 1, the language version, the definition's SHA-256
+cargo run --bin mz -- harness definition --agent                       # every language-harness entry, as one line of JSON
+cargo run --bin mz -- harness entry let                                # one entry
 cd .. && benchmarks/perf/run.sh                                         # perf suite: Mzizi vs hand-written Rust, measured
 benchmarks/perf/run.sh --check-only                                     # what CI runs: build and compare output, no timing
 ```
@@ -147,6 +150,7 @@ the offline check a task author runs.
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
   not already used on `main` or claimed by an open PR. Other RFCs may be in flight on branches.
 - A PR that changes what the language can do updates the matching row in `LANGUAGE-TRACKER.md` in the same PR.
+- A PR that adds or changes a language feature adds or updates its harness entry in the same PR (`compiler/src/harness.rs`, [RFC-0012](./design/RFC-0012-harness.md) §1.2). What is enforced, exactly: `mz`'s command dispatch, each operator's spelling, precedence and operand types, the operator and type lists, the numeric methods' signatures and the parser's type names come from one source. Each code's severity, `say` and fix kinds, and each feature's grammar, teaching text and examples, are a parallel copy that `compiler/tests/harness.rs` (part of `cargo test` in CI's `compiler` job) holds to the checker: it fails on a code the source can emit with no entry and not on the frozen pending list, on a trigger that does not report its code at its severity with a declared fix kind, on an example that does not check or run as stated, and on a lexed operator with no entry; in a debug build every report is checked against the registry, fix kinds included. Exhaustive matches make a new statement, expression, operator or type fail to compile until it names its entry.
 
 ## Site and docs freshness (hard rule)
 

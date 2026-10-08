@@ -11,7 +11,13 @@
 //! mz build <file.mz> --out <dir> lower a service to an axum package (RFC-0011 §8), or a
 //!                               program to a dependency-free Rust package (RFC-0013 §14)
 //! mz run [--release] <file.mz>  check, lower, build and run a program (RFC-0013 §13)
+//! mz harness version            the protocol and language versions (RFC-0012 §5)
+//! mz harness definition [--agent]  every language-harness entry, as JSON
+//! mz harness entry <name>       one entry, as JSON
 //! ```
+//!
+//! The commands that take a file are the ones registered in the language harness
+//! ([`mzizi_lang_compiler::harness::COMMANDS`]): `mz` dispatches on that table.
 //!
 //! Exit status is 0 when there are no errors (warnings do not fail), 1 when there are, and
 //! 2 for a usage or I/O problem — so the loop can branch on status without parsing output.
@@ -35,6 +41,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 
 use mzizi_lang_compiler::diagnostic::Severity;
+use mzizi_lang_compiler::harness;
 use mzizi_lang_compiler::ir::{Store, lower, paths};
 use mzizi_lang_compiler::outline::outline;
 use mzizi_lang_compiler::parse::Program;
@@ -44,6 +51,9 @@ use mzizi_lang_compiler::{
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("harness") {
+        return harness(&args[1..]);
+    }
     let agent = args.iter().any(|a| a == "--agent");
     let release = args.iter().any(|a| a == "--release");
     // `--out <dir>` is `mz build`'s only option with a value.
@@ -62,19 +72,10 @@ fn main() -> ExitCode {
     let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
 
     let (command, path) = match positional.as_slice() {
-        [cmd, path]
-            if matches!(
-                cmd.as_str(),
-                "check" | "fix" | "contract" | "outline" | "hash" | "ir" | "build" | "run"
-            ) =>
-        {
-            (cmd.as_str(), *path)
-        }
+        [cmd, path] if harness::takes_file(cmd) => (cmd.as_str(), *path),
         [path] => ("check", *path),
         _ => {
-            eprintln!(
-                "usage: mz <check|fix|contract|outline|hash|ir> [--agent] <file.mz>\n       mz build <file.mz> --out <dir>\n       mz run [--release] <program.mz>"
-            );
+            usage();
             return ExitCode::from(2);
         }
     };
@@ -316,6 +317,46 @@ fn main() -> ExitCode {
     } else {
         ExitCode::SUCCESS
     }
+}
+
+/// Every registered command's usage line, from the language harness.
+fn usage() {
+    for (i, c) in harness::COMMANDS.iter().enumerate() {
+        let lead = if i == 0 { "usage:" } else { "      " };
+        eprintln!("{lead} {}", c.usage);
+    }
+}
+
+/// `mz harness` (RFC-0012 §5): read the language harness. Exits 0, or 2 for a usage problem
+/// or an unknown entry name.
+fn harness(args: &[String]) -> ExitCode {
+    let agent = args.iter().any(|a| a == "--agent");
+    let words: Vec<&str> = args
+        .iter()
+        .filter(|a| *a != "--agent")
+        .map(String::as_str)
+        .collect();
+    match words.as_slice() {
+        ["version"] => print!("{}", harness::version()),
+        ["definition"] => print!("{}", harness::definition(!agent)),
+        ["entry", name @ ..] if !name.is_empty() => {
+            let name = name.join(" ");
+            match harness::entry_text(&name, !agent) {
+                Some(text) => print!("{text}"),
+                None => {
+                    eprintln!(
+                        "mz: the language harness has no entry `{name}`; `mz harness definition` lists every entry"
+                    );
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        _ => {
+            eprintln!("usage: mz harness version | definition [--agent] | entry <name> [--agent]");
+            return ExitCode::from(2);
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// `mz run` (RFC-0013 §13.1): check, lower into the build cache, `cargo build --offline`,

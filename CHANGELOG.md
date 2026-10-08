@@ -17,12 +17,38 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — the language harness, first slice: `mz harness` and one entry per built feature (2026-10-07)
+
+- **Tested** (`cargo test`, gated in CI; 402 tests in the compiler crate, 17 of them in the new `compiler/tests/harness.rs`; 533 in the workspace). **`compiler/src/harness.rs`** is the language harness's registry ([RFC-0012](./design/RFC-0012-harness.md) §1.1), with no new dependency. It registers:
+  - `program`, and everything RFC-0013 builds so far: `int`, `float`, `bool` and `text`; the 13 binary and 2 prefix operators; the 11 numeric methods (`to_float`, `to_int`, `round`, `floor`, `ceil`, `sqrt`, `is_nan`, `abs`, `min`, `max`, `pow`); `fn`, `let`, `var`, assignment, `when`, `return`, expression statements, `print`, text literals, comments and names;
+  - 52 diagnostic codes, each with its RFC section, severity, `say` text, fix kinds and a trigger: each `MZ09xx` a program can raise (`MZ0901`–`MZ0926`, `MZ0937`, `MZ0962`, `MZ0980`, and `mz run`'s `MZ0990` and `MZ0991`) and the 21 shared codes a program reuses (`MZ0101`–`MZ0106`, `MZ0204`–`MZ0208`, `MZ0306`, `MZ0310`, `MZ0407`, `MZ0411`, `MZ0701`, `MZ0707`, `MZ0708`, `MZ0711`, `MZ0712`, `MZ0714`);
+  - the nine `mz` commands.
+  - `component` and `service` are kind-level entries only, and their 55 codes are on a sorted pending list that a test freezes, so it can only shrink.
+- **What has one source, and what is a parallel copy held by tests.** One source:
+  - `mz` dispatches on the registry's command table, and its usage message is generated from it;
+  - the program parser accepts exactly the surface types' names (`Ty::from_name`);
+  - each operator's spelling, precedence and operand types, the operator and type lists (`ALL`, now generated with each enum by one macro in `compiler/src/expr.rs`) and each method's signature are read from the checker's own tables.
+
+  Parallel copies, which the checker does not read: each code's severity, `say` and fix kinds, and each feature's grammar, teaching text and examples. `compiler/tests/harness.rs` fails when:
+  - the compiler source holds a code with no entry and not pending, or an entry names a code nothing emits;
+  - a trigger stops reporting its code at its severity with a declared fix kind;
+  - an example stops checking with no diagnostic, or a program example stops printing its stated output under `mz run` (skipped, and said so, without `cargo`);
+  - an operator the lexer reads has no entry, or a rejected spelling is not reported with the code its entry names;
+  - a surface type or numeric method has no entry.
+
+  In a debug build every report `check`, `check_contract`, `check_program` and `check_with_ast` return is checked against the registry, before overlapping fixes are demoted. A code with no entry, another severity, or a fix kind its entry does not declare panics; a release `mz` skips the check. That check found six wrong declarations in the full test suite (`MZ0101`, `MZ0707` and `MZ0708` carry `exact` and `guess` fixes; `MZ0905` a `guess`; `MZ0910` and `MZ0911` sometimes none), now corrected. Statement and expression forms, operators and types are matched exhaustively, so a new one does not compile until it names its entry.
+
+- **`mz harness version`** prints `{"protocol":1,"language":"phase-0, RFC-0013 wave 0 and wave 1 numbers","definition_sha256":…}`. No crate version changes; the definition's SHA-256 pins its content. **`mz harness definition [--agent]`** prints every entry as deterministic, hand-serialised JSON, indented or on one line. **`mz harness entry <name> [--agent]`** prints one entry (`mz harness entry is not`, `mz harness entry MZ0905`). They exit 0, or 2 for a usage problem or an unknown name.
+- **Rule** (owner, 2026-10-07: "The harness work should be part of the build"): a pull request that adds or changes a language feature adds or updates its harness entry in the same pull request. It is written into AGENTS.md, CONTRIBUTING.md, CLAUDE.md, `LANGUAGE-TRACKER.md`'s preamble (a row's "Done when" includes its entries) and RFC-0013 §18. H1's notes say what exists; H1 stays 🟡.
+- **Designed, not built:** the plugin host and `mz harness plugins`; generating the skills and the benchmark guides from the definition; the checker reading its rules from the registry rather than being checked against it (RFC-0012 §1, §4, §7). No benchmark was run. Whether an agent taught by the language harness does better is a hypothesis the benchmark is designed to test (RFC-0012 §9, question 9), not a result.
+
 ### Changed — RFC-0012 amended: the language harness, the spine of the language (2026-10-07)
 
 - **Design only; nothing is measured.** [RFC-0012](./design/RFC-0012-harness.md) is renamed **the language harness** throughout, from the owner's direction of 2026-10-07 (quoted there, lightly edited): every feature of the language is defined once, as a harness entry inside the compiler, and the checker's tables where practical, `mz harness definition`, the agent skills and the benchmark guides are generated from or checked against those entries. `benchmarks/harness/` keeps its name, the benchmark harness.
 - §1 is restated as **the spine**, with **§1.1, the harness entry** (name and kind, grammar, a one-paragraph `teach` text, type rules, diagnostic codes with `say` text and fix kind, and tested examples) and **§1.2, the registration rule**: a pull request that adds or changes a feature adds or updates its entry, and a test fails when the compiler emits a code or builds a construct with no entry. §4.1 now says first-party features register through the same interface as third-party plugins, which may add and may not change the language's meaning.
 - §5 designs `mz harness version`, `mz harness definition [--agent]` and `mz harness entry <name>`; §7 says the skills and the benchmark guides are generated from the definition; §9 decides question 3 (the definition comes from the compiler's own registered entries, not a hand-written file) and adds question 9: whether an agent taught by the language harness does better is a hypothesis for the benchmark to test, not a result.
 - AGENTS.md, README.md, `LANGUAGE-TRACKER.md` (H1 and H2's wording; H1 stays 🟡, H2 stays 📝) and RFC-0013 §18.5 use the new name. Refs #69.
+
 ### Added — `float`, numeric methods and the rest of C1 in programs: RFC-0013 §3 and §4 (2026-10-07)
 
 - **`float` in a `program`** (RFC-0013 §4.2, Wave 1's C1 + C5 of §18.2; Refs #69). Literals are digits, `.`, digits (`1.5`, `0.25`); `float` is a type for bindings, parameters and returns. Arithmetic is IEEE 754 binary64 and never traps: `1.0 / 0.0` is `inf`, `0.0 / 0.0` is `nan`, `nan is nan` is `false`, and `%` is the truncated remainder (`-5.0 % 3.0` is `-2.0`). `int` and `float` never mix: `1 + 1.5` is `MZ0912`, with the `exact` fix `1.0` on an `int` literal and the `guess` `x.to_float()` on anything else, in arithmetic, comparisons and `min` / `max`.

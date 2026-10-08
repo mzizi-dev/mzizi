@@ -65,7 +65,7 @@ cd compiler
 
 cargo fmt -- --check                        # formatting, not negotiable
 cargo clippy --all-targets -- -D warnings   # every lint is an error, including in tests
-cargo test                                  # 385 tests in the compiler crate
+cargo test                                  # 402 tests in the compiler crate
 
 # The ones that are the point — the shipped binary, not the test harness:
 cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
@@ -355,6 +355,16 @@ implements part of them, which is what lets `Status` say "implemented in this PR
 keeps the RFC from drifting into fiction. An RFC that is pure design is fine too; say so in
 `Status`. Either way the branch is merged, not squashed, so the RFC's review history stays
 readable.
+
+## The language harness
+
+A pull request that adds or changes a language feature adds or updates its harness entry in
+the same pull request (owner, 2026-10-07: "The harness work should be part of the build").
+The entry lives in `compiler/src/harness.rs`: one entry in `FEATURES` per feature, one `Code`
+in `CODES` per diagnostic code with a `trigger` that emits it, and examples that check and, for
+a program, run with their stated output. [RFC-0012](./design/RFC-0012-harness.md) §1.2 is the
+rule, and `compiler/tests/harness.rs`, part of `cargo test` in CI, enforces it.
+`mz harness entry <name>` prints what an agent will read.
 
 ## The changelog
 
