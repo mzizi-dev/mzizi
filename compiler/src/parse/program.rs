@@ -23,6 +23,7 @@ use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
 
 use super::MAX_NESTING;
 
+mod collections;
 mod control;
 mod errors;
 
@@ -700,8 +701,17 @@ impl P {
                 return None;
             }
         };
+        let deep_before = self.too_deep;
         let params = self.params(&name);
-        let ret = self.return_type(&name);
+        let mut ret = self.return_type(&name);
+        // A type past the nesting cap (`MZ0411`) cut the signature short: what it returns
+        // was not read, so it is unknown, and its `return`s say nothing more.
+        if !deep_before && self.too_deep && ret.is_none() {
+            ret = Some(TypeRef {
+                ty: Ty::Error,
+                span: name_span,
+            });
+        }
         self.ret = ret.map(|r| r.ty);
         self.trailing_block_punctuation();
         self.finish_line(&format!("the signature of `fn {name}`"));
@@ -938,10 +948,42 @@ impl P {
         Some(self.type_ref("`:`"))
     }
 
-    /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, or
-    /// `result(T, E)` (RFC-0013 §12.1).
+    /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, `result(T, E)`
+    /// (RFC-0013 §12.1), or `list(T)`, `map(K, V)` or `set(K)` (§2, §9). A type spelt with
+    /// brackets, `[T]` or `T[]`, is one `MZ0105` whose `exact` fix writes `list(T)`: in a
+    /// program the repair is the type parser's, since `[` is also a list literal (§9.1).
     fn type_ref(&mut self, after: &str) -> TypeRef {
+        // Each type nested in another is a level of the program's nesting budget, so
+        // `list(list(…))` of any depth costs no more stack than the cap allows (`MZ0411`).
         let at = self.span();
+        if self.nest >= PROGRAM_NESTING {
+            let span = join(at, self.line_end_span());
+            self.report_too_deep(span, "the rest of this line");
+            self.failed = true;
+            while !self.at_line_end() {
+                self.bump();
+            }
+            self.skipped.push((at.start_line, at.start_line));
+            return TypeRef {
+                ty: Ty::Error,
+                span,
+            };
+        }
+        self.nest += 1;
+        let first = self.diags.len();
+        let t = self.type_ref_inner(after);
+        let t = self.symbolic_type(t, first);
+        self.nest -= 1;
+        t
+    }
+
+    /// [`P::type_ref`] without the one `MZ0105` for the whole type.
+    pub(super) fn type_ref_inner(&mut self, after: &str) -> TypeRef {
+        let at = self.span();
+        if matches!(self.peek(), Tok::LBracket) {
+            let t = self.bracket_type(at, after);
+            return self.list_suffix(t);
+        }
         let Some(name) = word(self.peek()).map(str::to_string) else {
             let found = describe(self.peek());
             self.err(
@@ -958,9 +1000,13 @@ impl P {
         if name == "result" && matches!(self.peek(), Tok::LParen) {
             return self.result_type(at);
         }
+        if Ty::CONSTRUCTORS.contains(&name.as_str()) && matches!(self.peek(), Tok::LParen) {
+            let t = self.constructor_type(&name, at);
+            return self.list_suffix(t);
+        }
         let mut span = at;
         if matches!(self.peek(), Tok::LParen) {
-            // `list(int)`, `option(text)`: later waves'.
+            // `int(…)` and the like: not a type constructor.
             let mut depth = 0;
             loop {
                 match self.peek() {
@@ -993,12 +1039,23 @@ impl P {
                 );
                 Ty::Error
             }
-            "list" | "option" | "map" | "set" => {
+            n if Ty::CONSTRUCTORS.contains(&n) => {
                 self.err(
-                    "MZ0919",
+                    "MZ0306",
                     span,
                     format!(
-                        "`{name}` is designed (RFC-0013 §2) but not built yet — a program has int, float, bool, text, its enums and `result(T, E)`"
+                        "`{n}` names its {}: `{}`",
+                        if n == "map" {
+                            "key and value types"
+                        } else {
+                            "element type"
+                        },
+                        match n {
+                            "map" => "map(<key>, <value>)",
+                            "set" => "set(<key>)",
+                            "option" => "option(<type>)",
+                            _ => "list(<type>)",
+                        }
                     ),
                 );
                 Ty::Error
@@ -1013,7 +1070,7 @@ impl P {
                     _ => None,
                 };
                 let say = format!(
-                    "`{other}` is not a type here — the types are int, float, bool, text, the program's enums and `result(T, E)`"
+                    "`{other}` is not a type here — the types are int, float, bool, text, the program's enums, `list(T)`, `map(K, V)`, `set(K)` and `result(T, E)`"
                 );
                 match alias {
                     Some(a) => {
@@ -1027,7 +1084,7 @@ impl P {
             }
         };
         self.question_after_type();
-        TypeRef { ty, span }
+        self.list_suffix(TypeRef { ty, span })
     }
 
     /// `MZ0937`: a trailing `:` on a block line (Python). The fix deletes it.
@@ -1259,6 +1316,9 @@ impl P {
 
     /// An assignment, a Go `:=`, an operator-assignment, a print idiom, or an expression.
     fn simple_statement(&mut self, tok: &Tok, at: Span) -> Option<StmtKind> {
+        if matches!(tok, Tok::Ident(_)) && matches!(self.peek_at(1), Tok::LBracket) {
+            return self.index_statement(at);
+        }
         if let Tok::Ident(name) = tok {
             let name = name.clone();
             match (self.peek_at(1).clone(), self.peek_at(2).clone()) {
@@ -1896,6 +1956,10 @@ impl P {
                 }
                 BinOp::Is
             }
+            Tok::Keyword("in") => {
+                self.bump();
+                BinOp::In
+            }
             Tok::Op(o @ ("<" | "<=" | ">" | ">=")) => {
                 self.bump();
                 match o {
@@ -1939,11 +2003,14 @@ impl P {
     }
 
     fn cmp_expr(&mut self) -> Expr {
-        let lhs = self.add_expr();
+        let lhs = self.otherwise_expr();
+        if self.is_word("not") && matches!(self.peek_at(1), Tok::Keyword("in")) {
+            return self.not_in(lhs);
+        }
         let Some((op, op_at)) = self.cmp_op() else {
             return lhs;
         };
-        let rhs = self.add_expr();
+        let rhs = self.otherwise_expr();
         let mut height = 0;
         if self.chain_too_deep(&mut height, &lhs, &rhs, op_at) {
             return self.error_expr(join(lhs.span, rhs.span));
@@ -1955,7 +2022,7 @@ impl P {
                 ExprKind::Binary { rhs, .. } => (**rhs).clone(),
                 _ => unreachable!("links are binary"),
             };
-            let rhs = self.add_expr();
+            let rhs = self.otherwise_expr();
             // `a < b < c < …` is repaired to `a < b and b < c and …`, a tree one level
             // deeper per link, over the deepest link.
             let link = binary(op, op_at, middle, rhs);
@@ -1988,7 +2055,7 @@ impl P {
         chain
     }
 
-    fn add_expr(&mut self) -> Expr {
+    pub(super) fn add_expr(&mut self) -> Expr {
         let mut lhs = self.mul_expr();
         let mut height = 0;
         loop {
@@ -2117,6 +2184,9 @@ impl P {
             Tok::LParen => {
                 self.bump();
                 let inner = self.expr();
+                if matches!(self.peek(), Tok::Comma) {
+                    return self.tuple(at);
+                }
                 if matches!(self.peek(), Tok::RParen) {
                     let close = self.bump().span;
                     Expr {
@@ -2141,14 +2211,13 @@ impl P {
             }
             Tok::Ident(name) => self.name_or_call(name, at),
             Tok::Keyword(k @ ("when" | "match")) => return self.misplaced_block_value(k, at),
+            Tok::LBracket => self.bracket_literal(at),
             Tok::Keyword("none") => {
                 self.bump();
-                self.err(
-                    "MZ0919",
-                    at,
-                    "`none` is an option's absence, and options in a function body are designed (RFC-0013 §8) but not built yet",
-                );
-                self.error_expr(at)
+                Expr {
+                    kind: ExprKind::None,
+                    span: at,
+                }
             }
             other => {
                 if !self.failed {
@@ -2295,12 +2364,7 @@ impl P {
         }
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
-        let (args, close) = if name == "range" {
-            let (args, close, _) = self.args_labelled(Some((1, "to")), false);
-            (args, close)
-        } else {
-            self.args()
-        };
+        let (args, close, _) = self.args_labelled(P::call_label(&name), false);
         let span = join(at, close);
         if name == "print" || name == "puts" {
             return self.print_call(at, &name, args, span);
@@ -2400,7 +2464,12 @@ impl P {
                 self.bump();
                 self.bump();
             }
-            args.push(self.expr());
+            if self.at_lambda() {
+                let lambda = self.lambda();
+                args.push(lambda);
+            } else {
+                args.push(self.expr());
+            }
             match self.peek() {
                 Tok::Comma => {
                     self.bump();
@@ -2709,10 +2778,22 @@ fn depth(e: &Expr) -> usize {
                 }
                 todo.extend(otherwise.iter().map(|o| (&o.body, d + 1)));
             }
+            ExprKind::List(items) => todo.extend(items.iter().map(|a| (a, d + 1))),
+            ExprKind::MapLit(entries) => {
+                for (k, v) in entries {
+                    todo.push((k, d + 1));
+                    todo.push((v, d + 1));
+                }
+            }
+            ExprKind::Index { base, index } => {
+                todo.push((base, d + 1));
+                todo.push((index, d + 1));
+            }
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::Bool(_)
             | ExprKind::Name(_)
+            | ExprKind::None
             | ExprKind::Variant { .. }
             | ExprKind::Error => {}
         }

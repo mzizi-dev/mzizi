@@ -466,7 +466,9 @@ impl P {
     /// knows the receiver's type, reports that (`MZ0927`). Every other method takes its
     /// arguments by position.
     fn method_args(&mut self, name: &str) -> (Vec<Expr>, Span, bool) {
-        let Some(label) = crate::text::label(name, 1) else {
+        // Text's labels (`replace`'s `by`, `slice`'s `to`), and a fold's `step` (§9.4).
+        let label = crate::text::label(name, 1).or_else(|| P::call_label(name).map(|(_, l)| l));
+        let Some(label) = label else {
             let (args, close) = self.args();
             return (args, close, false);
         };
@@ -487,7 +489,7 @@ impl P {
         // `exact` fixes overlap: `x??` is `try try x`.
         let mut question: Option<usize> = None;
         loop {
-            if matches!(self.peek(), Tok::Op("?") | Tok::Dot) {
+            if matches!(self.peek(), Tok::Op("?") | Tok::Dot | Tok::LBracket) {
                 links += 1;
                 if links > super::MAX_NESTING {
                     // The line is not read, so nothing on it is reported but `MZ0411`.
@@ -500,6 +502,12 @@ impl P {
                 }
             }
             match (self.peek().clone(), self.peek_at(1).clone()) {
+                (Tok::LBracket, _) => {
+                    e = self.index_postfix(e);
+                    if matches!(e.kind, ExprKind::Error) {
+                        return e;
+                    }
+                }
                 (Tok::Op("?"), _) => {
                     let q = self.bump().span;
                     let span = join(e.span, q);

@@ -276,6 +276,18 @@ fn stmt_text(s: &Stmt, indent: usize, out: &mut String) {
         StmtKind::Assign { name, value, .. } => {
             line(out, format!("{name} = {}", value_text(value, indent)));
         }
+        StmtKind::IndexAssign {
+            name, index, value, ..
+        } => {
+            line(
+                out,
+                format!(
+                    "{name}[{}] = {}",
+                    canonical(index),
+                    value_text(value, indent)
+                ),
+            );
+        }
         StmtKind::Return(None) => line(out, "return".to_string()),
         StmtKind::Return(Some(v)) => line(out, format!("return {}", value_text(v, indent))),
         StmtKind::Expr(e) => line(out, canonical(e)),
@@ -472,7 +484,7 @@ impl FnCheck<'_> {
                 source,
                 body,
             } => {
-                self.loop_source(source);
+                let el = self.loop_source(source);
                 self.whens.push(block_at);
                 self.scopes.push(Vec::new());
                 let kind = if self.may_bind(name, *name_span) {
@@ -480,7 +492,7 @@ impl FnCheck<'_> {
                 } else {
                     Kind::Poison
                 };
-                self.bind(name, kind, Ty::Int, None);
+                self.bind(name, kind, el, None);
                 self.loops += 1;
                 self.block(body, None);
                 self.loops -= 1;
@@ -514,43 +526,20 @@ impl FnCheck<'_> {
         }
     }
 
-    /// What a `for each` iterates: `range(a, to = b)` of two ints, in this slice.
-    fn loop_source(&mut self, source: &Expr) {
+    /// What a `for each` iterates (RFC-0013 §7.3): `range(a, to = b)` of two ints, or a
+    /// list. Returns the loop binding's type: `int` for a range, the element type for a list.
+    fn loop_source(&mut self, source: &Expr) -> Ty {
         if let ExprKind::Call { name, args, .. } = &source.kind
             && name == "range"
+            && !self.fns.contains_key(name.as_str())
         {
-            let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
-            // A call the parser cut short is reported already.
-            if args.iter().any(|a| matches!(a.kind, ExprKind::Error)) {
-                return;
-            }
-            if args.len() != 2 {
-                self.err(
-                    "MZ0905",
-                    source.span,
-                    format!(
-                        "`range` takes two ints, `range(a, to = b)`: from `a` up to but not including `b` — this call gives {}",
-                        args.len()
-                    ),
-                );
-                return;
-            }
-            for (a, t) in args.iter().zip(types) {
-                if t != Ty::Int && t != Ty::Error {
-                    self.err(
-                        "MZ0905",
-                        a.span,
-                        format!(
-                            "`{}` is {}, and `range(a, to = b)` takes two ints",
-                            canonical(a),
-                            t.name()
-                        ),
-                    );
-                }
-            }
-            return;
+            self.range_args(source.span, args);
+            return Ty::Int;
         }
         let t = self.expr(source);
+        if let Some(el) = self.loop_collection(source, t) {
+            return el;
+        }
         let say = format!(
             "`for each` iterates a list, and `{}` is {}",
             canonical(source),
@@ -569,13 +558,44 @@ impl FnCheck<'_> {
                 format!("range(0, to = {})", canonical(source)),
                 Confidence::Guess,
             ),
-            _ => self.err(
-                "MZ0711",
-                source.span,
+            _ => self.err("MZ0711", source.span, say),
+        }
+        Ty::Error
+    }
+
+    /// `range(a, to = b)`'s arguments: two ints.
+    pub(super) fn range_args(&mut self, at: Span, args: &[Expr]) {
+        let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+        // A call the parser cut short is reported already.
+        if args.iter().any(|a| matches!(a.kind, ExprKind::Error)) {
+            return;
+        }
+        if args.len() != 2 {
+            self.err(
+                "MZ0905",
+                at,
                 format!(
-                    "{say} — lists are designed (RFC-0013 §9) but not built yet; this slice iterates `range(a, to = b)`"
+                    "`range` takes two ints, `range(a, to = b)`: from `a` up to but not including `b` — this call gives {}",
+                    args.len()
                 ),
-            ),
+            );
+            return;
+        }
+        for (a, t) in args.iter().zip(types) {
+            if t != Ty::Int
+                && !t.has_error()
+                && !self.unhandled(a, t, || "`range` takes ints".into())
+            {
+                self.err(
+                    "MZ0905",
+                    a.span,
+                    format!(
+                        "`{}` is {}, and `range(a, to = b)` takes two ints",
+                        canonical(a),
+                        t.name()
+                    ),
+                );
+            }
         }
     }
 
@@ -588,6 +608,17 @@ impl FnCheck<'_> {
         lhs: &Expr,
         rhs: &Expr,
     ) -> Ty {
+        // `c is none`: a collection's emptiness (RFC-0013 §3.3).
+        if matches!(op, crate::expr::BinOp::Is | crate::expr::BinOp::IsNot) {
+            match (&lhs.kind, &rhs.kind) {
+                (_, ExprKind::None) => return self.is_none(e, lhs),
+                (ExprKind::None, _) => return self.is_none(e, rhs),
+                _ => {}
+            }
+        }
+        if let Some(t) = self.emptiness_idiom(e, op, lhs, rhs) {
+            return t;
+        }
         let candidate = |x: &Expr| match &x.kind {
             ExprKind::Name(n) if self.may_be_variant(n) => Some(n.clone()),
             _ => None,
@@ -673,6 +704,9 @@ impl FnCheck<'_> {
         }
         if matches!(e.kind, ExprKind::When { .. } | ExprKind::Match { .. }) {
             return self.block_value(e, want);
+        }
+        if matches!(e.kind, ExprKind::List(_) | ExprKind::MapLit(_)) {
+            return self.bracket(e, want);
         }
         self.expr(e)
     }

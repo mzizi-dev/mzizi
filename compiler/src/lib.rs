@@ -29,6 +29,7 @@
 #![deny(missing_docs)]
 
 pub mod ast;
+pub mod collections;
 pub mod contract;
 pub mod diagnostic;
 pub mod expr;

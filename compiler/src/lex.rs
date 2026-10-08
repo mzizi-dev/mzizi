@@ -43,6 +43,12 @@ pub enum Tok {
     Comma,
     /// `.`
     Dot,
+    /// `[`, lexed only in a `program` (RFC-0013 §9.1): a bracket literal or an index. In a
+    /// component or a service the lexer still rewrites `[entry]` to `list(entry)`
+    /// (`MZ0105`); in a program the type parser does (RFC-0013 §9.1).
+    LBracket,
+    /// `]`, lexed only in a `program`.
+    RBracket,
     /// An operator, lexed only in a `program` file (RFC-0013 §3): `+ - * / % < <= > >=`, and
     /// the spellings other languages use that a program's parser repairs (`==`, `!=`, `&&`,
     /// `||`, `!`, `->`, `+=`, Rust's postfix `?`, …). In a component or a service these
@@ -918,6 +924,20 @@ fn lex_with(src: &str, file: &str, program: bool, comments: bool) -> (Vec<Token>
             // `list<entry>`, `entry[]`, `[entry]` (RFC-0008 §1). One diagnostic with the
             // Mzizi spelling as an `exact` fix, and the tokens are repaired in place so
             // the parser sees `list(entry)` and reports nothing further (FM-5).
+            // In a program `[` is a list literal or an index, so the repair moves to the
+            // type parser, where only a type can stand (RFC-0013 §9.1).
+            if program && (ch == '[' || ch == ']') {
+                tokens.push(Token {
+                    kind: if ch == '[' {
+                        Tok::LBracket
+                    } else {
+                        Tok::RBracket
+                    },
+                    span: Span::single(line_no, col, 1),
+                });
+                i += 1;
+                continue;
+            }
             if (ch == '<' || ch == '[')
                 && let Some(consumed) =
                     repair_symbolic_type(&bytes, i, line_no, file, &mut tokens, &mut diags)
