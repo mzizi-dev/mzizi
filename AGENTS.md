@@ -11,7 +11,7 @@
 its compiler (`mz`, written in Rust), a research prototype in Phase 0 of the Mzizi research
 charter. Its one goal is building Mzizi as a language that stands against the best existing
 language for each kind of task ([`CHARTER.md`](./CHARTER.md) §1, v0.4). "Compiles to Rust" is
-the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice and its numbers (`int`, `float`, `bool` and `text`, functions, `let` / `var`, `when`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
+the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers and its control flow (`int`, `float`, `bool` and `text`, enums, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
 ([RFC-0012](./design/RFC-0012-harness.md), a draft). `benchmarks/harness/` is a different
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
@@ -30,7 +30,7 @@ tied the arms, and the ~7B open-weight model did worse in Mzizi on all three met
 run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
 waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
 Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust" (only a
-`service` and a foundation-slice `program` lower; no component does, and most of Tier 1 does not exist), "the benchmark shows", "production
+`service` and a `program` in the foundation slice, its numbers and its control flow lower; no component does, and most of Tier 1 does not exist), "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 403 tests (534 in the workspace)
+cargo test                                                              # 452 tests (583 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place

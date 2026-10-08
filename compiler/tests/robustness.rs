@@ -638,3 +638,70 @@ fn deep_main(whens: usize, value: &str) -> String {
         "    end\n".repeat(whens)
     )
 }
+
+/// RFC-0013 §7's blocks share the program's nesting budget: 5,000 nested `while`s,
+/// `for each`es, `match`es or `when`s used as values each give exactly one `MZ0411`, and
+/// the deepest nesting under the cap checks and lowers on the 1 MiB stack. An `else when`
+/// chain is flat, so 10,000 links cost no nesting at all.
+#[test]
+fn deep_control_flow_is_one_mz0411_and_a_long_chain_is_flat() {
+    let n = 5_000;
+    let shapes: [(&str, String, String); 4] = [
+        (
+            "`while`",
+            "    while true\n".repeat(n),
+            "    end\n".repeat(n),
+        ),
+        (
+            "`for each`",
+            (0..n)
+                .map(|k| format!("    for each i{k} in range(0, to = 1)\n"))
+                .collect(),
+            "    end\n".repeat(n),
+        ),
+        (
+            "`match`",
+            "    match 1\n      case 1\n".repeat(n),
+            "      else\n    end\n".repeat(n),
+        ),
+        (
+            "`when`s around a `when` used as a value",
+            format!("{}    let x = when true\n", "    when true\n".repeat(n)),
+            format!(
+                "      1\n    else\n      2\n    end\n{}",
+                "    end\n".repeat(n)
+            ),
+        ),
+    ];
+    for (label, open, close) in shapes {
+        let src = deep_program(&format!("{open}    print(\"in\")\n{close}"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "5,000 nested {label}");
+        run(&format!("5,000 nested {label}"), src);
+    }
+    // Under the cap: the program and `fn main` take two levels, each loop one, and the
+    // `print`'s statement, argument and `{i0}` three.
+    let loops = 27;
+    let src = deep_program(&format!(
+        "{}    print(\"{{i0}}\")\n{}",
+        (0..loops)
+            .map(|k| format!("    for each i{k} in range(0, to = 1)\n"))
+            .collect::<String>(),
+        "    end\n".repeat(loops)
+    ));
+    assert_eq!(count(&src, "MZ0411"), 0);
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("27 nested `for each`es", src);
+    let mut chain = String::from("    let n = 7\n    when n is 0\n      print(0)\n");
+    for k in 1..10_000 {
+        chain.push_str(&format!("    else when n is {k}\n      print({k})\n"));
+    }
+    chain.push_str("    end\n");
+    let src = deep_program(&chain);
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("an `else when` chain of 10,000 links", src);
+}

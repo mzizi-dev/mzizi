@@ -8,19 +8,26 @@
 //! Spellings from other languages (`==`, `&&`, `->`, `def`, `console.log`, `x = 1` with no
 //! binding) are repaired in the tree as they are reported, so the checker sees the program
 //! the `exact` fix would produce and reports nothing more about that line (RFC-0013 §16).
-//! Forms RFC-0013 designs that are not built yet (`while`, `match`, `for each`, methods on
-//! text, …) are one `MZ0919` each, naming the form, and their block is skipped.
+//! Forms RFC-0013 designs that are not built yet (methods on text, lists, a program's
+//! `contract`, …) are one `MZ0919` each, naming the form, and their block is skipped.
+//! C4's control flow (§7: `else when`, `match`, `for each`, `while`, `break`, `continue`,
+//! `when` and `match` as values, and the `enum`s a `match` needs) is read by [`control`],
+//! this module's child.
+
+use std::rc::Rc;
 
 use crate::diagnostic::{Confidence, Diagnostic, Span};
-use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, canonical_text};
+use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, canonical_text, intern};
 use crate::lex::{Tok, Token, lex_fragment};
 use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
 
 use super::MAX_NESTING;
 
+mod control;
+
 /// How deep a program's blocks and expressions may nest, together: the program, the `fn`,
-/// each `when` (and `else when`), and in an expression each `(`, call, `not` and prefix
-/// `-`. Half the cap a component or service gets ([`MAX_NESTING`]), because each of these
+/// each `when`, `match` and loop (an `else when` is none: the chain is flat), and in an
+/// expression each `(`, call, `not` and prefix `-`. Half the cap a component or service gets ([`MAX_NESTING`]), because each of these
 /// levels costs the parser and the checker several frames: measured in a debug build, a
 /// level took 12 to 16 KiB of stack, and the robustness tests hold every case to the
 /// 1 MiB stack `mz` gets on Windows. Real programs nest under 10. Past it, `MZ0411`.
@@ -52,7 +59,28 @@ pub(super) fn parse(
         .collect();
     keyword_fns.sort();
     keyword_fns.dedup();
+    // Every `fn` and `enum` name, read ahead: a type may name an enum declared later, and
+    // `e.v` is a variant only when `e` is an enum.
+    let declared = |kw: &str| -> Vec<String> {
+        let mut names: Vec<String> = (0..tokens.len().saturating_sub(1))
+            .filter(|&i| i == 0 || matches!(tokens[i - 1].kind, Tok::Newline))
+            .filter_map(|i| match (&tokens[i].kind, &tokens[i + 1].kind) {
+                (Tok::Keyword(k), Tok::Ident(n)) if *k == kw => Some(n.clone()),
+                _ => None,
+            })
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    };
+    let fn_names: Rc<[String]> = declared("fn").into();
+    let enum_names: Rc<[String]> = declared("enum").into();
     let mut p = P {
+        fn_names,
+        enum_names,
+        match_open: 0,
+        block_value: None,
+        pending_skip: false,
         keyword_names: keyword_fns.clone(),
         keyword_fns: keyword_fns.len(),
         toks: tokens,
@@ -96,6 +124,8 @@ const OPENERS: &[&str] = &[
     "test",
     "component",
     "service",
+    "switch",
+    "do",
 ];
 
 /// How a statement list ended.
@@ -104,6 +134,10 @@ enum Stop {
     End(Span),
     /// At `else` (consumed); its span.
     Else(Span),
+    /// At Python's `elif` (consumed); its span.
+    Elif(Span),
+    /// At a `case` line (or `default`, or `_ =>`) of the open `match`, not consumed.
+    Case(Span),
     /// At `end fn`, not consumed: the `when` it arrived in was never closed.
     EndFn(Span),
     /// At a line that cannot be in a function (`fn`, `end program`), not consumed.
@@ -139,6 +173,20 @@ struct P {
     keyword_names: Vec<String>,
     /// How many of [`P::keyword_names`] are functions' names.
     keyword_fns: usize,
+    /// Every `fn` name in the file, so `switch(x)` calls a `fn switch` when there is one.
+    fn_names: Rc<[String]>,
+    /// Every `enum` name in the file: a type may name one declared later.
+    enum_names: Rc<[String]>,
+    /// How many `match` blocks are open, so a `case` line ends the block it is in only
+    /// when a `match` is there to take it.
+    match_open: usize,
+    /// Set by a `when` or `match` read as a value (RFC-0013 §7.4), which reads lines through
+    /// its `end`: the last token of its first line, and the line of its `end`. The
+    /// statement that holds it takes it, and does not finish a line already finished.
+    block_value: Option<(Span, u32)>,
+    /// Set when a `when` or `match` stood where a value cannot be a block (`MZ0932`): once
+    /// the line is finished, the lines of its block are skipped through its `end`.
+    pending_skip: bool,
 }
 
 fn join(a: Span, b: Span) -> Span {
@@ -247,20 +295,30 @@ impl P {
             );
         }
         self.recover_line();
+        if self.pending_skip {
+            self.pending_skip = false;
+            self.skip_lines(1);
+        }
     }
 
     /// Skip the block that opens on the current line, through its `end`, as one error
     /// already reported. Returns the last line skipped.
     fn skip_block(&mut self) -> u32 {
+        self.skip_lines(0)
+    }
+
+    /// Skip whole lines from the current one, counting the blocks they open against the
+    /// `end`s that close them, from `depth` open, until none is. Returns the last line.
+    fn skip_lines(&mut self, depth: usize) -> u32 {
         let first = self.span().start_line;
-        let mut depth = 0usize;
+        let mut depth = depth;
         loop {
             match self.peek() {
                 Tok::Eof => break,
                 Tok::Keyword("end") => {
                     depth = depth.saturating_sub(1);
                 }
-                t if word(t).is_some_and(|w| OPENERS.contains(&w)) => depth += 1,
+                _ if self.line_opens_block() => depth += 1,
                 _ => {}
             }
             let line = self.span().start_line;
@@ -354,6 +412,7 @@ impl P {
             name_span,
             docs,
             fns: Vec::new(),
+            enums: Vec::new(),
             stray_statements: false,
         };
         let mut stray: Option<(Span, u32)> = None;
@@ -416,7 +475,11 @@ impl P {
                     }
                 }
                 Tok::Keyword("use") => self.not_built("a `use` line in a program", false),
-                Tok::Keyword("enum") => self.not_built("an `enum` in a program", true),
+                Tok::Keyword("enum") => {
+                    if let Some(e) = self.enum_decl() {
+                        program.enums.push(e);
+                    }
+                }
                 Tok::Keyword("contract") => {
                     self.not_built("a `contract` block in a program (RFC-0013 §15.1)", true)
                 }
@@ -624,7 +687,12 @@ impl P {
         let (body, stop) = self.stmts(false, &name);
         let end_span = match stop {
             Stop::End(closer) => closer,
-            Stop::Abrupt(at) | Stop::Eof(at) | Stop::EndFn(at) | Stop::Else(at) => {
+            Stop::Abrupt(at)
+            | Stop::Eof(at)
+            | Stop::EndFn(at)
+            | Stop::Else(at)
+            | Stop::Elif(at)
+            | Stop::Case(at) => {
                 let closer = format!("end fn {name}");
                 let eof = matches!(stop, Stop::Eof(_));
                 let (fix_at, text) = if eof && at.start_col > 1 {
@@ -886,6 +954,7 @@ impl P {
         let surface = Ty::from_name(&name).filter(|_| span == at);
         let ty = match name.as_str() {
             _ if surface.is_some() => surface.unwrap_or(Ty::Error),
+            n if span == at && self.enum_names.iter().any(|e| e == n) => Ty::Enum(intern(n)),
             "list" | "option" | "map" | "set" | "result" => {
                 self.err(
                     "MZ0919",
@@ -965,6 +1034,21 @@ impl P {
                     self.bump();
                     return (out, Stop::Else(at));
                 }
+                Tok::Ident(w) if w == "elif" && in_when => {
+                    self.bump();
+                    return (out, Stop::Elif(at));
+                }
+                _ if self.at_case_line() => {
+                    if in_when && self.match_open > 0 {
+                        return (out, Stop::Case(at));
+                    }
+                    self.err(
+                        "MZ0917",
+                        at,
+                        "a `case` line with no `match` open — `case` lines belong to a `match`",
+                    );
+                    self.recover_line();
+                }
                 Tok::Keyword("else") => {
                     self.err(
                         "MZ0917",
@@ -1027,7 +1111,8 @@ impl P {
             }
             _ => {
                 let say = if in_when {
-                    "a `when` closes with a bare `end`".to_string()
+                    "a block inside a `fn` (`when`, `match`, a loop) closes with a bare `end`"
+                        .to_string()
                 } else {
                     format!("a `fn` closes with its name: write `{canonical}`")
                 };
@@ -1092,9 +1177,9 @@ impl P {
                 let value = if self.at_line_end() {
                     None
                 } else {
-                    Some(self.expr())
+                    Some(self.value())
                 };
-                self.finish_line("`return`");
+                self.finish_value_line("`return`");
                 StmtKind::Return(value)
             }
             Some("when") => return self.when(at, fn_name),
@@ -1110,31 +1195,21 @@ impl P {
                 self.failed = false;
                 return self.when(at, fn_name);
             }
-            Some(w @ ("while" | "for" | "match" | "loop" | "switch")) => {
-                let what = match w {
-                    "while" => "`while`",
-                    "for" => "`for each`",
-                    "loop" => "a loop",
-                    _ => "`match`",
-                };
-                self.not_built(&format!("{what} in a function body (RFC-0013 §7)"), true);
-                return None;
-            }
-            Some(w @ ("break" | "continue")) => {
-                self.not_built(&format!("`{w}` (RFC-0013 §7.3)"), false);
-                return None;
-            }
+            Some(w) if self.control_statement(w) => return self.control(at, fn_name),
             Some("contract") => {
                 self.not_built("a `contract` block on a function (RFC-0013 §15.1)", true);
                 return None;
             }
             _ => self.simple_statement(&tok, at)?,
         };
-        let line_end = self.prev();
+        let (line_end, last_line) = match self.block_value.take() {
+            Some((header_end, last)) => (header_end, last),
+            None => (self.prev(), at.start_line),
+        };
         Some(Stmt {
             kind,
             span: join(at, line_end),
-            last_line: at.start_line,
+            last_line,
         })
     }
 
@@ -1146,8 +1221,8 @@ impl P {
                 (Tok::Equals, _) => {
                     self.bump();
                     self.bump();
-                    let value = self.expr();
-                    self.finish_line("an assignment");
+                    let value = self.value();
+                    self.finish_value_line("an assignment");
                     return Some(StmtKind::Assign {
                         name,
                         name_span: at,
@@ -1169,8 +1244,8 @@ impl P {
                     self.bump();
                     self.bump();
                     self.bump();
-                    let value = self.expr();
-                    self.finish_line("a binding");
+                    let value = self.value();
+                    self.finish_value_line("a binding");
                     return Some(StmtKind::Bind {
                         mutable: false,
                         kw_span: at,
@@ -1198,8 +1273,8 @@ impl P {
                         return None;
                     }
                     self.bump();
-                    let value = self.expr();
-                    self.finish_line("an assignment");
+                    let value = self.value();
+                    self.finish_value_line("an assignment");
                     return Some(StmtKind::Assign {
                         name,
                         name_span: at,
@@ -1380,8 +1455,8 @@ impl P {
             return None;
         }
         self.bump();
-        let value = self.expr();
-        self.finish_line("a binding");
+        let value = self.value();
+        self.finish_value_line("a binding");
         Some(StmtKind::Bind {
             mutable,
             kw_span,
@@ -1415,34 +1490,48 @@ impl P {
         let cond = self.expr();
         self.trailing_block_punctuation();
         self.finish_line("a `when` condition");
-        let (then, stop) = self.stmts(true, fn_name);
+        let (then, mut stop) = self.stmts(true, fn_name);
+        let mut else_whens = Vec::new();
         let mut otherwise = None;
         let mut last_line = stop_line(&stop);
-        match stop {
-            Stop::End(_) => {}
-            Stop::Else(else_at) => {
-                self.failed = false;
-                if self.is_word("when") || self.is_word("if") {
-                    // `else when`: C4's, a later wave. Reported, and read as an `else`
-                    // holding a `when` that shares this `end`, so the rest still checks.
-                    let rest = join(else_at, self.line_end_span());
-                    self.err(
-                        "MZ0919",
-                        rest,
-                        "`else when` is designed (RFC-0013 §7.1) but not built yet — nest a `when` inside the `else`",
-                    );
-                    let inner_at = self.span();
-                    let inner = self.when(inner_at, fn_name)?;
-                    last_line = inner.last_line;
-                    otherwise = Some(vec![inner]);
-                } else {
+        // `else when` continues the same block and shares its `end` (RFC-0013 §7.1). The
+        // chain is read in a loop and kept flat, so its length costs no nesting.
+        loop {
+            match stop {
+                Stop::End(_) | Stop::Abrupt(_) | Stop::Eof(_) => break,
+                Stop::EndFn(end_at) | Stop::Case(end_at) => {
+                    self.unclosed_when(at, end_at);
+                    break;
+                }
+                Stop::Elif(elif_at) => {
+                    self.failed = false;
+                    self.else_when_idiom(elif_at, "elif");
+                    let (link, s) = self.else_when(elif_at, fn_name);
+                    else_whens.push(link);
+                    last_line = stop_line(&s);
+                    stop = s;
+                }
+                Stop::Else(else_at) if self.is_word("when") || self.is_word("if") => {
+                    self.failed = false;
+                    if self.is_word("if") {
+                        let if_at = self.span();
+                        self.else_when_idiom(if_at, "if");
+                    }
+                    self.bump();
+                    let (link, s) = self.else_when(else_at, fn_name);
+                    else_whens.push(link);
+                    last_line = stop_line(&s);
+                    stop = s;
+                }
+                Stop::Else(_) => {
+                    self.failed = false;
                     self.trailing_block_punctuation();
                     self.finish_line("`else`");
-                    let (o, stop) = self.stmts(true, fn_name);
-                    last_line = stop_line(&stop);
-                    match stop {
-                        Stop::End(_) => {}
-                        Stop::Else(second) => {
+                    let (o, s) = self.stmts(true, fn_name);
+                    last_line = stop_line(&s);
+                    match s {
+                        Stop::End(_) | Stop::Abrupt(_) | Stop::Eof(_) => {}
+                        Stop::Else(second) | Stop::Elif(second) => {
                             self.err(
                                 "MZ0917",
                                 second,
@@ -1451,20 +1540,19 @@ impl P {
                             self.recover_line();
                             let _ = self.stmts(true, fn_name);
                         }
-                        Stop::EndFn(end_at) => self.unclosed_when(at, end_at),
-                        Stop::Abrupt(_) | Stop::Eof(_) => {}
+                        Stop::EndFn(end_at) | Stop::Case(end_at) => self.unclosed_when(at, end_at),
                     }
                     otherwise = Some(o);
+                    break;
                 }
             }
-            Stop::EndFn(end_at) => self.unclosed_when(at, end_at),
-            Stop::Abrupt(_) | Stop::Eof(_) => {}
         }
         Some(Stmt {
             span: join(at, cond.span),
             kind: StmtKind::When {
                 cond,
                 then,
+                else_whens,
                 otherwise,
             },
             last_line,
@@ -1477,7 +1565,7 @@ impl P {
             "MZ0204",
             end_at,
             format!(
-                "`end fn` arrived while the `when` opened on line {} is still open — add `end` before this line",
+                "the `when` opened on line {} is still open when this line arrives — add `end` before this line",
                 when_at.start_line
             ),
             Span::single(end_at.start_line, 1, 0),
@@ -1510,7 +1598,7 @@ impl P {
             &self.file,
             span,
             format!(
-                "blocks and expressions nest more than {PROGRAM_NESTING} deep here, or an expression's operators nest more than {MAX_NESTING} deep (the program, the `fn` and each `when` are a level, and so is each expression read inside another: a statement's value, a `(`, a call's arguments, an interpolation, a `not`, a prefix `-`); {what}, and everything else past that depth in this file, is not read"
+                "blocks and expressions nest more than {PROGRAM_NESTING} deep here, or an expression's operators nest more than {MAX_NESTING} deep (the program, the `fn` and each `when`, `match` and loop are a level, and so is each expression read inside another: a statement's value, a `(`, a call's arguments, an interpolation, a `not`, a prefix `-`); {what}, and everything else past that depth in this file, is not read"
             ),
         ));
     }
@@ -2005,6 +2093,7 @@ impl P {
                 }
             }
             Tok::Ident(name) => self.name_or_call(name, at),
+            Tok::Keyword(k @ ("when" | "match")) => return self.misplaced_block_value(k, at),
             Tok::Keyword("none") => {
                 self.bump();
                 self.err(
@@ -2130,6 +2219,22 @@ impl P {
 
     fn name_or_call(&mut self, name: String, at: Span) -> Expr {
         self.bump();
+        // `connection_state.offline`: a variant named with its enum (RFC-0013 §3.1).
+        if matches!(self.peek(), Tok::Dot)
+            && self.enum_names.contains(&name)
+            && let Tok::Ident(variant) = self.peek_at(1).clone()
+        {
+            self.bump();
+            let name_span = self.bump().span;
+            return Expr {
+                kind: ExprKind::Variant {
+                    enum_name: name,
+                    name: variant,
+                    name_span,
+                },
+                span: join(at, name_span),
+            };
+        }
         // `console.log(…)`, `fmt.Println(…)`, `System.out.println(…)`: print idioms.
         if matches!(self.peek(), Tok::Dot) {
             let mut path = vec![name.clone()];
@@ -2183,7 +2288,13 @@ impl P {
                 span: at,
             };
         }
-        let (args, close) = self.args();
+        // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
+        // reads. Labels on other calls wait for §6.5 to be built.
+        let (args, close) = if name == "range" {
+            self.args_labelled(Some((1, "to")))
+        } else {
+            self.args()
+        };
         let span = join(at, close);
         if name == "print" || name == "puts" {
             return self.print_call(at, &name, args, span);
@@ -2200,13 +2311,25 @@ impl P {
 
     /// `(a, b)`: the cursor is on `(`. Returns the arguments and the `)`'s span.
     fn args(&mut self) -> (Vec<Expr>, Span) {
+        self.args_labelled(None)
+    }
+
+    /// [`P::args`], where `label` is an argument's position and the one label it may carry.
+    fn args_labelled(&mut self, label: Option<(usize, &str)>) -> (Vec<Expr>, Span) {
         let open = self.bump().span;
         let mut args = Vec::new();
         if matches!(self.peek(), Tok::RParen) {
             return (args, self.bump().span);
         }
         loop {
-            if let (Tok::Ident(n), Tok::Equals) = (self.peek().clone(), self.peek_at(1).clone()) {
+            if let (Tok::Ident(n), Tok::Equals) = (self.peek(), self.peek_at(1))
+                && label == Some((args.len(), n.as_str()))
+            {
+                self.bump();
+                self.bump();
+            } else if let (Tok::Ident(n), Tok::Equals) =
+                (self.peek().clone(), self.peek_at(1).clone())
+            {
                 let at = self.span();
                 self.err(
                     "MZ0905",
@@ -2445,6 +2568,11 @@ impl P {
             too_deep: self.too_deep,
             keyword_names: self.keyword_names.clone(),
             keyword_fns: self.keyword_fns,
+            fn_names: Rc::clone(&self.fn_names),
+            enum_names: Rc::clone(&self.enum_names),
+            match_open: 0,
+            block_value: None,
+            pending_skip: false,
         };
         let e = sub.expr();
         if !sub.at_line_end() && !sub.failed {
@@ -2499,10 +2627,30 @@ fn depth(e: &Expr) -> usize {
                 TextPart::Expr(x) => Some((x, d + 1)),
                 TextPart::Lit(_) => None,
             })),
+            ExprKind::When { arms, otherwise } => {
+                for (c, v) in arms {
+                    todo.push((c, d + 1));
+                    todo.push((v, d + 1));
+                }
+                todo.extend(otherwise.iter().map(|o| (&**o, d + 1)));
+            }
+            ExprKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                todo.push((scrutinee, d + 1));
+                for a in arms {
+                    todo.extend(a.values.iter().map(|v| (v, d + 1)));
+                    todo.push((&a.body, d + 1));
+                }
+                todo.extend(otherwise.iter().map(|o| (&o.body, d + 1)));
+            }
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::Bool(_)
             | ExprKind::Name(_)
+            | ExprKind::Variant { .. }
             | ExprKind::Error => {}
         }
     }
@@ -2541,8 +2689,12 @@ fn is_program_item(w: &str, next: &Tok) -> bool {
 /// The line a block's statement list stopped on.
 fn stop_line(stop: &Stop) -> u32 {
     match stop {
-        Stop::End(s) | Stop::Else(s) | Stop::EndFn(s) | Stop::Abrupt(s) | Stop::Eof(s) => {
-            s.start_line
-        }
+        Stop::End(s)
+        | Stop::Else(s)
+        | Stop::Elif(s)
+        | Stop::Case(s)
+        | Stop::EndFn(s)
+        | Stop::Abrupt(s)
+        | Stop::Eof(s) => s.start_line,
     }
 }

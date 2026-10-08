@@ -248,6 +248,25 @@ fn walk_expr(e: &Expr, out: &mut BTreeSet<&'static str>) {
             walk_expr(lhs, out);
             walk_expr(rhs, out);
         }
+        ExprKind::When { arms, otherwise } => {
+            for (c, v) in arms {
+                walk_expr(c, out);
+                walk_expr(v, out);
+            }
+            otherwise.iter().for_each(|o| walk_expr(o, out));
+        }
+        ExprKind::Match {
+            scrutinee,
+            arms,
+            otherwise,
+        } => {
+            walk_expr(scrutinee, out);
+            for a in arms {
+                a.values.iter().for_each(|v| walk_expr(v, out));
+                walk_expr(&a.body, out);
+            }
+            otherwise.iter().for_each(|o| walk_expr(&o.body, out));
+        }
         _ => {}
     }
 }
@@ -261,14 +280,39 @@ fn walk(stmts: &[Stmt], out: &mut BTreeSet<&'static str>) {
             StmtKind::When {
                 cond,
                 then,
+                else_whens,
                 otherwise,
-                ..
             } => {
                 walk_expr(cond, out);
                 walk(then, out);
+                for w in else_whens {
+                    walk_expr(&w.cond, out);
+                    walk(&w.body, out);
+                }
                 otherwise.iter().for_each(|o| walk(o, out));
             }
             StmtKind::Expr(e) => walk_expr(e, out),
+            StmtKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                walk_expr(scrutinee, out);
+                for a in arms {
+                    a.values.iter().for_each(|v| walk_expr(v, out));
+                    walk(&a.body, out);
+                }
+                otherwise.iter().for_each(|o| walk(&o.body, out));
+            }
+            StmtKind::For { source, body, .. } => {
+                walk_expr(source, out);
+                walk(body, out);
+            }
+            StmtKind::While { cond, body } => {
+                walk_expr(cond, out);
+                walk(body, out);
+            }
+            StmtKind::Break | StmtKind::Continue => {}
         }
     }
 }
@@ -330,6 +374,14 @@ fn every_example_checks_clean_and_uses_only_registered_constructs() {
         "float",
         "text literal",
         "fn",
+        "else when",
+        "match",
+        "for each",
+        "while",
+        "break",
+        "continue",
+        "when or match as a value",
+        "enum",
     ] {
         assert!(used.contains(name), "no example uses `{name}`");
     }
@@ -579,7 +631,7 @@ fn mz_harness_entry_prints_one_entry_and_rejects_an_unknown_name() {
         let text = harness::entry_text(e.name, false).unwrap();
         parse_json(&text);
     }
-    let (out, status) = mz(&["harness", "entry", "while"]);
+    let (out, status) = mz(&["harness", "entry", "do"]);
     assert_eq!((out.as_str(), status), ("", Some(2)));
     let (_, status) = mz(&["harness"]);
     assert_eq!(status, Some(2));
@@ -769,6 +821,25 @@ fn collect<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Expr>) {
                 expr(lhs, out);
                 expr(rhs, out);
             }
+            ExprKind::When { arms, otherwise } => {
+                for (c, v) in arms {
+                    expr(c, out);
+                    expr(v, out);
+                }
+                otherwise.iter().for_each(|o| expr(o, out));
+            }
+            ExprKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                expr(scrutinee, out);
+                for a in arms {
+                    a.values.iter().for_each(|v| expr(v, out));
+                    expr(&a.body, out);
+                }
+                otherwise.iter().for_each(|o| expr(&o.body, out));
+            }
             _ => {}
         }
     }
@@ -779,14 +850,39 @@ fn collect<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Expr>) {
             StmtKind::When {
                 cond,
                 then,
+                else_whens,
                 otherwise,
-                ..
             } => {
                 expr(cond, out);
                 collect(then, out);
+                for w in else_whens {
+                    expr(&w.cond, out);
+                    collect(&w.body, out);
+                }
                 otherwise.iter().for_each(|o| collect(o, out));
             }
             StmtKind::Expr(e) => expr(e, out),
+            StmtKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                expr(scrutinee, out);
+                for a in arms {
+                    a.values.iter().for_each(|v| expr(v, out));
+                    collect(&a.body, out);
+                }
+                otherwise.iter().for_each(|o| collect(&o.body, out));
+            }
+            StmtKind::For { source, body, .. } => {
+                expr(source, out);
+                collect(body, out);
+            }
+            StmtKind::While { cond, body } => {
+                expr(cond, out);
+                collect(body, out);
+            }
+            StmtKind::Break | StmtKind::Continue => {}
         }
     }
 }

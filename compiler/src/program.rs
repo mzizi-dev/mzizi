@@ -14,11 +14,14 @@ use std::collections::BTreeMap;
 
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::expr::{
-    BinOp, Expr, ExprKind, Fault, TextPart, Ty, UnOp, binary_type, canonical, canonical_text, fold,
-    has_text_form,
+    Arm, BinOp, ElseArm, Expr, ExprKind, Fault, TextPart, Ty, UnOp, binary_type, canonical,
+    canonical_text, fold, has_text_form,
 };
 use crate::numbers;
 use crate::resolve::nearest;
+
+mod control;
+pub use control::{canonical_stmts, variant_owner};
 
 /// `program <name>` … `end program <name>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -31,9 +34,29 @@ pub struct Program {
     pub docs: Vec<String>,
     /// Every `fn`, in source order.
     pub fns: Vec<FnDecl>,
+    /// Every `enum`, in source order (RFC-0013 §1, §7.2).
+    pub enums: Vec<EnumDecl>,
     /// Whether statements stood outside every `fn` (reported as `MZ0901`, whose message
     /// names `fn main`, so a missing `fn main` is not reported a second time).
     pub stray_statements: bool,
+}
+
+/// `enum <name>` … `end`: a fieldless enum, one variant per line (RFC-0013 §7.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumDecl {
+    /// The enum's name.
+    pub name: String,
+    /// Where the name is.
+    pub name_span: Span,
+    /// Its variants, in declaration order, each with where it is written.
+    pub variants: Vec<(String, Span)>,
+}
+
+impl EnumDecl {
+    /// Whether `name` is one of the enum's variants.
+    pub fn has(&self, name: &str) -> bool {
+        self.variants.iter().any(|(v, _)| v == name)
+    }
 }
 
 /// A type as written in a signature or an annotation.
@@ -134,17 +157,63 @@ pub enum StmtKind {
     },
     /// `return` or `return value`.
     Return(Option<Expr>),
-    /// `when cond` … [`else` …] `end`.
+    /// `when cond` … [`else when cond` …]… [`else` …] `end`.
     When {
         /// The condition.
         cond: Expr,
         /// The branch taken when it holds.
         then: Vec<Stmt>,
+        /// Each `else when`, in order (RFC-0013 §7.1). A flat list, so a long chain
+        /// costs no nesting.
+        else_whens: Vec<ElseWhen>,
         /// The `else` branch, if written.
         otherwise: Option<Vec<Stmt>>,
     },
+    /// `match <expr>` … `case …` … [`else` …] `end` (RFC-0013 §7.2). C9's `match` on a
+    /// result (#87) is meant to be this statement too, over a result-typed scrutinee.
+    Match {
+        /// The value matched.
+        scrutinee: Expr,
+        /// Each `case`, with its statements.
+        arms: Vec<Arm<Vec<Stmt>>>,
+        /// The `else`, if written.
+        otherwise: Option<ElseArm<Vec<Stmt>>>,
+    },
+    /// `for each <name> in <source>` … `end` (RFC-0013 §7.3).
+    For {
+        /// The loop binding.
+        name: String,
+        /// Where the binding's name is.
+        name_span: Span,
+        /// What is iterated: `range(a, to = b)` in this slice.
+        source: Expr,
+        /// The loop's body.
+        body: Vec<Stmt>,
+    },
+    /// `while <cond>` … `end` (RFC-0013 §7.3).
+    While {
+        /// The condition, tested before each pass.
+        cond: Expr,
+        /// The loop's body.
+        body: Vec<Stmt>,
+    },
+    /// `break`: leaves the innermost loop.
+    Break,
+    /// `continue`: starts the innermost loop's next pass.
+    Continue,
     /// An expression on its own line: a call.
     Expr(Expr),
+}
+
+/// `else when <cond>` and its branch (RFC-0013 §7.1).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ElseWhen {
+    /// The condition.
+    pub cond: Expr,
+    /// The branch taken when it holds and no earlier condition did.
+    pub body: Vec<Stmt>,
+    /// The `else when` line, from `else` to the end of the condition.
+    pub span: Span,
 }
 
 /// The words RFC-0013 §1 makes contextual: none of them names anything in a program.
@@ -257,8 +326,9 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
             }
         }
     }
+    diags.extend(control::check_enums(&p.enums, &fns, file));
     for f in &p.fns {
-        let mut cx = FnCheck::new(f, &fns, file);
+        let mut cx = FnCheck::new(f, &fns, &p.enums, file);
         cx.run();
         diags.append(&mut cx.diags);
     }
@@ -281,6 +351,8 @@ enum Kind {
     Let,
     Var,
     Param,
+    /// A `for each` binding, which takes each value in turn (RFC-0013 §7.3).
+    Loop,
     /// A name already reported as unbound; silent from then on.
     Poison,
 }
@@ -304,11 +376,20 @@ struct Site {
     ty: Ty,
     /// The `when` statements that enclose the binding, outermost first: `(line, column)`.
     whens: Vec<(u32, u32)>,
+    /// A `for each` binding, which no `var` declared before its loop can stand in for.
+    loop_binding: bool,
 }
 
 struct FnCheck<'a> {
     f: &'a FnDecl,
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
+    /// The program's enums, whose variants a bare name may be (RFC-0008 §5).
+    enums: &'a [EnumDecl],
+    /// How many loops enclose the statement being checked (`MZ0935` at none).
+    loops: usize,
+    /// Where each statement `match` reported as missing a case (`MZ0930`) starts, by its
+    /// value's line and column: it can fall through, which [`control::exits`] reads.
+    partial: Vec<(u32, u32)>,
     file: &'a str,
     diags: Vec<Diagnostic>,
     bindings: Vec<Binding>,
@@ -320,10 +401,18 @@ struct FnCheck<'a> {
 }
 
 impl<'a> FnCheck<'a> {
-    fn new(f: &'a FnDecl, fns: &'a BTreeMap<&'a str, &'a FnDecl>, file: &'a str) -> Self {
+    fn new(
+        f: &'a FnDecl,
+        fns: &'a BTreeMap<&'a str, &'a FnDecl>,
+        enums: &'a [EnumDecl],
+        file: &'a str,
+    ) -> Self {
         let mut cx = FnCheck {
             f,
             fns,
+            enums,
+            loops: 0,
+            partial: Vec::new(),
             file,
             diags: Vec::new(),
             bindings: Vec::new(),
@@ -350,6 +439,7 @@ impl<'a> FnCheck<'a> {
                     line: name_span.start_line,
                     ty: ty.map(|t| t.ty).unwrap_or_else(|| shallow_type(value)),
                     whens: whens.clone(),
+                    loop_binding: false,
                 }),
                 StmtKind::Assign {
                     name, name_span, ..
@@ -359,13 +449,53 @@ impl<'a> FnCheck<'a> {
                     .or_default()
                     .push(name_span.start_line),
                 StmtKind::When {
-                    then, otherwise, ..
+                    then,
+                    else_whens,
+                    otherwise,
+                    ..
                 } => {
                     whens.push((s.span.start_line, s.span.start_col));
                     self.collect(then, whens);
+                    for w in else_whens {
+                        self.collect(&w.body, whens);
+                    }
                     if let Some(o) = otherwise {
                         self.collect(o, whens);
                     }
+                    whens.pop();
+                }
+                StmtKind::Match {
+                    arms, otherwise, ..
+                } => {
+                    whens.push((s.span.start_line, s.span.start_col));
+                    for a in arms {
+                        self.collect(&a.body, whens);
+                    }
+                    if let Some(o) = otherwise {
+                        self.collect(&o.body, whens);
+                    }
+                    whens.pop();
+                }
+                StmtKind::For {
+                    name,
+                    name_span,
+                    body,
+                    ..
+                } => {
+                    whens.push((s.span.start_line, s.span.start_col));
+                    self.sites.push(Site {
+                        name: name.clone(),
+                        line: name_span.start_line,
+                        ty: Ty::Int,
+                        whens: whens.clone(),
+                        loop_binding: true,
+                    });
+                    self.collect(body, whens);
+                    whens.pop();
+                }
+                StmtKind::While { body, .. } => {
+                    whens.push((s.span.start_line, s.span.start_col));
+                    self.collect(body, whens);
                     whens.pop();
                 }
                 _ => {}
@@ -395,6 +525,12 @@ impl<'a> FnCheck<'a> {
         let f = self.f;
         for p in &f.params {
             if let Some(why) = reserved_name(&p.name) {
+                self.err(
+                    "MZ0921",
+                    p.span,
+                    format!("parameter `{}` cannot be named so: {why}", p.name),
+                );
+            } else if let Some(why) = self.program_name(&p.name) {
                 self.err(
                     "MZ0921",
                     p.span,
@@ -552,6 +688,14 @@ impl<'a> FnCheck<'a> {
             );
             return false;
         }
+        if let Some(why) = self.program_name(name) {
+            self.err(
+                "MZ0921",
+                span,
+                format!("`{name}` cannot name a binding: {why}"),
+            );
+            return false;
+        }
         if BUILT_IN_NAMES.contains(&name) || self.fns.contains_key(name) {
             let what = if self.fns.contains_key(name) {
                 "a function of this program"
@@ -572,6 +716,7 @@ impl<'a> FnCheck<'a> {
         {
             let what = match self.bindings[i].kind {
                 Kind::Param => "a parameter",
+                Kind::Loop => "a loop binding",
                 _ => "a binding in scope",
             };
             self.err_fix(
@@ -599,7 +744,10 @@ impl<'a> FnCheck<'a> {
                 ty,
                 value,
             } => {
-                let vt = self.expr(value);
+                let vt = match ty {
+                    Some(t) => self.expr_want(value, t.ty),
+                    None => self.expr(value),
+                };
                 let bound = self.binding_type(name, ty.as_ref(), vt, value.span);
                 // The checked type replaces the shape's guess, so a later `MZ0920` fix that
                 // hoists this binding declares it with the right zero (`0.0` for `a * b` on
@@ -629,7 +777,10 @@ impl<'a> FnCheck<'a> {
                 ty,
                 value,
             } => {
-                let vt = self.expr(value);
+                let want = self
+                    .visible(name)
+                    .map_or(Ty::Error, |i| self.bindings[i].ty);
+                let vt = self.expr_want(value, want);
                 match self.visible(name) {
                     Some(i) => {
                         // Python's annotated assignment to a name already bound: the type
@@ -697,6 +848,13 @@ impl<'a> FnCheck<'a> {
                                     );
                                 }
                             }
+                            Kind::Loop => self.err(
+                                "MZ0922",
+                                *name_span,
+                                format!(
+                                    "`{name}` is a `for each` binding, which takes each value in turn and cannot be assigned — bind a `var` with its value instead"
+                                ),
+                            ),
                             Kind::Poison => {}
                         }
                     }
@@ -765,7 +923,7 @@ impl<'a> FnCheck<'a> {
                         ),
                     ),
                     (Some(v), Some(r)) => {
-                        let t = self.expr(v);
+                        let t = self.expr_want(v, r.ty);
                         if t != Ty::Error && r.ty != Ty::Error && t != r.ty {
                             self.err(
                                 "MZ0908",
@@ -785,36 +943,31 @@ impl<'a> FnCheck<'a> {
             StmtKind::When {
                 cond,
                 then,
+                else_whens,
                 otherwise,
             } => {
                 let t = self.expr(cond);
-                if t != Ty::Bool && t != Ty::Error {
-                    let question = match t {
-                        Ty::Int => Some(format!("{} is not 0", canonical(cond))),
-                        Ty::Float => Some(format!("{} is not 0.0", canonical(cond))),
-                        Ty::Text => Some(format!("{} is not \"\"", canonical(cond))),
-                        _ => None,
-                    };
-                    let say = format!(
-                        "`when {}` needs a bool, and `{}` is {} — Mzizi has no truthiness, so ask the question",
-                        canonical(cond),
-                        canonical(cond),
-                        t.name()
-                    );
-                    match question {
-                        Some(q) => {
-                            self.err_fix("MZ0712", cond.span, say, cond.span, q, Confidence::Guess)
-                        }
-                        None => self.err("MZ0712", cond.span, say),
-                    }
+                self.condition(cond, t, "when");
+                for w in else_whens {
+                    let t = self.expr(&w.cond);
+                    self.condition(&w.cond, t, "else when");
                 }
+                self.variant_chain(s, cond, else_whens, otherwise.as_deref());
                 self.whens.push((s.span.start_line, s.span.start_col));
                 self.scoped(then);
+                for w in else_whens {
+                    self.scoped(&w.body);
+                }
                 if let Some(o) = otherwise {
                     self.scoped(o);
                 }
                 self.whens.pop();
             }
+            StmtKind::Match { .. }
+            | StmtKind::For { .. }
+            | StmtKind::While { .. }
+            | StmtKind::Break
+            | StmtKind::Continue => self.control(s),
             StmtKind::Expr(e) => {
                 let t = self.expr(e);
                 let is_tail = tail_value == Some(e.span);
@@ -830,6 +983,30 @@ impl<'a> FnCheck<'a> {
                     );
                 }
             }
+        }
+    }
+
+    /// `MZ0712`: a condition that is not a `bool`. Mzizi has no truthiness, so the fix
+    /// names the question to ask.
+    fn condition(&mut self, cond: &Expr, t: Ty, word: &str) {
+        if t == Ty::Bool || t == Ty::Error {
+            return;
+        }
+        let question = match t {
+            Ty::Int => Some(format!("{} is not 0", canonical(cond))),
+            Ty::Float => Some(format!("{} is not 0.0", canonical(cond))),
+            Ty::Text => Some(format!("{} is not \"\"", canonical(cond))),
+            _ => None,
+        };
+        let say = format!(
+            "`{word} {}` needs a bool, and `{}` is {} — Mzizi has no truthiness, so ask the question",
+            canonical(cond),
+            canonical(cond),
+            t.name()
+        );
+        match question {
+            Some(q) => self.err_fix("MZ0712", cond.span, say, cond.span, q, Confidence::Guess),
+            None => self.err("MZ0712", cond.span, say),
         }
     }
 
@@ -873,7 +1050,8 @@ impl<'a> FnCheck<'a> {
         let Some(site) = before.or_else(|| self.sites.iter().find(|s| s.name == name)) else {
             return false;
         };
-        let (line, ty, whens) = (site.line, site.ty, site.whens.clone());
+        let (line, ty, whens, loop_binding) =
+            (site.line, site.ty, site.whens.clone(), site.loop_binding);
         if line >= at.start_line {
             self.err(
                 "MZ0920",
@@ -901,6 +1079,18 @@ impl<'a> FnCheck<'a> {
         let say = format!(
             "`{name}` was bound on line {line}, in a block that ended before this line — declare `var {name}` before that block and assign it inside"
         );
+        if loop_binding {
+            // A `var` of the same name before the loop would shadow-clash with the loop's
+            // binding (`MZ0921`), so there is no fix to offer, only the repair to name.
+            self.err(
+                "MZ0920",
+                at,
+                format!(
+                    "`{name}` is the `for each` binding on line {line}, visible only inside its loop — to read it after the loop, keep a `var` with another name and assign it inside"
+                ),
+            );
+            return true;
+        }
         match (at_when, zero) {
             (Some((wl, wc)), Some(zero)) => {
                 let indent = " ".repeat(wc.saturating_sub(1) as usize);
@@ -999,6 +1189,15 @@ impl<'a> FnCheck<'a> {
                 want
             }
             ExprKind::Binary { op: BinOp::Add, .. } => self.add_chain(e),
+            ExprKind::Binary {
+                op: op @ (BinOp::Is | BinOp::IsNot | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge),
+                lhs,
+                rhs,
+                ..
+            } => self.compare(e, *op, lhs, rhs),
+            ExprKind::Variant { .. } | ExprKind::When { .. } | ExprKind::Match { .. } => {
+                self.control_expr(e)
+            }
             ExprKind::Binary { op, lhs, rhs, .. } => {
                 let l = self.expr(lhs);
                 let r = self.expr(rhs);
@@ -1143,6 +1342,9 @@ impl<'a> FnCheck<'a> {
         if let Some(i) = self.visible(name) {
             return self.bindings[i].ty;
         }
+        if let Some(t) = self.bare_variant(name, at) {
+            return t;
+        }
         if let Some(f) = self.fns.get(name).copied() {
             let say = format!(
                 "`{name}` is a function — a function is called, `{name}(…)`, and is not a value in a program yet"
@@ -1192,7 +1394,16 @@ impl<'a> FnCheck<'a> {
     }
 
     fn call(&mut self, name: &str, name_span: Span, args: &[Expr], at: Span) -> Ty {
-        let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+        let params: Vec<Ty> = self
+            .fns
+            .get(name)
+            .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
+            .unwrap_or_default();
+        let types: Vec<Ty> = args
+            .iter()
+            .enumerate()
+            .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
+            .collect();
         if name == "print" {
             // The parser repairs every other arity (`MZ0980`), so one argument is left.
             if let (Some(a), Some(t)) = (args.first(), types.first())
@@ -1221,6 +1432,14 @@ impl<'a> FnCheck<'a> {
                 "MZ0711",
                 name_span,
                 format!("`{name}` is a binding, not a function, so it cannot be called"),
+            );
+            return Ty::Error;
+        }
+        if name == "range" {
+            self.err(
+                "MZ0919",
+                at,
+                "`range(a, to = b)` outside a `for each` line is a list, and lists are designed (RFC-0013 §9) but not built yet — in this slice `range` is a `for each` source",
             );
             return Ty::Error;
         }
@@ -1429,7 +1648,7 @@ impl<'a> FnCheck<'a> {
                 );
                 return Ty::Error;
             }
-            Ty::Bool | Ty::Nothing => {
+            Ty::Bool | Ty::Nothing | Ty::Enum(_) => {
                 self.err(
                     "MZ0708",
                     name_span,
@@ -1640,8 +1859,8 @@ impl<'a> FnCheck<'a> {
         Ty::Error
     }
 
-    /// `MZ0907`: a statement after a `return` on the same path can never run. One
-    /// diagnostic per block, whose `exact` fix deletes every such line.
+    /// `MZ0907`: a statement after a `return`, `break` or `continue` on the same path can
+    /// never run. One diagnostic per block, whose `exact` fix deletes every such line.
     fn reachability(&mut self, stmts: &[Stmt]) {
         let mut done = false;
         for s in stmts {
@@ -1650,7 +1869,7 @@ impl<'a> FnCheck<'a> {
                 self.err_fix(
                     "MZ0907",
                     s.span,
-                    "this line comes after a `return` on every path, so it can never run — delete it",
+                    "this line comes after a `return`, `break` or `continue` on every path, so it can never run — delete it",
                     Span {
                         start_line: s.span.start_line,
                         start_col: 1,
@@ -1662,31 +1881,24 @@ impl<'a> FnCheck<'a> {
                 );
                 break;
             }
-            if let StmtKind::When {
-                then, otherwise, ..
-            } = &s.kind
-            {
-                self.reachability(then);
-                if let Some(o) = otherwise {
-                    self.reachability(o);
-                }
+            // A loop's body is where `break` and `continue` end a path; outside every loop
+            // they are `MZ0935`, and the line after one is not also `MZ0907`.
+            let is_loop = matches!(s.kind, StmtKind::For { .. } | StmtKind::While { .. });
+            self.loops += usize::from(is_loop);
+            for block in control::blocks(s) {
+                self.reachability(block);
             }
-            done = terminates(std::slice::from_ref(s));
+            self.loops -= usize::from(is_loop);
+            done = control::exits(std::slice::from_ref(s), &self.partial, self.loops > 0);
         }
     }
 }
 
-/// Whether every path through `stmts` ends in `return`.
+/// Whether every path through `stmts` ends in `return`, or in a `while true` that no
+/// `break` leaves (RFC-0013 §6.2). A `match` without `else` counts as exhaustive here: one
+/// that is not is `MZ0930`, and is not reported a second time as a path without `return`.
 pub fn terminates(stmts: &[Stmt]) -> bool {
-    stmts.iter().any(|s| match &s.kind {
-        StmtKind::Return(_) => true,
-        StmtKind::When {
-            then,
-            otherwise: Some(o),
-            ..
-        } => terminates(then) && terminates(o),
-        _ => false,
-    })
+    control::ends(stmts, &[], false)
 }
 
 /// A type read off an expression's shape alone, for the sites collected before checking.
