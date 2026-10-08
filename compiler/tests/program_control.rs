@@ -1090,3 +1090,145 @@ fn a_match_over_a_float_is_mz0711_and_floats_work_in_loops_and_block_values() {
         "var total = 0.0\nfor each i in range(0, to = 4)\n  total = total + i.to_float() / 2.0\nend\nlet half = when total > 2.0\n  total / 2.0\nelse\n  total\nend\nprint(half)",
     ));
 }
+
+// ------------------------------------------------------------------- review fixes (#89)
+
+#[test]
+fn mz0936_a_when_used_as_a_value_over_one_enums_variants_is_a_match() {
+    // RFC-0013 §7.1 and §7.4: the chain is the same mistake whether its branches are
+    // statements or values.
+    let src = wrap(
+        "let s = square\nlet t = when s is circle\n  \"round\"\nelse when s is square\n  \"four\"\nelse\n  \"three\"\nend\nprint(t)",
+    );
+    let d = one(&src, "MZ0936");
+    let fix = d.fix.expect("a guess fix");
+    assert_eq!(fix.confidence, Confidence::Guess);
+    assert_eq!(
+        fix.replace,
+        "match s\n      case circle\n        \"round\"\n      case square\n        \"four\"\n      else\n        \"three\"\n    end\n"
+    );
+    let after = apply(&src, fix.span, &fix.replace);
+    assert!(after.contains("    let t = match s\n"), "{after}");
+    clean(&after);
+    // As a `return`'s value and an assignment's, and with the enum written out.
+    let src =
+        with_f("return when s is circle\n  0\nelse when s is shape.square\n  4\nelse\n  3\nend");
+    let fix = one(&src, "MZ0936").fix.expect("a fix");
+    clean(&apply(&src, fix.span, &fix.replace));
+    let src = wrap(
+        "let s = square\nvar n = 0\nn = when s is circle\n  0\nelse when s is triangle\n  3\nelse\n  4\nend\nprint(n)",
+    );
+    let fix = one(&src, "MZ0936").fix.expect("a fix");
+    clean(&apply(&src, fix.span, &fix.replace));
+    // One test of a variant, or a chain over anything else, stays a `when`.
+    clean(&wrap(
+        "let s = square\nlet t = when s is circle\n  \"round\"\nelse\n  \"angular\"\nend\nprint(t)",
+    ));
+    clean(&wrap(
+        "let n = 2\nlet t = when n is 1\n  \"one\"\nelse when n is 2\n  \"two\"\nelse\n  \"many\"\nend\nprint(t)",
+    ));
+}
+
+#[test]
+fn two_bare_variants_compare_against_the_one_whose_enum_is_unambiguous() {
+    // RFC-0013 §18.6: the other side of a comparison supplies the expected type, and a
+    // bare variant that belongs to one enum is a side that does.
+    let prog = |body: &str| {
+        format!(
+            "program t\n\n  enum color\n    red\n    blue\n  end\n\n  enum light\n    blue\n    amber\n  end\n\n  fn main\n{body}  end fn main\n\nend program t\n"
+        )
+    };
+    let src =
+        prog("    print(amber is blue)\n    print(blue < amber)\n    print(red is not blue)\n");
+    clean(&src);
+    let main = main_rs(&src);
+    for want in [
+        "Light::Amber == Light::Blue",
+        "Light::Blue < Light::Amber",
+        "Color::Red != Color::Blue",
+    ] {
+        assert!(main.contains(want), "expected `{want}` in\n{main}");
+    }
+    // Against that side, a misspelt variant gets the nearest of that enum.
+    fixed_by(
+        &prog("    print(amber is bleu)\n"),
+        "MZ0708",
+        "amber is blue",
+    );
+    // Two variants both enums share still need one named.
+    one(&prog("    print(blue is blue)\n"), "MZ0708");
+}
+
+#[test]
+fn a_list_after_for_each_in_is_the_lexers_error_with_no_range_guess() {
+    // `[` and `]` are `MZ0104` until lists are built (C7). What the parser reads in between
+    // is not the loop's source, so no `range(0, to = 1)` guess is written over it.
+    let found = errors(&wrap(
+        "var x = 0\nfor each k in [1, 2]\n  x = x + k\nend\nprint(x)",
+    ));
+    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0104", "MZ0104"], "{found:#?}");
+    assert!(found.iter().all(|d| d.fix.is_none()), "{found:#?}");
+    // TypeScript's loop over a list the lexer respelt (`MZ0105`) is still `MZ0934`, with
+    // no rewrite built on the respelt list.
+    let found = errors(&wrap("let n = 1\nfor (const k of [n])\n  print(k)\nend"));
+    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0934", "MZ0105"], "{found:#?}");
+    assert!(found[0].fix.is_none(), "{:#?}", found[0]);
+}
+
+#[test]
+fn mz0927_ranges_label_written_with_a_colon_is_one_exact_fix() {
+    // RFC-0013 §16: `name: v` is `MZ0927`, `exact` `name = v`; the label is read, so the
+    // call is not also an unbound `to` and a leftover `:`.
+    let src = wrap("for each i in range(0, to: 3)\n  print(i)\nend");
+    let d = one(&src, "MZ0927");
+    assert_eq!(d.fix.as_ref().map(|f| f.replace.as_str()), Some("to ="));
+    fixed_by(&src, "MZ0927", "for each i in range(0, to = 3)");
+}
+
+#[test]
+fn mz0924_waits_while_lines_of_the_function_were_skipped_unread() {
+    // A `do … while` or a C-style `for` is skipped as one `MZ0934`; it may assign the
+    // `var`, so `var` → `let` is neither warned nor fixed until it is rewritten.
+    for body in [
+        "var x = 0\ndo\n  x = x + 1\nwhile x < 5\nprint(x)",
+        "var x = 0\ndo\n  x = x + 1\nend while x < 5\nprint(x)",
+        "var x = 0\nfor (var i = 0; i < 3; i++)\n  x = x + i\nend\nprint(x)",
+    ] {
+        let report = check(&wrap(body), "t.mz");
+        let codes: Vec<&str> = report.diagnostics.iter().map(|d| d.code).collect();
+        assert_eq!(codes, ["MZ0934"], "{body}\n{:#?}", report.diagnostics);
+    }
+    // With nothing skipped, the warning and its fix stand.
+    let report = check(&wrap("var x = 0\nprint(x)"), "t.mz");
+    assert_eq!(report.diagnostics.len(), 1, "{:#?}", report.diagnostics);
+    assert_eq!(report.diagnostics[0].code, "MZ0924");
+    assert_eq!(
+        report.diagnostics[0].fix.as_ref().map(|f| f.confidence),
+        Some(Confidence::Exact)
+    );
+}
+
+#[test]
+fn mz0708_names_a_variant_listed_twice_once() {
+    let src = "program t\n\n  enum color\n    red\n    green\n    green\n  end\n\n  fn main\n    let c = red\n    match c\n      case reed\n        print(1)\n      else\n        print(2)\n    end\n  end fn main\n\nend program t\n";
+    let found = errors(src);
+    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0704", "MZ0708"], "{found:#?}");
+    assert!(
+        found[1]
+            .say
+            .contains("whose variants are `red`, `green` — did you mean `red`?"),
+        "{}",
+        found[1].say
+    );
+    // `MZ0930` names a missing variant once too.
+    let src = src.replace(
+        "      case reed\n        print(1)\n      else\n        print(2)\n",
+        "      case red\n        print(1)\n",
+    );
+    let found = errors(&src);
+    let miss = found.iter().find(|d| d.code == "MZ0930").expect("MZ0930");
+    assert!(miss.say.contains("misses `green` —"), "{}", miss.say);
+}

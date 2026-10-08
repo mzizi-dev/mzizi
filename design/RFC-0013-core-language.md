@@ -2134,8 +2134,8 @@ against `examples/control.expected`; nothing measured.
   `for each` over `range(a, to = b)`, `while`, `break` and `continue` (§7.3), `when` and `match` as
   the value of a `let`, `var`, assignment or `return` (§7.4), early `return` from any of them,
   and a program's `enum` (§1), whose variants are written bare or as `<enum>.<variant>`, print
-  as their names and order by declaration. Codes emitted: `MZ0930`–`MZ0936`, and `MZ0937` on
-  every new block line.
+  as their names and order by declaration. Codes emitted: `MZ0930`–`MZ0936`, `MZ0937` on
+  every new block line, and `MZ0927` for `range`'s label alone (below).
 - **Retired from `MZ0919`:** `while`, `for each`, `match`, `else when`, `break`, `continue`,
   `loop` (now `MZ0934`) and a program's `enum`.
 - **Where the code departs from this text, the code is the fact.**
@@ -2150,12 +2150,23 @@ against `examples/control.expected`; nothing measured.
     assignment changes, the function's return type, and the parameter an argument fills.
     Everywhere else (an unannotated `let`, a branch of a block used as a value, an
     interpolation, `print`) it must belong to exactly one enum; one two enums share is
-    `MZ0708` there, with a `guess` fix naming its enum.
+    `MZ0708` there, with a `guess` fix naming its enum. When both sides of a comparison are
+    bare variants, one that belongs to exactly one enum is the other side's expected type,
+    in the checker and the lowering alike: with `light { blue, amber }` and
+    `color { red, blue }`, `amber is blue` is `light.blue`. Two that both enums share
+    (`blue is blue`) are one `MZ0708`, on the left, since naming its enum settles the right.
+    `MZ0708`'s `say` lists each variant once, even one listed twice (`MZ0704`), and so does
+    `MZ0930`'s.
   - _`for each` iterates `range(a, to = b)` only_, because lists are C7's. `range` anywhere else
     is `MZ0919`, and `for each` over an `int` is `MZ0711` with the `guess` fix
     `range(0, to = n)`. `range`'s `to` is the one label the parser reads, and the canonical
     text writes it; §6.5's labels are not built, so the positional `range(a, b)` is still
-    read, and lowers the same, until the labels pull request makes it `MZ0927`.
+    read, and lowers the same, until the labels pull request makes it `MZ0927`. `to: b` is
+    already `MZ0927`, §16's `name: v`, with the `exact` fix `to = b` and no second
+    diagnostic for the `:`. The `int` guess is not written over a source the lexer cut short:
+    after a character it dropped (`MZ0104`, as `[` is until C7) or a type it respelt
+    (`MZ0105`), the source is an error value, so `for each k in [1, 2]` is its two `MZ0104`s
+    alone, and TypeScript's `for (const k of [n])` is `MZ0934` with no rewrite.
   - _A `case` lists literals (an `int`, a negative `int`, a `text` with no interpolation, a
     `bool`) or variants._ Any other value is `MZ0917`; one of another type is `MZ0912`. Every
     `MZ0931` has an `exact` fix: a value listed twice loses that value, a case whose every
@@ -2167,7 +2178,13 @@ against `examples/control.expected`; nothing measured.
     line after it unreachable (`MZ0907`).
   - _`MZ0936` reads `<name> is <variant>` only_: `<e> in [<variants>]` waits for lists (C7)
     and a path through a field waits for records (C8). Its `guess` fix rewrites the chain in
-    canonical form (§17), so a `##` comment inside the chain is not kept.
+    canonical form (§17), so a `##` comment inside the chain is not kept. A `when` used as a
+    value (§7.4) is read the same way, and its fix is a `match` used as a value, from `when`
+    through the `end`.
+  - _`MZ0924` waits while lines of a function were skipped unread_ (a `do … while`, a
+    C-style `for`, a form `MZ0919` names, a block past the nesting cap): those lines may
+    assign the `var`, so neither the warning nor its `exact` fix to `let` is given until they
+    are rewritten.
   - **`MZ0933` also repairs Rust's `_ => <statement>` on one line**, moving the statement to
     the line after `else`. A `match` on a `result` (`case ok <name>`) is C9's.
   - _`MZ0934`'s TypeScript fix_ covers `for (const|let|var x of xs)`, `exact`, and the same

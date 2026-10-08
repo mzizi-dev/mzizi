@@ -75,7 +75,15 @@ pub(super) fn parse(
     };
     let fn_names: Rc<[String]> = declared("fn").into();
     let enum_names: Rc<[String]> = declared("enum").into();
+    // Characters the lexer dropped (`MZ0104`) or respelt (`MZ0105`), so a line read
+    // without them can tell.
+    let dropped: Vec<Span> = lex_diags
+        .iter()
+        .filter(|d| d.code == "MZ0104" || d.code == "MZ0105")
+        .map(|d| d.span)
+        .collect();
     let mut p = P {
+        dropped,
         fn_names,
         enum_names,
         match_open: 0,
@@ -187,6 +195,10 @@ struct P {
     /// Set when a `when` or `match` stood where a value cannot be a block (`MZ0932`): once
     /// the line is finished, the lines of its block are skipped through its `end`.
     pending_skip: bool,
+    /// Where the lexer dropped a character it does not use (`MZ0104`), such as a list's
+    /// `[`, or respelt a type written with symbols (`MZ0105`, `[n]` as `list(n)`): what the
+    /// parser reads there is not what was written.
+    dropped: Vec<Span>,
 }
 
 fn join(a: Span, b: Span) -> Span {
@@ -684,7 +696,9 @@ impl P {
         self.finish_line(&format!("the signature of `fn {name}`"));
         // The program and this `fn` are the first two open blocks.
         self.nest = 2;
+        let skipped_before = self.skipped.len();
         let (body, stop) = self.stmts(false, &name);
+        let skipped = self.skipped.len() > skipped_before;
         let end_span = match stop {
             Stop::End(closer) => closer,
             Stop::Abrupt(at)
@@ -721,6 +735,7 @@ impl P {
             ret,
             body,
             end_span,
+            skipped,
         })
     }
 
@@ -2327,6 +2342,25 @@ impl P {
             {
                 self.bump();
                 self.bump();
+            } else if let (Tok::Ident(n), Tok::Colon) = (self.peek(), self.peek_at(1))
+                && label == Some((args.len(), n.as_str()))
+            {
+                // `to: b`, as Swift and Kotlin label an argument (RFC-0013 §16, `MZ0927`):
+                // Mzizi labels with `=`. The label is read, so the call is one diagnostic.
+                let n = n.clone();
+                let at = self.span();
+                let written = join(at, self.span_at(1));
+                self.err_fix(
+                    "MZ0927",
+                    written,
+                    format!("`{n}:` is another language's label — Mzizi labels an argument with `=`: `{n} = …`"),
+                    written,
+                    format!("{n} ="),
+                    Confidence::Exact,
+                );
+                self.failed = false;
+                self.bump();
+                self.bump();
             } else if let (Tok::Ident(n), Tok::Equals) =
                 (self.peek().clone(), self.peek_at(1).clone())
             {
@@ -2573,6 +2607,7 @@ impl P {
             match_open: 0,
             block_value: None,
             pending_skip: false,
+            dropped: Vec::new(),
         };
         let e = sub.expr();
         if !sub.at_line_end() && !sub.failed {

@@ -581,6 +581,39 @@ impl FnCheck<'_> {
                 };
                 (l, r)
             }
+            // Two bare names: one that belongs to exactly one enum supplies the type the
+            // other is read against (RFC-0013 §18.6), so `amber is blue` reads `blue` as
+            // `light.blue` even when `color` has a `blue` too.
+            (Some(a), Some(b)) => {
+                let one = |n: &str| variant_owner(self.enums, n, None).is_ok();
+                match (one(&a), one(&b)) {
+                    (true, false) => {
+                        let l = self.expr(lhs);
+                        let r = match self.variant_of(&b, rhs.span, l) {
+                            Some(r) => r,
+                            None => self.expr(rhs),
+                        };
+                        (l, r)
+                    }
+                    (false, true) => {
+                        let r = self.expr(rhs);
+                        let l = match self.variant_of(&a, lhs.span, r) {
+                            Some(l) => l,
+                            None => self.expr(lhs),
+                        };
+                        (l, r)
+                    }
+                    // Both shared (`blue is blue`): naming the left one's enum settles the
+                    // right one too, so the left is the one diagnostic.
+                    (false, false)
+                        if variant_owner(self.enums, &a, None).is_err_and(|o| o.len() > 1)
+                            && variant_owner(self.enums, &b, None).is_err_and(|o| o.len() > 1) =>
+                    {
+                        (self.expr(lhs), Ty::Error)
+                    }
+                    _ => (self.expr(lhs), self.expr(rhs)),
+                }
+            }
             _ => (self.expr(lhs), self.expr(rhs)),
         };
         self.binary(e, op, lhs, rhs, l, r)
@@ -632,7 +665,13 @@ impl FnCheck<'_> {
 
     /// `MZ0708`: `name` is not a variant of `decl`, with the nearest one as its fix.
     fn no_such_variant(&mut self, decl: &EnumDecl, name: &str, at: Span) {
-        let all: Vec<&str> = decl.variants.iter().map(|(v, _)| v.as_str()).collect();
+        // Each variant once: one listed twice is `MZ0704` at its declaration already.
+        let mut all: Vec<&str> = Vec::new();
+        for (v, _) in &decl.variants {
+            if !all.contains(&v.as_str()) {
+                all.push(v);
+            }
+        }
         let say = format!(
             "`{name}` is not a variant of `enum {}`, whose variants are {}",
             decl.name,
@@ -931,7 +970,14 @@ impl FnCheck<'_> {
             }
             _ => return,
         };
-        let missing: Vec<String> = all
+        // A variant listed twice (`MZ0704`) is named once.
+        let mut all_once: Vec<Key> = Vec::new();
+        for k in all {
+            if !all_once.contains(&k) {
+                all_once.push(k);
+            }
+        }
+        let missing: Vec<String> = all_once
             .iter()
             .filter(|k| !seen.contains(k))
             .map(|k| match k {
@@ -1079,19 +1125,12 @@ impl FnCheck<'_> {
         }
     }
 
-    /// `MZ0936`: a `when` with `else when`s whose every condition is `<e> is <variant>` on
-    /// one enum-typed name is a `match` written as a chain, which loses the check that
-    /// every variant is covered (RFC-0013 §7.1, CL-8). The fix is a `guess`: a chain
-    /// without `else` that misses variants becomes a `match` that is `MZ0930`.
-    pub(super) fn variant_chain(
-        &mut self,
-        s: &Stmt,
-        cond: &Expr,
-        else_whens: &[ElseWhen],
-        otherwise: Option<&[Stmt]>,
-    ) {
-        if else_whens.is_empty() {
-            return;
+    /// The subject and case texts of a chain whose every condition is `<e> is <variant>`
+    /// on one enum-typed name `<e>` (RFC-0013 §7.1): `(e, its enum, one case per
+    /// condition)`. `None` for one condition, or for any other chain.
+    fn chain_subject(&self, conds: &[&Expr]) -> Option<(String, &'static str, Vec<String>)> {
+        if conds.len() < 2 {
+            return None;
         }
         let subject = |c: &Expr| -> Option<(String, &'static str, String)> {
             let ExprKind::Binary {
@@ -1119,16 +1158,48 @@ impl FnCheck<'_> {
             };
             is_variant.then(|| (e.clone(), en, canonical(rhs)))
         };
-        let Some((name, en, first)) = subject(cond) else {
-            return;
-        };
+        let (name, en, first) = subject(conds[0])?;
         let mut cases = vec![first];
-        for w in else_whens {
-            match subject(&w.cond) {
+        for c in &conds[1..] {
+            match subject(c) {
                 Some((n, _, v)) if n == name => cases.push(v),
-                _ => return,
+                _ => return None,
             }
         }
+        Some((name, en, cases))
+    }
+
+    /// `MZ0936` at `s`, whose fix replaces `span` with `text`.
+    fn chain_is_a_match(&mut self, at: Span, name: &str, en: &str, fix: Span, text: String) {
+        self.err_fix(
+            "MZ0936",
+            at,
+            format!(
+                "this chain tests `{name}` against the variants of `enum {en}` one by one — that is a `match`, which checks that every variant has a case (RFC-0013 §7.1); the fix rewrites the chain as one, in canonical form, and keeps no `##` comment from inside it"
+            ),
+            fix,
+            text,
+            Confidence::Guess,
+        );
+    }
+
+    /// `MZ0936`: a `when` with `else when`s whose every condition is `<e> is <variant>` on
+    /// one enum-typed name is a `match` written as a chain, which loses the check that
+    /// every variant is covered (RFC-0013 §7.1, CL-8). The fix is a `guess`: a chain
+    /// without `else` that misses variants becomes a `match` that is `MZ0930`.
+    pub(super) fn variant_chain(
+        &mut self,
+        s: &Stmt,
+        cond: &Expr,
+        else_whens: &[ElseWhen],
+        otherwise: Option<&[Stmt]>,
+    ) {
+        let conds: Vec<&Expr> = std::iter::once(cond)
+            .chain(else_whens.iter().map(|w| &w.cond))
+            .collect();
+        let Some((name, en, cases)) = self.chain_subject(&conds) else {
+            return;
+        };
         let indent = s.span.start_col.saturating_sub(1) as usize;
         let pad = " ".repeat(indent);
         let StmtKind::When { then, .. } = &s.kind else {
@@ -1146,20 +1217,45 @@ impl FnCheck<'_> {
             text.push_str(&canonical_stmts(o, indent + 4));
         }
         text.push_str(&format!("{pad}end\n"));
-        self.err_fix(
-            "MZ0936",
-            s.span,
-            format!(
-                "this chain tests `{name}` against the variants of `enum {en}` one by one — that is a `match`, which checks that every variant has a case (RFC-0013 §7.1); the fix rewrites the chain as one, in canonical form, and keeps no `##` comment from inside it"
-            ),
-            Span {
-                start_line: s.span.start_line,
-                start_col: s.span.start_col,
-                end_line: s.last_line + 1,
-                end_col: 1,
-            },
-            text,
-            Confidence::Guess,
-        );
+        let fix = Span {
+            start_line: s.span.start_line,
+            start_col: s.span.start_col,
+            end_line: s.last_line + 1,
+            end_col: 1,
+        };
+        self.chain_is_a_match(s.span, &name, en, fix, text);
+    }
+
+    /// `MZ0936` for a `when` used as a value (RFC-0013 §7.4) whose chain is over one enum's
+    /// variants: the `guess` fix rewrites it as a `match` used as a value, from `when`
+    /// through the `end` on `s`'s last line. `s` is the `let`, `var`, assignment or
+    /// `return` that holds it.
+    pub(super) fn value_variant_chain(&mut self, s: &Stmt, value: &Expr) {
+        let ExprKind::When { arms, otherwise } = &value.kind else {
+            return;
+        };
+        let conds: Vec<&Expr> = arms.iter().map(|(c, _)| c).collect();
+        let Some((name, en, cases)) = self.chain_subject(&conds) else {
+            return;
+        };
+        let pad = " ".repeat(s.span.start_col.saturating_sub(1) as usize);
+        let mut text = format!("match {name}\n");
+        for (v, (_, branch)) in cases.iter().zip(arms) {
+            text.push_str(&format!(
+                "{pad}  case {v}\n{pad}    {}\n",
+                canonical(branch)
+            ));
+        }
+        if let Some(o) = otherwise {
+            text.push_str(&format!("{pad}  else\n{pad}    {}\n", canonical(o)));
+        }
+        text.push_str(&format!("{pad}end\n"));
+        let fix = Span {
+            start_line: value.span.start_line,
+            start_col: value.span.start_col,
+            end_line: s.last_line + 1,
+            end_col: 1,
+        };
+        self.chain_is_a_match(value.span, &name, en, fix, text);
     }
 }

@@ -499,7 +499,7 @@ pub const FEATURES: &[Feature] = &[
         teach: "`for each i in range(a, to = b)` runs its block once for each `int` from `a` up to but not including `b`; the name is bound in the block only and cannot be assigned. `range` is read only on a `for each` line, and `for each` over a list waits for lists. Python's `for x in xs`, TypeScript's `for (const x of xs)` and Python's `range(n)` get exact fixes; a C-style `for (…; …; …)` is an error with no fix, and so is `for each` over an `int` (its guess is `range(0, to = n)`). `to: b` is written `to = b`.",
         types: "`range` takes two `int`s; the name is an `int`.",
         codes: &[
-            "MZ0934", "MZ0711", "MZ0905", "MZ0920", "MZ0922", "MZ0937", "MZ0919",
+            "MZ0934", "MZ0927", "MZ0711", "MZ0905", "MZ0920", "MZ0922", "MZ0937", "MZ0919",
         ],
         examples: &[run(LOOPS, LOOPS_OUT)],
     },
@@ -631,7 +631,7 @@ pub const COMMANDS: &[Command] = &[
         word: "run",
         usage: "mz run [--release] <program.mz>",
         takes_file: true,
-        teach: "Check a program, lower it, build it with `cargo build --offline` and run it, with `mz`'s own messages on standard error. It exits with the program's status: 0, 101 for a trap, 141 for a closed standard output; 2 for a usage problem and 3 when the program did not compile.",
+        teach: "Check a program, lower it, build it with `cargo build --offline` and run it, with `mz`'s own messages on standard error. It exits with the program's status: 0, 101 for a trap or a panic, 141 for a closed standard output, or 128 plus the signal that ended it; 3 when the check failed and nothing ran, or the lowered Rust did not compile (`MZ0990`); 2 for a usage, environment or I/O problem.",
         rfc: "RFC-0013 §13.1",
     },
     Command {
@@ -1059,6 +1059,14 @@ pub const CODES: &[Code] = &[
         PROGRAM,
         "a binding with no value",
         "program t\n  fn main\n    let n\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0927",
+        "RFC-0013 §6.5, §16",
+        EXACT,
+        PROGRAM,
+        "a call's label written another way: `range(a, to: b)`, whose exact fix writes `to = b` (§6.5's other labels are not built)",
+        "program t\n  fn main\n    for each i in range(0, to: 3)\n      print(i)\n    end\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0930",
