@@ -402,6 +402,34 @@ fn a_method_assigning_to_self_is_mz0971() {
 }
 
 #[test]
+fn a_method_reassigning_self_is_mz0922_and_says_to_return_a_changed_copy() {
+    // `self = …` in a method is MZ0922 (the receiver is a parameter), with no fix: the
+    // message names the method's receiver and the `with` copy that replaces it.
+    let src = with_decls(
+        "  record point
+    field x: float
+
+    fn moved: point
+      self = self with (x = 2.0)
+      return self
+    end fn moved
+  end
+",
+        "print(1)",
+    );
+    let d = one(&src, "MZ0922");
+    assert!(d.fix.is_none(), "{d:#?}");
+    assert!(
+        d.say.contains("`self` is a method's receiver")
+            && d.say.contains("cannot reassign its receiver")
+            && d.say.contains("`self with (field = value)`"),
+        "{}",
+        d.say
+    );
+    assert!(!d.say.contains("bind a `var`"), "{}", d.say);
+}
+
+#[test]
 fn a_method_calls_another_method_of_its_record() {
     clean(&with_decls(
         "  record point

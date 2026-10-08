@@ -980,6 +980,11 @@ impl<'a> FnCheck<'a> {
                                     None => self.err("MZ0922", *name_span, say),
                                 }
                             }
+                            Kind::Param if name == "self" => self.err(
+                                "MZ0922",
+                                *name_span,
+                                "`self` is a method's receiver, and a method cannot reassign its receiver — write a changed copy as `self with (field = value)` and return it",
+                            ),
                             Kind::Param => self.err(
                                 "MZ0922",
                                 *name_span,
