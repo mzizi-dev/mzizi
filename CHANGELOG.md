@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed
+
+- **`LANGUAGE-TRACKER.md` marks C1, C2, C3, C4, C5, C9 and C10 ✅** now that the 2026-10-08 release (#91) put Wave 0 (#80), C1 + C5 (#83), C4 (#89), C9 (#87) and the language harness (#88) on `main`. Each row's "Done when" was checked on `main`'s tree (be88017): `cargo test --workspace` passes 643 tests in 24 suites (512 in the compiler crate), including `program.rs`, `program_numbers.rs`, `program_control.rs`, `program_errors.rs` and `harness.rs`; `mz check` and `mz run` of `examples/hello.mz`, `fib.mz`, `numbers.mz`, `control.mz` and `errors.mz` print exactly their `.expected` output; and `mz harness entry` answers for every construct and code the rows name. The rows keep their "Not yet" and "Not built" lists. **P4 and H1 stay 🟡**: P4 because collections, text methods and records do not exist, so a general program cannot be written yet, and H1 because the plugin host and the generated skills are not built. The "Where Mzizi stands today" section now summarises what a `program` can do on `main`, the comparison table's expressions, numbers, error handling and compiles rows say what a `program` has, and H1's count of diagnostic entries is corrected from 60 to 66. `README.md`, `AGENTS.md` and RFC-0013 §18.6 lose their stale "on `staging`" and "no results" wording. Documentation only: no code changes, and nothing is measured.
+
 ## 2026-10-08
 
 ### Added — `result`, `error` and `try`: errors in a program, RFC-0013 §12, C9 (2026-10-08)
