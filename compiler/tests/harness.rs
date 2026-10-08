@@ -232,6 +232,89 @@ fn every_trigger_reports_its_code_with_a_declared_fix_kind() {
     let _ = Confidence::Exact;
 }
 
+/// The forms `MZ0919`'s `say` names as designed and not built, exactly as it names them and
+/// in its order, each with programs that write it. RFC-0012 §1.1 makes `MZ0919` the entry an
+/// agent reads for every form RFC-0013 designs and the compiler does not build.
+const NOT_BUILT: &[(&str, &[&str])] = &[
+    (
+        "lists, maps, sets and options (`none` among them)",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: list(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: map(text, int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: set(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(x: option(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "`range` off a `for each` line",
+        &[
+            "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "methods on `text`",
+        &[
+            "program t\n  fn main\n    let s = \"ab\"\n    print(s.len())\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "a `record`",
+        &[
+            "program t\n  record p\n    x: int\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "a `use` line",
+        &["program t\n  use foo\n  fn main\n    print(1)\n  end fn main\nend program t\n"],
+    ),
+    (
+        "a `test` block",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  test \"x\"\n    print(1)\n  end\nend program t\n",
+        ],
+    ),
+    (
+        "a `contract` block in a program or on a `fn`",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  contract\n    example 1\n  end\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f: int\n    contract\n      example 1\n    end\n    return 1\n  end fn f\nend program t\n",
+        ],
+    ),
+];
+
+#[test]
+fn every_form_mz0919_names_is_still_not_built() {
+    // `say` and `teach` texts are written by hand, and no test compares them with the
+    // checker in general. This holds the one list that goes stale as each wave lands: when
+    // a form is built, its programs stop reporting `MZ0919` and this fails until the `say`
+    // stops calling it unbuilt (C4 and C9 each left a built form on the list).
+    let say = harness::code_entry("MZ0919").expect("MZ0919").say;
+    let (_, list) = say
+        .split_once(": ")
+        .expect("MZ0919's say lists the forms after `: `");
+    let named: Vec<&str> = list.split("; ").collect();
+    let table: Vec<&str> = NOT_BUILT.iter().map(|(form, _)| *form).collect();
+    assert_eq!(
+        named, table,
+        "MZ0919's say and NOT_BUILT name the same forms, in the same order"
+    );
+    for (form, sources) in NOT_BUILT {
+        for src in *sources {
+            let codes: Vec<&str> = check(src, "t.mz")
+                .diagnostics
+                .iter()
+                .map(|d| d.code)
+                .collect();
+            assert!(
+                codes.contains(&"MZ0919"),
+                "MZ0919's say calls {form} not built, and this program reports {codes:?}: if it \
+                 is built, take it out of the say and register its entry\n{src}"
+            );
+        }
+    }
+}
+
 #[test]
 fn entries_are_unique_and_every_code_they_name_is_registered() {
     let entries = registry();
