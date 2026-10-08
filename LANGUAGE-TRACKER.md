@@ -52,7 +52,7 @@ What exists is the front end of a language whose first domain is UI components, 
   `mz outline`, `mz build` for a service or a program, `mz run` for a program, and
   `mz harness`; a recovering parser (blocks nest at most 64 deep, past which one `MZ0411`;
   RFC-0001 §4.7 item 8), a resolver, a content-addressed IR
-  ([RFC-0003](./design/RFC-0003-ir.md)). About 31,300 lines in `compiler/src`, 744 tests in
+  ([RFC-0003](./design/RFC-0003-ir.md)). About 33,100 lines in `compiler/src`, 744 tests in
   27 suites today (`cargo test --workspace`, 613 of them in the compiler crate; 437 when this
   section was first written).
 - **Written in Mzizi:** nine primitives (`primitives/`), two component examples, one
@@ -79,8 +79,8 @@ the program's own `enum`s, with columns; and errors as values: `result(T, E)`,
 it to a dependency-free Rust package, builds it with Cargo and runs it: `int` overflow,
 division by zero and the other `int` faults trap with `MZ0991` and exit 101, and an error
 returned from `main` exits 1 with `MZ0992`. `mz build` writes the same package. A program's
-blocks and expressions nest at most 32 deep together, past which one `MZ0411`. The five
-example programs run in CI through `mz run`, with their output compared against
+blocks and expressions nest at most 32 deep together, past which one `MZ0411`. The example
+programs (eight on `main` since v0.7.0) run in CI through `mz run`, with their output compared against
 `examples/<name>.expected`, and every construct and code is registered in the language
 harness (`mz harness`, `compiler/src/harness.rs`). That makes rows C1–C5, C9 and C10 ✅.
 
@@ -185,7 +185,7 @@ Phase 0's goal cannot be tested beyond what the language can express.
 | -------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UI components against Rust (Dioxus, Leptos) and TypeScript (React)         | What exists today     | Runnable now. Two pilots on 2026-09-27, against Dioxus only, showed no advantage                                                                                                                                                                              |
 | Backend handlers (B1 routing) against TypeScript, Python, Go, C++ and Rust | A `service` (#29–#33) | Not yet runnable. The `mzizi-be` arm, `mzprobe` and B1 exist (#33), and both B1 references hold all 59 facts; the runner does not score an episode with probes, and B2–B5 and the other-language arms do not exist. Nothing measured                          |
-| Public suites (MultiPL-E, EvalPlus)                                        | C1–C10 and part of P2 | **Blocked: functions, floats, loops, `match` and errors run in a `program` on `main` (#91), but collections and most text operations do not exist yet**                                                                                                       |
+| Public suites (MultiPL-E, EvalPlus)                                        | C1–C10 and part of P2 | **Blocked: functions, floats, loops, `match`, errors, collections (C7) and records (C8) run in a `program` on `main` (v0.7.0), but text slicing, search, split and parsing (C6) and a standard library (P2) do not exist yet**                                |
 | Aider polyglot, BaxBench                                                   | Tier 1, P1, P2, P8    | Blocked                                                                                                                                                                                                                                                       |
 | Runtime performance against hand-written Rust (`benchmarks/perf/`)         | A `program` (C10, P4) | **Runnable; CI gates output agreement only.** Four foundation-slice programs, each against Rust with overflow unchecked and checked. CI checks only that all three build and print the same output; timings are per machine, not committed, and never a claim |
 

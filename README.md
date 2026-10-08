@@ -94,7 +94,7 @@ returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-00
 option read with `otherwise`, `in`, `for each` over a list, and the named folds, lowered to
 `Vec`, `BTreeMap` and `BTreeSet`), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is about 31,300 lines.
+task, B1. `compiler/src` is about 33,100 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
