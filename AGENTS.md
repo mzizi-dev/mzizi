@@ -30,7 +30,7 @@ tied the arms, and the ~7B open-weight model did worse in Mzizi on all three met
 run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
 waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
 Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust" (only a
-`service` and a `program` in the foundation slice, its numbers, its control flow and its errors lower; no component does, and most of Tier 1 does not exist), "the benchmark shows", "production
+`service` and a `program` lower, and a program only in Tier 1's narrow form; no component does, and most of Tier 2 and Tier 3 does not exist: no modules, standard library or concurrency), "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 613 tests (744 in the workspace)
+cargo test                                                              # 629 tests (760 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
