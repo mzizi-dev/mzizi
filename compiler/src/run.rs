@@ -30,6 +30,7 @@ use std::process::Command;
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, fold};
 use crate::numbers::FLOAT_TEXT_RUNTIME;
 use crate::program::{EnumDecl, FnDecl, Program, Stmt, StmtKind};
+use crate::text::OPS_RUNTIME;
 
 mod control;
 mod errors;
@@ -167,6 +168,14 @@ fn mz_to_int(x: f64, at: &MzAt) -> i64 {
     t as i64
 }
 
+/// `s.repeat(n)` (RFC-0013 §10): traps on a negative `n` or a result too long to hold.
+fn mz_repeat(s: &str, n: i64, at: &MzAt) -> String {
+    match mz_text_repeat(s, n) {
+        Ok(v) => v,
+        Err(what) => mz_trap(at, what),
+    }
+}
+
 /// A value's text form (RFC-0013 §3.8).
 trait MzText {
     fn mz_text(&self) -> String;
@@ -252,6 +261,8 @@ pub fn lower(p: &Program, source: &str) -> Package {
     main.push_str(RUNTIME);
     main.push('\n');
     main.push_str(FLOAT_TEXT_RUNTIME);
+    main.push('\n');
+    main.push_str(OPS_RUNTIME);
     if !lw.sites.is_empty() {
         main.push('\n');
     }
@@ -558,7 +569,7 @@ impl Lower<'_> {
                 .get(name.as_str())
                 .map_or(Ty::Nothing, |f| f.ret.map_or(Ty::Nothing, |r| r.ty)),
             ExprKind::Method { recv, name, .. } => {
-                crate::numbers::method(self.ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
+                crate::expr::method_signature(self.ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
             }
             ExprKind::Unary {
                 op: UnOp::Neg,
@@ -703,6 +714,9 @@ impl Lower<'_> {
     /// with the expression's site.
     fn method(&mut self, e: &Expr, recv: &Expr, name: &str, args: &[Expr]) -> String {
         let rt = self.ty(recv);
+        if rt == Ty::Text {
+            return self.text_method(e, recv, name, args);
+        }
         let r = self.atom(recv);
         // A receiver that folded to a negative constant is `-4i64`, and Rust reads
         // `-4i64.min(n)` as `-(4i64.min(n))`: the parentheses keep Mzizi's `(-4).min(n)`.
@@ -730,6 +744,61 @@ impl Lower<'_> {
             // `as` from `i64` to `f64` rounds to nearest, which is `to_float` (§4.4).
             (Ty::Float, "pow") => format!("{r}.powf({arg} as f64)"),
             _ => format!("{r}.{name}({})", args.join(", ")),
+        }
+    }
+
+    /// A text method (RFC-0013 §10, §14.2). Lengths count scalar values, through
+    /// `text/ops.rs`; the rest are `str`'s own methods, which work on scalar values too:
+    /// none of them cuts a character, so none can panic on non-ASCII text. `repeat` traps
+    /// through a helper with the expression's site.
+    fn text_method(&mut self, e: &Expr, recv: &Expr, name: &str, exprs: &[Expr]) -> String {
+        let r = self.text_str(recv);
+        let args: Vec<String> = exprs
+            .iter()
+            .map(|a| {
+                if self.ty(a) == Ty::Text {
+                    self.text_str(a)
+                } else {
+                    self.expr(a)
+                }
+            })
+            .collect();
+        let arg = |k: usize| args.get(k).cloned().unwrap_or_default();
+        match name {
+            "length" => format!("mz_text_length({r})"),
+            "contains" | "starts_with" | "ends_with" => format!("{r}.{name}({})", arg(0)),
+            "trim" => format!("{r}.trim().to_string()"),
+            "to_upper" => format!("{r}.to_uppercase()"),
+            "to_lower" => format!("{r}.to_lowercase()"),
+            "replace" => format!("{r}.replace({}, {})", arg(0), arg(1)),
+            "repeat" => {
+                let at = self.site(e);
+                format!("mz_repeat({r}, {}, {at})", arg(0))
+            }
+            // The checker admits no other name on text.
+            _ => format!("{r}.{name}()"),
+        }
+    }
+
+    /// A `text` expression as a Rust `&str`: a literal without interpolation as a string
+    /// literal, a binding borrowed rather than cloned, anything else borrowed from the
+    /// `String` it builds (a temporary that lives to the end of the statement).
+    fn text_str(&mut self, e: &Expr) -> String {
+        match &e.kind {
+            ExprKind::Text(parts) if parts.iter().all(|p| matches!(p, TextPart::Lit(_))) => {
+                let lit: String = parts
+                    .iter()
+                    .map(|p| match p {
+                        TextPart::Lit(s) => s.as_str(),
+                        TextPart::Expr(_) => "",
+                    })
+                    .collect();
+                format!("{lit:?}")
+            }
+            ExprKind::Name(n) if self.types.get(n) == Some(&Ty::Text) => {
+                format!("{}.as_str()", ident(n))
+            }
+            _ => format!("({}).as_str()", self.expr(e)),
         }
     }
 

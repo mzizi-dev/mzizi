@@ -276,9 +276,14 @@ const NOT_BUILT: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "methods on `text`",
+        "text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`",
         &[
-            "program t\n  fn main\n    let s = \"ab\"\n    print(s.len())\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.slice(0, to = 1)\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.find(\"b\")\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"12\"\n    let x = s.parse_int()\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"1.5\"\n    let x = s.parse_float()\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"a,b\"\n    let x = s.split(\",\")\n  end fn main\nend program t\n",
+            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.chars()\n  end fn main\nend program t\n",
         ],
     ),
     (
@@ -595,7 +600,10 @@ fn every_example_checks_clean_and_uses_only_registered_constructs() {
     ] {
         assert!(used.contains(name), "no example uses `{name}`");
     }
-    for name in mzizi_lang_compiler::numbers::METHODS {
+    for name in mzizi_lang_compiler::numbers::METHODS
+        .iter()
+        .chain(mzizi_lang_compiler::text::METHODS)
+    {
         assert!(used.contains(name), "no example calls `.{name}()`");
     }
 }
@@ -889,13 +897,20 @@ fn types_are_exactly_the_surface_types_and_the_parser_reads_them() {
 }
 
 #[test]
-fn every_numeric_method_the_checker_types_has_an_entry() {
+fn every_method_the_checker_types_has_an_entry() {
     let methods: Vec<&str> = registry()
         .into_iter()
         .filter(|e| e.kind == Kind::Method)
         .map(|e| e.name)
         .collect();
-    assert_eq!(methods, mzizi_lang_compiler::numbers::METHODS);
+    let typed: Vec<&str> = mzizi_lang_compiler::numbers::METHODS
+        .iter()
+        .chain(mzizi_lang_compiler::text::METHODS)
+        .copied()
+        .collect();
+    assert_eq!(methods, typed);
+    let replace = harness::entry("replace").unwrap();
+    assert_eq!(replace.types, "text.replace(text, text) → text");
     let pow = harness::entry("pow").unwrap();
     assert_eq!(pow.types, "int.pow(int) → int; float.pow(int) → float");
 }

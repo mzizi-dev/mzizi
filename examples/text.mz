@@ -1,0 +1,40 @@
+## Text, RFC-0013 §10: lengths count Unicode scalar values, not bytes, and every method is
+## safe on non-ASCII text. Emptiness is `s is ""`, and text is built by interpolation.
+## `mz run examples/text.mz` prints what text.expected holds; CI compares the two.
+program text
+
+  fn main
+    let city = "  Zürich  "
+    let name = city.trim()
+    print("[{name}] has {name.length()} characters; with its spaces, {city.length()}")
+    print("upper {name.to_upper()}, lower {name.to_lower()}")
+    let greeting = "habari, dunia"
+    let polite = greeting.starts_with("habari")
+    print("{greeting} starts with habari: {polite}")
+    print(greeting.ends_with("dunia"))
+    print(greeting.contains("ri, d"))
+    print(greeting.replace("dunia", by = "Mzizi"))
+    let kanji = "日本語"
+    print("{kanji} is {kanji.length()} characters long")
+    let street = "straße"
+    print("{street} in upper case is {street.to_upper()}")
+    print(banner("ok", 3))
+    print(describe(""))
+    print(describe(name))
+    print("-".repeat(12))
+  end fn main
+
+  fn banner(word: text, width: int): text
+    let edge = "=".repeat(width)
+    return "{edge} {word} {edge}"
+  end fn banner
+
+  fn describe(s: text): text
+    when s is ""
+      return "empty"
+    end
+    let shout = s.to_upper()
+    return "{s.length()} characters, {shout} when shouted"
+  end fn describe
+
+end program text

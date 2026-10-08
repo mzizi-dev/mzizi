@@ -1,0 +1,330 @@
+//! Text methods in a function body (RFC-0013 §10, tracker row C6): the checker's half.
+//!
+//! The method table is [`crate::text`]'s. Here: a call's arity and types (`MZ0905`), a
+//! method text does not have (`MZ0708`, with the nearest name), a negative constant
+//! `repeat` count (`MZ0915`), the methods that wait for options and lists (`MZ0919`), and
+//! other languages' spellings (`MZ0962`): `len(s)`, `s.len()`, `s.length`, `s.strip()`,
+//! `s.toUpperCase()`, `s.replaceAll(a, b)`, `s.substring(a, b)`, and emptiness asked as
+//! `s.is_empty()` or `s.length() is 0`, which Mzizi asks as `s is ""` (§3.3).
+
+use super::{FnCheck, receiver_text};
+use crate::diagnostic::{Confidence, Span};
+use crate::expr::{BinOp, Expr, ExprKind, Ty, UnOp, canonical, fold};
+use crate::resolve::nearest;
+use crate::text;
+
+/// `x.is_empty()`, called with no arguments: its receiver.
+fn is_empty_call(e: &Expr) -> Option<&Expr> {
+    match &e.kind {
+        ExprKind::Method {
+            recv,
+            name,
+            args,
+            called: true,
+            ..
+        } if name == "is_empty" && args.is_empty() => Some(recv),
+        _ => None,
+    }
+}
+
+/// `x.length()`, or another language's `x.len()` / `x.size()`, called with no arguments:
+/// its receiver.
+fn length_call(e: &Expr) -> Option<&Expr> {
+    match &e.kind {
+        ExprKind::Method {
+            recv,
+            name,
+            args,
+            called: true,
+            ..
+        } if matches!(name.as_str(), "length" | "len" | "size") && args.is_empty() => Some(recv),
+        _ => None,
+    }
+}
+
+/// `x.length() is 0`, `is not 0` or `> 0`: the receiver, and whether it asks "is it not
+/// empty".
+fn length_compared(e: &Expr) -> Option<(&Expr, bool)> {
+    match &e.kind {
+        ExprKind::Binary { op, lhs, rhs, .. }
+            if matches!(op, BinOp::Is | BinOp::IsNot | BinOp::Gt)
+                && matches!(rhs.kind, ExprKind::Int(0)) =>
+        {
+            length_call(lhs).map(|r| (r, *op != BinOp::Is))
+        }
+        _ => None,
+    }
+}
+
+impl FnCheck<'_> {
+    /// Remember that `e` stands where `x is ""` would need parentheses: the operand of a
+    /// comparison or of `not`. Only an `is_empty()` call is remembered, so the list stays
+    /// as short as the calls written.
+    pub(super) fn mark_tight(&mut self, e: &Expr) {
+        if is_empty_call(e).is_some() {
+            self.tight.push(e.span);
+        }
+    }
+
+    /// Emptiness asked another language's way, on text (RFC-0013 §3.3): `s.length() is 0`,
+    /// `s.length() is not 0`, `s.length() > 0`, and `not s.is_empty()`. Each is one
+    /// `MZ0962` whose `exact` fix is `s is ""` or `s is not ""`. `None` when `e` is none of
+    /// these on a receiver visibly typed `text`, so it is checked as any other expression
+    /// (a bare `s.is_empty()` is [`Self::text_method`]'s).
+    pub(super) fn text_emptiness(&mut self, e: &Expr) -> Option<Ty> {
+        let (recv, negated, at) = match &e.kind {
+            ExprKind::Unary {
+                op: UnOp::Not,
+                operand,
+            } => match (is_empty_call(operand), length_compared(operand)) {
+                (Some(r), _) => (r, true, e.span),
+                (None, Some((r, not_empty))) => (r, !not_empty, e.span),
+                _ => return None,
+            },
+            ExprKind::Binary { .. } => {
+                let (r, not_empty) = length_compared(e)?;
+                (r, not_empty, e.span)
+            }
+            _ => return None,
+        };
+        if self.shallow_ty(recv) != Ty::Text {
+            return None;
+        }
+        let t = self.expr(recv);
+        if t != Ty::Text {
+            return Some(Ty::Bool);
+        }
+        self.empty_fix(recv, negated, at, e.span, false);
+        Some(Ty::Bool)
+    }
+
+    /// One `MZ0962` at `at` whose fix replaces `whole` with `r is ""` (or `is not ""`).
+    fn empty_fix(&mut self, recv: &Expr, negated: bool, at: Span, whole: Span, parens: bool) {
+        let r = receiver_text(recv);
+        let op = if negated { "is not" } else { "is" };
+        let mut fixed = format!("{r} {op} \"\"");
+        if parens {
+            fixed = format!("({fixed})");
+        }
+        let say = format!(
+            "{}: its emptiness is asked `{fixed}`, one form for one question (RFC-0013 §3.3)",
+            super::EMPTINESS
+        );
+        if recv.has_error() || self.interp > 0 {
+            // A string literal cannot stand inside `{…}` (§3.6): bind the test with `let`.
+            self.err("MZ0962", at, say);
+        } else {
+            self.err_fix("MZ0962", at, say, whole, fixed, Confidence::Exact);
+        }
+    }
+
+    /// `len(s)`, Python's free function, on text: `MZ0962` with the `exact` fix
+    /// `s.length()` (RFC-0013 §3.7). `None` when it is not that, so the call is checked as
+    /// any other.
+    pub(super) fn free_text(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        types: &[Ty],
+        at: Span,
+    ) -> Option<Ty> {
+        if name != "len" || args.len() != 1 || types[0] != Ty::Text {
+            return None;
+        }
+        let fixed = format!("{}.length()", receiver_text(&args[0]));
+        let say = format!(
+            "`len(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
+        );
+        if args[0].has_error() {
+            self.err("MZ0962", at, say);
+        } else {
+            self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+        }
+        Some(Ty::Int)
+    }
+
+    /// `recv.name(args)` with `recv` a `text`, its arguments already typed (RFC-0013 §10).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn text_method(
+        &mut self,
+        e: &Expr,
+        recv: &Expr,
+        name: &str,
+        name_span: Span,
+        args: &[Expr],
+        types: &[Ty],
+        called: bool,
+    ) -> Ty {
+        let r = receiver_text(recv);
+        if name == "is_empty" && called && args.is_empty() {
+            let parens = self.tight.contains(&e.span);
+            self.empty_fix(recv, false, name_span, e.span, parens);
+            return Ty::Bool;
+        }
+        if let Some(ret) = text::waiting(name) {
+            let (what, rfc) = if ret.starts_with("list") {
+                ("lists", "§9")
+            } else {
+                ("options", "§8")
+            };
+            self.err(
+                "MZ0919",
+                name_span,
+                format!(
+                    "`.{name}` on text returns {ret}, and {what} in a function body are designed (RFC-0013 {rfc}) but not built yet"
+                ),
+            );
+            return Ty::Error;
+        }
+        let Some((params, ret)) = text::method(Ty::Text, name) else {
+            return self.text_idiom(e, &r, name, name_span, args, called);
+        };
+        if !called {
+            let say = format!(
+                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
+            );
+            if params.is_empty() {
+                self.err_fix(
+                    "MZ0962",
+                    name_span,
+                    say,
+                    Span::single(name_span.end_line, name_span.end_col, 0),
+                    "()",
+                    Confidence::Exact,
+                );
+            } else {
+                self.err("MZ0962", name_span, say);
+            }
+            return ret;
+        }
+        if args.len() != params.len() {
+            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            self.err(
+                "MZ0905",
+                e.span,
+                format!(
+                    "`.{name}` on text takes {} argument{}{}, and this call gives {}",
+                    params.len(),
+                    if params.len() == 1 { "" } else { "s" },
+                    if wanted.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", wanted.join(", "))
+                    },
+                    args.len()
+                ),
+            );
+            return ret;
+        }
+        for ((a, t), p) in args.iter().zip(types).zip(&params) {
+            if *t == Ty::Error || t == p {
+                continue;
+            }
+            if self.unhandled(a, *t, || format!("`.{name}` takes the value, not a result")) {
+                return ret;
+            }
+            self.err(
+                "MZ0905",
+                a.span,
+                format!(
+                    "`{}` is {}, and `.{name}` on text takes {}",
+                    canonical(a),
+                    t.name(),
+                    p.name()
+                ),
+            );
+            return ret;
+        }
+        // A constant negative count traps every time (RFC-0013 §4.3, `MZ0915`).
+        if name == "repeat"
+            && let Some(Ok(n)) = args.first().and_then(fold)
+            && n < 0
+        {
+            self.err(
+                "MZ0915",
+                e.span,
+                format!(
+                    "`{}` repeats a negative number of times, which traps every time it runs — the count is 0 or more",
+                    canonical(e)
+                ),
+            );
+        }
+        ret
+    }
+
+    /// A method text does not have: another language's spelling of one it does (`MZ0962`),
+    /// or `MZ0708` with the nearest name.
+    fn text_idiom(
+        &mut self,
+        e: &Expr,
+        r: &str,
+        name: &str,
+        name_span: Span,
+        args: &[Expr],
+        called: bool,
+    ) -> Ty {
+        let Some((to, preserves)) = text::idiom(name, args.len()) else {
+            match nearest(name, text::designed()) {
+                Some((near, _)) => self.err_fix(
+                    "MZ0708",
+                    name_span,
+                    format!("text has no method `{name}` — did you mean `{near}`?"),
+                    name_span,
+                    near,
+                    Confidence::Guess,
+                ),
+                None => self.err(
+                    "MZ0708",
+                    name_span,
+                    format!(
+                        "text has no method `{name}` — it has {}",
+                        text::METHODS
+                            .iter()
+                            .map(|m| format!("`{m}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                ),
+            }
+            return Ty::Error;
+        };
+        let sig = text::method(Ty::Text, to);
+        let ret = sig.as_ref().map_or(Ty::Error, |(_, ret)| *ret);
+        // A built method called with another arity (Python's `strip(chars)`) has no fix:
+        // renaming it would only move the error.
+        let fits = sig
+            .as_ref()
+            .is_none_or(|(params, _)| !called || params.len() == args.len());
+        let args_text: Vec<String> = args.iter().map(canonical).collect();
+        // The fix: the name alone where only the name differs, else the whole call.
+        let (span, fixed) = if !called {
+            // `s.len`, `s.size`: the name and its parentheses.
+            (name_span, format!("{to}()"))
+        } else if to == "slice" {
+            // `substr(a, n)` takes a length, not an end: no fix.
+            match args_text.as_slice() {
+                [a, b] if name == "substring" => (e.span, format!("{r}.slice({a}, to = {b})")),
+                _ => (e.span, String::new()),
+            }
+        } else if let ([a, b], Some(label)) = (args_text.as_slice(), text::label(to, 1)) {
+            (e.span, format!("{r}.{to}({a}, {label} = {b})"))
+        } else {
+            (name_span, to.to_string())
+        };
+        let mut say = format!("`.{name}` is another language's — Mzizi's text method is `.{to}`");
+        if text::waiting(to).is_some() {
+            say.push_str(", designed (RFC-0013 §10) but not built yet");
+        }
+        if fixed.is_empty() || e.has_error() || !fits {
+            self.err("MZ0962", name_span, say);
+        } else {
+            let c = if preserves {
+                Confidence::Exact
+            } else {
+                Confidence::Guess
+            };
+            self.err_fix("MZ0962", name_span, say, span, fixed, c);
+        }
+        ret
+    }
+}

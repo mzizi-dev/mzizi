@@ -1779,7 +1779,7 @@ fills, the next family is `MZ10xx`.
 | `MZ0916` | `mz check`    | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                                                                                                                                     |
 | `MZ0917` | `mz check`    | a line or expression a function body cannot read: a value expected and something else found, a missing `)`, an unknown escape, a second `else`, or tokens left over on a statement line (claimed by Wave 0)                                                                                                      |
 | `MZ0918` | `mz check`    | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                                                                                                                                     |
-| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, methods on text, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                                               |
+| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, text methods that return an option or a list, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                  |
 | `MZ0920` | `mz check`    | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                                                                                                                                          |
 | `MZ0921` | `mz check`    | a name a program reserves: a record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word where §1 bans it, or any name starting with `mz_` (shadowing is `MZ0713`)                                                                                                            |
 | `MZ0922` | `mz check`    | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                                                                                                                                    |
@@ -2341,6 +2341,82 @@ error(e)`) as well as returned.
   `match`-stub fix where `try` does not fit (§12.3; `MZ0950` has no fix there), both the
   "C9 via" follow-up of §18.2; `mz run --agent`'s NDJSON line for `MZ0992`; and the guide
   change of §18.5.
+
+**Wave 2, C6: text operations, the part that needs no option or list (§10)** (Refs #69;
+built on `staging` after the 2026-10-08 release, while C7 builds collections and options on
+its own branch). Built and tested in `compiler/tests/program_text.rs` and
+`compiler/src/text.rs`, with `examples/text.mz` run through `mz run` against
+`examples/text.expected`; nothing measured.
+
+- **Modules.** `compiler/src/text.rs` holds §10's method table (`text::method`, read by the
+  checker, the lowering and the language harness), the label table (`replace`'s `by`,
+  `slice`'s `to`) and the other languages' spellings; `text/ops.rs` holds the helpers that
+  need more than one call to `std` (`mz_text_length`, `mz_text_repeat`), compiled into `mz`,
+  where its unit tests run, and emitted verbatim into every lowered `main.rs`, as
+  `numbers/float_text.rs` is. The checker's half is `program/text.rs`. `expr::method_signature`
+  is the one lookup the checker and the lowering use for a numeric or a text method.
+- **Built:** `s.length()`, `s.contains(t)`, `s.starts_with(t)`, `s.ends_with(t)`, `s.trim()`,
+  `s.to_upper()`, `s.to_lower()`, `s.replace(old, by = new)` and `s.repeat(n)`, as §10's
+  table types them, with lengths in Unicode scalar values as §10 chooses (not bytes, not
+  grapheme clusters: `"🇰🇪".length()` is `2`). The lowering is §14.2's: `chars().count()`
+  for `length`, and `str`'s own `contains`, `starts_with`, `ends_with`, `trim`,
+  `to_uppercase`, `to_lowercase` and `replace`, none of which cuts a character, so none can
+  panic on non-ASCII text; a text argument is passed as a `&str`, borrowed, not cloned.
+- **Codes emitted:** `MZ0905` (a text method's arity or argument type), `MZ0708` (a method
+  text does not have, with the nearest of §10's names as a `guess`), `MZ0915` (a literal
+  negative `repeat` count), `MZ0919` (the methods below), `MZ0927` (`replace`'s label), and
+  `MZ0962`: `len(s)`, `s.len()`, `s.size()`, `s.count()` and `s.length` (`exact`
+  `s.length()`); `strip()`, `upper()`, `lower()`, `to_uppercase()`, `to_lowercase()`,
+  `toUpperCase()`, `toLowerCase()`, `startswith`, `endswith` and `includes` (`exact`, the
+  name alone); `replace_all(a, b)` and `replaceAll(a, b)` (`exact` `replace(a, by = b)`);
+  and §3.3's emptiness, `s.is_empty()`, `s.length() is 0`, `is not 0`, `> 0` and
+  `not s.is_empty()` (`exact` `s is ""` or `s is not ""`). No code is claimed.
+- **Retired from `MZ0919`:** methods on text, except the six below.
+- **Where the code departs from this text, the code is the fact.**
+  - _`s.repeat(n)` traps_ on a negative `n` (`negative repeat count`) and on a result longer
+    than a `String` can hold (`text too long`), both `MZ0991` with exit 101. §10 says only
+    "`n` ≥ 0", and §4.3's table of traps does not list either; this adds them to it. The
+    length is checked before `str::repeat` runs, so its capacity-overflow panic cannot
+    happen. A result that fits but cannot be allocated aborts the process as any allocation
+    failure does, which is not a trap (as for recursion depth, §4.3).
+  - _A literal negative `repeat` count is `MZ0915`_, a fault visible in constants, which
+    §16's row does not name.
+  - _`replace`'s second argument is labelled `by`_ (§10's `s.replace(old, by = new)`), and
+    `s.replace(a, b)` without the label is `MZ0927`, §16's "a positional argument after the
+    first", with the `exact` fix inserting the `by =` label; `by: b` gets the `exact` `by = b`. §6.5's
+    labels are not built for any other call, so `range` and `replace` are the two whose
+    label the parser reads (and `slice`'s `to`, read so that its one diagnostic is
+    `MZ0919`). An empty `old` inserts `new` before every scalar value and at the end, as
+    Python's `replace` does; §10 does not say.
+  - _`to_upper` and `to_lower` are Rust's full Unicode case mappings_, so a character may
+    become two (`"straße".to_upper()` is `"STRASSE"`) and a final sigma lowers to `ς`.
+    `trim` removes Unicode `White_Space` at both ends, which is Rust's `str::trim`.
+  - _Emptiness's fix_ is one `MZ0962` for the whole expression. Inside a comparison it is
+    parenthesised (`(s is "") is false`); inside an interpolation it has no fix, since a
+    string literal cannot stand in `{…}` (§3.6). Where Python's `==` or a prefix `!` sits
+    inside the expression (`s.length() == 0`), the operator's `MZ0910` is folded into the one
+    fix, as §16 asks. `count()` with no argument is `length()` on text too, by §9.4's rule
+    for lists; `s.count(t)` (Python's occurrence count) is `MZ0708`.
+  - _Spellings that mean one of the waiting methods get a `guess`_, never an `exact` fix,
+    because the meanings differ and the fix leads to `MZ0919`: JavaScript's
+    `substring(a, b)` is `slice(a, to = b)` and `indexOf(t)` is `find(t)`; `substr`, which
+    takes a length, has no fix. Python's `strip(chars)` has no fix either.
+  - _A camelCase method name_ (`toUpperCase`) is one diagnostic: the lexer's `MZ0101` is
+    dropped where the checker reports the same word, as the front end already does for
+    names, and `MZ0962`'s fix replaces the word as written. `startsWith` is `MZ0101` alone,
+    since its snake_case form is the Mzizi method.
+- **The language harness** (RFC-0012 §1.2): `compiler/src/harness.rs` gains a method entry
+  for each of the nine methods, typed from `text::method`, each with `examples/text.mz` as its
+  runnable example; the `text` type's entry lists them; `MZ0919`, `MZ0915`, `MZ0927`,
+  `MZ0962`, `MZ0708` and `MZ0991` say what this adds. `compiler/tests/harness.rs` checks that
+  the method entries are exactly `numbers::METHODS` and `text::METHODS`, and that the
+  examples between them call every one.
+- **Not built:** the methods that return an option or a list, `s[i]`, `s.slice(a, to = b)`,
+  `s.find(t)`, `s.parse_int()`, `s.parse_float()`, `s.split(sep)` and `s.chars()` (each one
+  `MZ0919`, naming what it returns, until C7's lists and options and §18.2's "C4 options"
+  exist), with `split("")`'s `MZ0915`; `t in s` and its `MZ0962` (it waits for C7's `in`);
+  §20 Q20's decision on whether built-in methods meet C6's "Done when", so the row stays
+  🟡; and the guide change of §18.5.
 
 ## 19. What this RFC does not claim
 

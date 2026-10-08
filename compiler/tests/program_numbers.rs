@@ -466,8 +466,10 @@ fn mz0708_a_method_a_number_does_not_have() {
     guessed(&wrap("let f = 4.0\nprint(f.sqr())"), "MZ0708", "sqrt");
     let d = one(&wrap("print(true.abs())"), "MZ0708");
     assert!(d.say.contains("no method `abs`"), "{}", d.say);
-    // Methods on text are C6's: designed, not built.
-    one(&wrap("print(\"abc\".length())"), "MZ0919");
+    // Methods on text are C6's (`tests/program_text.rs`); a number has none of them.
+    clean(&wrap("print(\"abc\".length())"));
+    let d = one(&wrap("print(3.length())"), "MZ0708");
+    assert!(d.say.contains("no method `length`"), "{}", d.say);
 }
 
 #[test]

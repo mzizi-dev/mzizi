@@ -13,7 +13,8 @@
 //! - **Single source, read from the checker:** each operator's spelling and precedence,
 //!   which operators apply to which types (asked of [`binary_type`], the checker's own
 //!   typing rule), the list of operators and types (`ALL`, generated with each enum in
-//!   [`crate::expr`]), and each numeric method's signature ([`crate::numbers::method`]).
+//!   [`crate::expr`]), and each method's signature ([`crate::numbers::method`],
+//!   [`crate::text::method`]).
 //! - **Single source, read by the compiler:** `mz` dispatches on [`COMMANDS`], so a command
 //!   with no entry cannot run, and the program parser accepts exactly the surface types'
 //!   names (`Ty::from_name`).
@@ -56,7 +57,8 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow and errors";
+pub const LANGUAGE: &str =
+    "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow and errors, wave 2 text (part)";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -71,7 +73,8 @@ pub enum Kind {
     Statement,
     /// A built-in function.
     Function,
-    /// A method on a value: the numeric methods of RFC-0013 §4.4.
+    /// A method on a value: the numeric methods of RFC-0013 §4.4 and the text methods of
+    /// §10.
     Method,
     /// Something the lexer reads: comments, text literals.
     Lexical,
@@ -254,6 +257,8 @@ pub struct Command {
 const HELLO: &str = include_str!("../../examples/hello.mz");
 const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
 const FIB: &str = include_str!("../../examples/fib.mz");
+const TEXT_OPS: &str = include_str!("../../examples/text.mz");
+const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
 const FIB_OUT: &str = include_str!("../../examples/fib.expected");
 
 const BINDINGS: &str = "program bindings\n\n  fn main\n    let width: int = 6\n    let height = 7\n    var area = 0\n    area = width * height\n    print(\"area {area}\")\n  end fn main\n\nend program bindings\n";
@@ -931,7 +936,7 @@ pub const CODES: &[Code] = &[
         "RFC-0008 §6, RFC-0013 §16",
         ALL_FIXES,
         ALL_KINDS,
-        "no such field, variant or method: in a program, a number's method (`f.sqrt2()`), an enum's variant or column, or a bare variant two enums share; in a component or service, a field, variant or column; the fix names the nearest, or the enum (`exact` or a guess, as the checker judges)",
+        "no such field, variant or method: in a program, a number's or a text's method (`f.sqrt2()`), an enum's variant or column, or a bare variant two enums share; in a component or service, a field, variant or column; the fix names the nearest, or the enum (`exact` or a guess, as the checker judges)",
         "program t\n  fn main\n    let f = 2.0\n    print(f.sqrt2())\n  end fn main\nend program t\n",
     ),
     code(
@@ -1075,7 +1080,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §4.1, §4.4, §16",
         NONE,
         PROGRAM,
-        "a fault visible in constants: division or remainder by a literal `0`, a literal negative `int` exponent, or a constant computation (including `pow` and `abs`) that overflows an `int`",
+        "a fault visible in constants: division or remainder by a literal `0`, a literal negative `int` exponent or `repeat` count, or a constant computation (including `pow` and `abs`) that overflows an `int`",
         "program t\n  fn main\n    print(1 / 0)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1107,7 +1112,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "a form RFC-0013 designs that this compiler does not build yet, named and reported once: lists, maps, sets and options (`none` among them); `range` off a `for each` line; methods on `text`; a `record`; a `use` line; a `test` block; a `contract` block in a program or on a `fn`",
+        "designed in RFC-0013, not built yet, reported once: lists, maps, sets and options (`none` among them); `range` off a `for each` line; text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`; a `record`; a `use` line; a `test` block; a `contract` block in a program or on a `fn`",
         "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1175,7 +1180,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.5, §16",
         EXACT,
         PROGRAM,
-        "a call's label written another way: `range(a, to: b)`, whose exact fix writes `to = b` (§6.5's other labels are not built)",
+        "a call's label written another way: `range(a, to: b)` or `s.replace(a, by: b)`, whose exact fix writes `to = b`, or `s.replace(a, b)` with no label, whose exact fix inserts the `by =` label (§6.5's other labels are not built)",
         "program t\n  fn main\n    for each i in range(0, to: 3)\n      print(i)\n    end\n  end fn main\nend program t\n",
     ),
     code(
@@ -1284,10 +1289,10 @@ pub const CODES: &[Code] = &[
     ),
     code(
         "MZ0962",
-        "RFC-0013 §3.7, §3.8, §4.4, §16",
+        "RFC-0013 §3.3, §3.7, §3.8, §4.4, §10, §16",
         ALL_FIXES,
         PROGRAM,
-        "an operation spelt another way: `str(x)` or `x.to_string()` (exact `\"{x}\"`), a free numeric function such as `abs(x)` (exact `x.abs()`; a guess for `round` and `pow`, which differ), or a method without parentheses, `f.round` (exact `()` when it takes no arguments)",
+        "an operation spelt another way: `str(x)` (exact `\"{x}\"`), `abs(x)` or `len(s)` (exact `x.abs()`, `s.length()`), `s.len()` or `s.strip()` (exact `length`, `trim`), `s.is_empty()` (exact `s is \"\"`), a method without `()` (exact `()`); a guess where meanings differ",
         "program t\n  fn main\n    let n = 2\n    print(str(n))\n  end fn main\nend program t\n",
     ),
     code(
@@ -1313,7 +1318,7 @@ pub const CODES: &[Code] = &[
         rfc: "RFC-0013 §4.3, §16",
         severity: Severity::Error,
         tool: "mz run",
-        say: "a trap while the program ran: integer overflow (including `pow` and `abs`), `int` division or remainder by zero, a negative `int` exponent, or `to_int()` on a float out of range. The line names the `.mz` position and the expression; exit 101",
+        say: "a trap while the program ran: integer overflow (including `pow` and `abs`), `int` division or remainder by zero, a negative `int` exponent or `repeat` count, a `repeat` too long to hold, or `to_int()` on a float out of range. The line names the `.mz` position and the expression; exit 101",
         fixes: NONE,
         kinds: PROGRAM,
         trigger: None,
@@ -1493,8 +1498,8 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
         )),
         Ty::Text => Some((
             &["text", "\"hello\"", "\"{name}\""],
-            "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value.",
-            "RFC-0013 §3.6, §3.8",
+            "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value. Its methods count and cut by Unicode scalar value, never by byte; it is empty when it `is \"\"`.",
+            "RFC-0013 §3.6, §3.8, §10",
         )),
         // An enum is the program's own type, registered as the `enum` entry, and a result
         // is built from two types, registered as the `result` entry.
@@ -1551,6 +1556,51 @@ fn method_teach(name: &str) -> Option<(&'static str, &'static str)> {
     })
 }
 
+/// A text method's grammar and teaching text, for each name in [`crate::text::METHODS`],
+/// the table the checker types text methods with. `compiler/tests/harness.rs` fails when a
+/// method there has no text here.
+fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
+    Some(match name {
+        "length" => (
+            "s.length()",
+            "How many Unicode scalar values `s` holds, not bytes: `\"héllo\".length()` is `5`. `len(s)`, `s.len()`, `s.size()` and `s.length` get the exact fix `s.length()`. Emptiness is `s is \"\"`, never `s.length() is 0` or `s.is_empty()`, whose exact fixes write it.",
+        ),
+        "contains" => (
+            "s.contains(t)",
+            "Whether `t` occurs in `s`; `\"\"` occurs in every text. JavaScript's `includes` gets the exact fix. `t in s` is not built (it waits for `in`).",
+        ),
+        "starts_with" => (
+            "s.starts_with(t)",
+            "Whether `s` begins with `t`. Python's `startswith` gets the exact fix.",
+        ),
+        "ends_with" => (
+            "s.ends_with(t)",
+            "Whether `s` ends with `t`. Python's `endswith` gets the exact fix.",
+        ),
+        "trim" => (
+            "s.trim()",
+            "`s` without Unicode whitespace at either end. Python's `strip()` gets the exact fix; there is no one-sided trim.",
+        ),
+        "to_upper" => (
+            "s.to_upper()",
+            "`s` in upper case, by Unicode's full case mapping, so a character may become two: `\"straße\"` is `\"STRASSE\"`. `upper()`, `toUpperCase()` and `to_uppercase()` get the exact fix.",
+        ),
+        "to_lower" => (
+            "s.to_lower()",
+            "`s` in lower case, by Unicode's full case mapping. `lower()`, `toLowerCase()` and `to_lowercase()` get the exact fix.",
+        ),
+        "replace" => (
+            "s.replace(old, by = new)",
+            "`s` with every occurrence of `old` replaced by `new`; the second argument is labelled `by`, and an unlabelled one gets the exact fix. An empty `old` inserts `new` between every character and at both ends, as Python does. JavaScript's `replaceAll(a, b)` gets the exact fix.",
+        ),
+        "repeat" => (
+            "s.repeat(n)",
+            "`s` written `n` times; `\"\"` when `n` is `0`. A negative `n` traps (exit 101; a literal one is `MZ0915`), and so does a result too long for a text to hold.",
+        ),
+        _ => return None,
+    })
+}
+
 /// The whole registry, in a stable order: kind by kind, and within a kind in the order the
 /// tables above give.
 pub fn registry() -> Vec<HarnessEntry> {
@@ -1594,7 +1644,10 @@ pub fn registry() -> Vec<HarnessEntry> {
             grammar: grammar.to_vec(),
             teach: teach.to_string(),
             types: {
-                let methods = crate::numbers::methods_of(t);
+                let mut methods = crate::numbers::methods_of(t);
+                if t == Ty::Text {
+                    methods.extend(crate::text::METHODS);
+                }
                 let methods = if methods.is_empty() {
                     String::new()
                 } else {
@@ -1620,6 +1673,7 @@ pub fn registry() -> Vec<HarnessEntry> {
             codes: match t {
                 Ty::Int => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0103", "MZ0915", "MZ0991"],
                 Ty::Float => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0914", "MZ0991"],
+                Ty::Text => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0962", "MZ0919"],
                 _ => TYPE_CODES.to_vec(),
             },
             examples: vec![match t {
@@ -1724,6 +1778,34 @@ pub fn registry() -> Vec<HarnessEntry> {
             diagnostic: None,
         });
     }
+    for name in crate::text::METHODS {
+        let Some((grammar, teach)) = text_method_teach(name) else {
+            continue;
+        };
+        let types = crate::text::method(Ty::Text, name).map_or(String::new(), |(params, ret)| {
+            let params: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            format!("text.{name}({}) → {}", params.join(", "), ret.name())
+        });
+        let mut codes = vec!["MZ0708", "MZ0905", "MZ0962"];
+        match *name {
+            "repeat" => codes.extend(["MZ0915", "MZ0991"]),
+            "replace" => codes.push("MZ0927"),
+            _ => {}
+        }
+        out.push(HarnessEntry {
+            name,
+            kind: Kind::Method,
+            depth: Depth::Full,
+            rfc: "RFC-0013 §3.7, §10",
+            grammar: vec![grammar],
+            teach: teach.to_string(),
+            types,
+            precedence: Some(2),
+            codes,
+            examples: vec![run(TEXT_OPS, TEXT_OPS_OUT)],
+            diagnostic: None,
+        });
+    }
     for c in COMMANDS {
         out.push(HarnessEntry {
             name: c.name,
@@ -1819,6 +1901,7 @@ pub fn expression_entry(kind: &crate::expr::ExprKind) -> &'static str {
         ExprKind::Name(_) => "names",
         ExprKind::Method { name, .. } => crate::numbers::METHODS
             .iter()
+            .chain(crate::text::METHODS)
             .find(|m| *m == name)
             .copied()
             .unwrap_or("MZ0708"),

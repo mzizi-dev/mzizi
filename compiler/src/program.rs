@@ -15,13 +15,18 @@ use std::collections::BTreeMap;
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::expr::{
     Arm, BinOp, ElseArm, Expr, ExprKind, Fault, TextPart, Ty, UnOp, binary_type, canonical,
-    canonical_text, fold, has_text_form,
+    canonical_text, fold, has_text_form, method_signature,
 };
 use crate::numbers;
 use crate::resolve::nearest;
 
 mod control;
 mod errors;
+mod text;
+
+/// How `MZ0962`'s `say` opens for text emptiness asked another way (`s.length() is 0`), so
+/// the front end can fold an operator idiom inside it into its one fix.
+pub const EMPTINESS: &str = "text is not a collection";
 
 pub use control::{canonical_stmts, variant_owner};
 pub use errors::{Column, EnumDecl, Variant};
@@ -399,6 +404,12 @@ struct FnCheck<'a> {
     /// Each `let` that holds a result: its binding, its name and its value, so one never
     /// read before its block ends is `MZ0950` (§12.3).
     results: Vec<(usize, Span, Span)>,
+    /// Each `x.is_empty()` written as the operand of a comparison or of `not`, whose fix to
+    /// `x is ""` needs parentheses there (`program/text.rs`).
+    tight: Vec<Span>,
+    /// How many `{…}` interpolations enclose the expression being checked: a fix that
+    /// writes a string literal cannot go inside one (RFC-0013 §3.6).
+    interp: u32,
 }
 
 impl<'a> FnCheck<'a> {
@@ -422,6 +433,8 @@ impl<'a> FnCheck<'a> {
             whens: Vec::new(),
             assigns: BTreeMap::new(),
             results: Vec::new(),
+            tight: Vec::new(),
+            interp: 0,
         };
         cx.collect(&f.body, &mut Vec::new());
         cx
@@ -674,7 +687,7 @@ impl<'a> FnCheck<'a> {
                 numeric(self.shallow_ty(lhs), self.shallow_ty(rhs))
             }
             ExprKind::Method { recv, name, .. } => {
-                numbers::method(self.shallow_ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
+                method_signature(self.shallow_ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
             }
             _ => shallow_type(e),
         }
@@ -1214,6 +1227,9 @@ impl<'a> FnCheck<'a> {
 
     /// Type an expression, reporting what is wrong with it once.
     fn expr(&mut self, e: &Expr) -> Ty {
+        if let Some(t) = self.text_emptiness(e) {
+            return t;
+        }
         match &e.kind {
             ExprKind::Int(_) => Ty::Int,
             ExprKind::Float(_) => Ty::Float,
@@ -1221,7 +1237,9 @@ impl<'a> FnCheck<'a> {
             ExprKind::Text(parts) => {
                 for part in parts {
                     if let TextPart::Expr(inner) = part {
+                        self.interp += 1;
                         let t = self.expr(inner);
+                        self.interp -= 1;
                         if self.unhandled(inner, t, || "a result has no text form".into()) {
                             // Reported.
                         } else if !has_text_form(t) {
@@ -1262,6 +1280,9 @@ impl<'a> FnCheck<'a> {
                 name_span,
             } => self.field(e, base, name, *name_span),
             ExprKind::Unary { op, operand } => {
+                if *op == UnOp::Not {
+                    self.mark_tight(operand);
+                }
                 let t = self.expr(operand);
                 // `try` is typed by `try_expr`, in the arm above; this is `-` or `not`.
                 let want = if *op == UnOp::Not {
@@ -1317,7 +1338,11 @@ impl<'a> FnCheck<'a> {
                 lhs,
                 rhs,
                 ..
-            } => self.compare(e, *op, lhs, rhs),
+            } => {
+                self.mark_tight(lhs);
+                self.mark_tight(rhs);
+                self.compare(e, *op, lhs, rhs)
+            }
             ExprKind::Variant { .. } | ExprKind::When { .. } | ExprKind::Match { .. } => {
                 self.control_expr(e)
             }
@@ -1582,7 +1607,9 @@ impl<'a> FnCheck<'a> {
         }
         if !self.fns.contains_key(name)
             && self.visible(name).is_none()
-            && let Some(t) = self.free_numeric(name, args, &types, at)
+            && let Some(t) = self
+                .free_text(name, args, &types, at)
+                .or_else(|| self.free_numeric(name, args, &types, at))
         {
             return t;
         }
@@ -1819,16 +1846,7 @@ impl<'a> FnCheck<'a> {
         match rt {
             Ty::Error => return Ty::Error,
             Ty::Int | Ty::Float => {}
-            Ty::Text => {
-                self.err(
-                    "MZ0919",
-                    e.span,
-                    format!(
-                        "`.{name}` on text: methods on text are designed (RFC-0013 §10) but not built yet — a program has the numeric methods of §4.4"
-                    ),
-                );
-                return Ty::Error;
-            }
+            Ty::Text => return self.text_method(e, recv, name, name_span, args, &types, called),
             Ty::Enum(_) => {
                 self.err(
                     "MZ0708",
@@ -1848,7 +1866,7 @@ impl<'a> FnCheck<'a> {
                     "MZ0708",
                     name_span,
                     format!(
-                        "`{}` is {}, which has no method `{name}` — only numbers have methods in a program yet",
+                        "`{}` is {}, which has no method `{name}` — only numbers and text have methods in a program yet",
                         canonical(recv),
                         rt.name()
                     ),
@@ -2115,7 +2133,7 @@ fn shallow_type(e: &Expr) -> Ty {
         ExprKind::Binary { .. } => Ty::Bool,
         ExprKind::Method { recv, name, .. } => {
             let rt = shallow_type(recv);
-            numbers::method(rt, name).map_or(Ty::Error, |(_, ret)| ret)
+            method_signature(rt, name).map_or(Ty::Error, |(_, ret)| ret)
         }
         _ => Ty::Error,
     }

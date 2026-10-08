@@ -344,13 +344,14 @@ fn mz0918_operator_assignment() {
 #[test]
 fn mz0919_a_designed_form_not_built_yet_is_one_diagnostic() {
     // C4 retired `while`, `for each`, `match`, `else when`, `break`, `continue` and a
-    // program's `enum` from this code (`tests/program_control.rs`); these are still later
+    // program's `enum` from this code (`tests/program_control.rs`), and C6 the text
+    // methods that need no option or list (`tests/program_text.rs`); these are still later
     // waves'.
     one(
         "program t\n  record point\n    field x: int\n  end\n  fn main\n  end fn main\nend program t\n",
         "MZ0919",
     );
-    one(&wrap("let s = \"abc\".length()"), "MZ0919");
+    one(&wrap("let s = \"abc\".split(\",\")"), "MZ0919");
     one(&wrap("let xs: list(int) = 1\nprint(1)"), "MZ0919");
     one(
         "program t\n  fn main\n  end fn main\n  contract\n    example output is \"\"\n  end\nend program t\n",
