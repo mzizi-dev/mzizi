@@ -2521,9 +2521,13 @@ nothing measured.
     argument was written with its label.
   - Another language's length compared with 0 now goes straight to `c is none` (or
     `is not none`), so one `mz fix` pass converges. This covers `len(xs)`, `.len()`,
-    `.size()`, `.count()` and `.length` with `is 0`, `is not 0`, `> 0`, `==` and `!=`.
-    Before, it went to `c.length() is 0` and needed a second pass. A test runs `mz fix`
-    once on the shipped binary, then `mz check`, and expects a clean result.
+    `.size()`, `.count()` and `.length` with `is 0`, `is not 0`, `> 0`, `==` and `!=`, and
+    under `not` (`not xs.length() is 0` is `xs is not none`). Before, it went to
+    `c.length() is 0` and needed a second pass. The parser's `MZ0910` inside such a
+    comparison (`==`, `not a is b`) is folded into the checker's `exact` fix in `lib.rs`,
+    as it already was for text. When the checker's fix is only a guess (the receiver is not
+    a name or a path), nothing is folded, and the parser's `exact` fix stays. A test runs
+    `mz fix` once on the shipped binary, then `mz check`, and expects a clean result.
   - `xs.is_empty()` beside another comparison is fixed to `(xs is none)`, not the chain
     `xs is none is true`, which did not check.
   - `range(a, to = b)` as a list computes its length with checked arithmetic and reserves
@@ -2539,8 +2543,10 @@ nothing measured.
   - A map literal whose keys are equal only at run time keeps the last value:
     `[a: 1, "k": 2]` with `a` bound to `"k"` is `["k": 2]`. A key written twice as a literal
     is `MZ0961`.
-  - `range(1, 3)` and `xs.slice(0, 2)` are accepted without their `to` label. §6.5's
-    labels are read only where they are written.
+  - `range(1, 3)` and `xs.slice(0, 2)` are accepted without their `to` label, and
+    `xs.fold(0, add)` without `step`. §6.5's labels are read only where they are written.
+    The parser records whether a call's label was written (`ExprKind::Call::labelled`),
+    but only `sorted` reads it, and the `slice` and `fold` methods do not record it.
   - `xs[0].push(1)` is `MZ0710`, whose say suggests `otherwise` on a receiver that is being
     changed. No default makes that a change to `xs`.
 - **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and C6's

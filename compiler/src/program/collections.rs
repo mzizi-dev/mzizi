@@ -429,7 +429,7 @@ impl<'a> FnCheck<'a> {
                 self.err_fix(
                     "MZ0962",
                     e.span,
-                    format!("a collection's emptiness is asked with `none`: `{fixed}`"),
+                    format!("{}: `{fixed}`", super::COLLECTION_EMPTINESS),
                     rhs.span,
                     "none",
                     Confidence::Exact,
@@ -477,7 +477,7 @@ impl<'a> FnCheck<'a> {
         if parens {
             fixed = format!("({fixed})");
         }
-        let say = format!("a collection's emptiness is asked with `none`: `{fixed}`");
+        let say = format!("{}: `{fixed}`", super::COLLECTION_EMPTINESS);
         if recv.has_error() {
             self.err("MZ0962", whole, say);
         } else {
@@ -520,7 +520,7 @@ impl<'a> FnCheck<'a> {
         self.err_fix(
             "MZ0962",
             e.span,
-            format!("a collection's emptiness is asked with `none`: `{fixed}`"),
+            format!("{}: `{fixed}`", super::COLLECTION_EMPTINESS),
             e.span,
             fixed,
             path_confidence(recv),
@@ -1230,7 +1230,7 @@ impl<'a> FnCheck<'a> {
                 }
                 say_fix(
                     self,
-                    format!("a collection's emptiness is asked with `none`: `{fixed}`"),
+                    format!("{}: `{fixed}`", super::COLLECTION_EMPTINESS),
                     e.span,
                     fixed,
                     path_confidence(recv),

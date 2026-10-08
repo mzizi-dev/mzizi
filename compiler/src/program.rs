@@ -29,6 +29,10 @@ mod text;
 /// the front end can fold an operator idiom inside it into its one fix.
 pub const EMPTINESS: &str = "text is not a collection";
 
+/// How every `MZ0962` on a list's, map's or set's emptiness begins (RFC-0013 §3.3), so
+/// `lib.rs` can fold a parser's fix inside one into it, as for [`EMPTINESS`].
+pub const COLLECTION_EMPTINESS: &str = "a collection's emptiness is asked with `none`";
+
 pub use control::{canonical_stmts, variant_owner};
 pub use errors::{Column, EnumDecl, Variant};
 
