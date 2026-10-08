@@ -8,7 +8,7 @@
 //! Spellings from other languages (`==`, `&&`, `->`, `def`, `console.log`, `x = 1` with no
 //! binding) are repaired in the tree as they are reported, so the checker sees the program
 //! the `exact` fix would produce and reports nothing more about that line (RFC-0013 §16).
-//! Forms RFC-0013 designs that are not built yet (methods on text, lists, a program's
+//! Forms RFC-0013 designs that are not built yet (text methods that return an option or a list, lists, a program's
 //! `contract`, …) are one `MZ0919` each, naming the form, and their block is skipped.
 //! C4's control flow (§7: `else when`, `match`, `for each`, `while`, `break`, `continue`,
 //! `when` and `match` as values, and the `enum`s a `match` needs) is read by [`control`],
@@ -2295,7 +2295,8 @@ impl P {
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
         let (args, close) = if name == "range" {
-            self.args_labelled(Some((1, "to")))
+            let (args, close, _) = self.args_labelled(Some((1, "to")));
+            (args, close)
         } else {
             self.args()
         };
@@ -2315,20 +2316,27 @@ impl P {
 
     /// `(a, b)`: the cursor is on `(`. Returns the arguments and the `)`'s span.
     fn args(&mut self) -> (Vec<Expr>, Span) {
-        self.args_labelled(None)
+        let (args, close, _) = self.args_labelled(None);
+        (args, close)
     }
 
     /// [`P::args`], where `label` is an argument's position and the one label it may carry.
-    fn args_labelled(&mut self, label: Option<(usize, &str)>) -> (Vec<Expr>, Span) {
+    /// Also says whether that label was written.
+    pub(super) fn args_labelled(
+        &mut self,
+        label: Option<(usize, &str)>,
+    ) -> (Vec<Expr>, Span, bool) {
         let open = self.bump().span;
         let mut args = Vec::new();
+        let mut labelled = false;
         if matches!(self.peek(), Tok::RParen) {
-            return (args, self.bump().span);
+            return (args, self.bump().span, labelled);
         }
         loop {
             if let (Tok::Ident(n), Tok::Equals) = (self.peek(), self.peek_at(1))
                 && label == Some((args.len(), n.as_str()))
             {
+                labelled = true;
                 self.bump();
                 self.bump();
             } else if let (Tok::Ident(n), Tok::Colon) = (self.peek(), self.peek_at(1))
@@ -2348,6 +2356,7 @@ impl P {
                     Confidence::Exact,
                 );
                 self.failed = false;
+                labelled = true;
                 self.bump();
                 self.bump();
             } else if let (Tok::Ident(n), Tok::Equals) =
@@ -2369,7 +2378,7 @@ impl P {
                 Tok::Comma => {
                     self.bump();
                 }
-                Tok::RParen => return (args, self.bump().span),
+                Tok::RParen => return (args, self.bump().span, labelled),
                 other => {
                     if !self.failed {
                         let s = self.span();
@@ -2387,7 +2396,7 @@ impl P {
                     while !self.at_line_end() {
                         self.bump();
                     }
-                    return (args, end);
+                    return (args, end, labelled);
                 }
             }
         }
