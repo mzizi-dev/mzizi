@@ -12,25 +12,68 @@
 
 use crate::diagnostic::Span;
 
-/// A type a Wave 0 expression can have.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Ty {
-    /// A signed 64-bit integer (RFC-0013 §4.1).
-    Int,
-    /// An IEEE 754 binary64 number (RFC-0013 §4.2).
-    Float,
-    /// `true` or `false`.
-    Bool,
-    /// UTF-8 text.
-    Text,
-    /// The "value" of a call to a function that returns nothing.
-    Nothing,
-    /// A sub-expression that already failed. It is reported once and silent from then on
-    /// (RFC-0013 §16: one diagnostic per true error).
-    Error,
+/// Declare a fieldless enum and its `ALL`, every variant in declaration order, from one
+/// list, so a variant cannot be added without being listed. The language harness
+/// (RFC-0012 §1.2) walks `ALL` to register each type and operator.
+macro_rules! listed_enum {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident, )*
+        }
+    ) => {
+        $(#[$meta])*
+        pub enum $name {
+            $( $(#[$vmeta])* $variant, )*
+        }
+
+        impl $name {
+            /// Every variant, in declaration order. Generated with the enum, so it cannot
+            /// miss one.
+            pub const ALL: &'static [$name] = &[$($name::$variant),*];
+        }
+    };
+}
+
+listed_enum! {
+    /// A type an expression in a program can have.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum Ty {
+        /// A signed 64-bit integer (RFC-0013 §4.1).
+        Int,
+        /// An IEEE 754 binary64 number (RFC-0013 §4.2).
+        Float,
+        /// `true` or `false`.
+        Bool,
+        /// UTF-8 text.
+        Text,
+        /// The "value" of a call to a function that returns nothing.
+        Nothing,
+        /// A sub-expression that already failed. It is reported once and silent from then on
+        /// (RFC-0013 §16: one diagnostic per true error).
+        Error,
+    }
 }
 
 impl Ty {
+    /// Whether an author writes this type. `Nothing` and `Error` are the checker's own;
+    /// every other variant, including one added later, is a surface type, which the
+    /// language harness must register (its tests fail otherwise).
+    pub fn is_surface(self) -> bool {
+        !matches!(self, Ty::Nothing | Ty::Error)
+    }
+
+    /// The surface types, in declaration order.
+    pub fn surface() -> impl Iterator<Item = Ty> {
+        Ty::ALL.iter().copied().filter(|t| t.is_surface())
+    }
+
+    /// The surface type a program writes as `name`, if any. The program parser reads type
+    /// names through this, so the names it accepts are exactly the surface types'.
+    pub fn from_name(name: &str) -> Option<Ty> {
+        Ty::surface().find(|t| t.name() == name)
+    }
+
     /// The type as Mzizi writes it.
     pub fn name(self) -> &'static str {
         match self {
@@ -44,44 +87,48 @@ impl Ty {
     }
 }
 
-/// A prefix operator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum UnOp {
-    /// `-x`, on `int` (trapping on overflow: `-` of `int` minimum) or `float`.
-    Neg,
-    /// `not b`, on `bool`.
-    Not,
+listed_enum! {
+    /// A prefix operator.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum UnOp {
+        /// `-x`, on `int` (trapping on overflow: `-` of `int` minimum) or `float`.
+        Neg,
+        /// `not b`, on `bool`.
+        Not,
+    }
 }
 
-/// A binary operator.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BinOp {
-    /// `+`
-    Add,
-    /// `-`
-    Sub,
-    /// `*`
-    Mul,
-    /// `/`, truncating toward zero.
-    Div,
-    /// `%`, with the sign of the dividend.
-    Rem,
-    /// `is`
-    Is,
-    /// `is not`
-    IsNot,
-    /// `<`
-    Lt,
-    /// `<=`
-    Le,
-    /// `>`
-    Gt,
-    /// `>=`
-    Ge,
-    /// `and`, short-circuit.
-    And,
-    /// `or`, short-circuit.
-    Or,
+listed_enum! {
+    /// A binary operator.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum BinOp {
+        /// `+`
+        Add,
+        /// `-`
+        Sub,
+        /// `*`
+        Mul,
+        /// `/`, truncating toward zero.
+        Div,
+        /// `%`, with the sign of the dividend.
+        Rem,
+        /// `is`
+        Is,
+        /// `is not`
+        IsNot,
+        /// `<`
+        Lt,
+        /// `<=`
+        Le,
+        /// `>`
+        Gt,
+        /// `>=`
+        Ge,
+        /// `and`, short-circuit.
+        And,
+        /// `or`, short-circuit.
+        Or,
+    }
 }
 
 impl BinOp {

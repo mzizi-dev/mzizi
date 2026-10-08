@@ -22,6 +22,9 @@ missing there or specific to Claude Code. Where an RFC and the code disagree, th
   RFC, the charter or the benchmarks adds a `CHANGELOG.md` entry under `## [Unreleased]`, or
   is labelled `no-changelog`; `.github/scripts/changelog-entry.sh` is the check. A PR that
   changes what the language can do also updates its row in `LANGUAGE-TRACKER.md`.
+- A PR that adds or changes a language feature adds or updates its harness entry in the same PR
+  (`compiler/src/harness.rs`, RFC-0012 §1.2): one entry in `FEATURES`, one `Code` per diagnostic
+  code with a `trigger`, and tested examples. `cargo test --test harness` is the check, and runs in CI.
 
 ## Release and versioning flow
 

@@ -1896,7 +1896,9 @@ not exist yet, so this is the form `mz fmt` will produce and that examples and g
 The waves are issue #69's. Each row is one pull request, on its own branch, targeting `staging`.
 Each one meets its tracker row's "Done when", updates that row and the CHANGELOG, adds an
 `examples/*.mz` program with its `.expected` output, gives every construct it adds its codes and
-`exact` fixes, and passes the AGENTS.md checks. None claims a measured result. A row turns ✅ only
+`exact` fixes, and passes the AGENTS.md checks. Each wave's features register their language-harness
+entries as part of being built (RFC-0012 §1.2): a feature is not built until its entry, codes and
+tested examples are in `compiler/src/harness.rs`. None claims a measured result. A row turns ✅ only
 when its "Done when" test is on `main` and green (`LANGUAGE-TRACKER.md`).
 
 ### 18.1 Wave 0, the foundation slice (serial)

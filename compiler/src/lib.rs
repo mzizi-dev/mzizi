@@ -32,6 +32,7 @@ pub mod ast;
 pub mod contract;
 pub mod diagnostic;
 pub mod expr;
+pub mod harness;
 pub mod hash;
 pub mod ir;
 pub mod lex;
@@ -89,6 +90,9 @@ fn front_end(src: &str, file: &str) -> (Option<ast::Component>, Vec<diagnostic::
 pub fn check(src: &str, file: &str) -> CheckReport {
     let (_program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     report
@@ -125,6 +129,9 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
             None => {}
         }
     }
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (report, tally)
@@ -208,6 +215,9 @@ pub fn apply_exact_fixes(src: &str, report: &CheckReport) -> String {
 pub fn check_program(src: &str, file: &str) -> (Option<parse::Program>, CheckReport) {
     let (program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (program, report)
@@ -217,6 +227,9 @@ pub fn check_program(src: &str, file: &str) -> (Option<parse::Program>, CheckRep
 pub fn check_with_ast(src: &str, file: &str) -> (Option<ast::Component>, CheckReport) {
     let (component, diagnostics) = front_end(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (component, report)

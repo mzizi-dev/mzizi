@@ -334,7 +334,7 @@ fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
 }
 
 /// The operators a `program` lexes, longest first, so `<=` is one token and not `<` `=`.
-const OPERATORS: &[&str] = &[
+pub const OPERATORS: &[&str] = &[
     "===", "!==", "==", "!=", "<=", ">=", "->", "=>", "&&", "||", "+=", "-=", "*=", "/=", "++",
     "--", "**", "+", "-", "*", "/", "%", "<", ">", "!",
 ];

@@ -881,11 +881,11 @@ impl P {
                 self.bump();
             }
         }
+        // The type names are the surface types' own (`Ty::from_name`), so a type the
+        // language harness lists is exactly a type this parser accepts.
+        let surface = Ty::from_name(&name).filter(|_| span == at);
         let ty = match name.as_str() {
-            "int" if span == at => Ty::Int,
-            "float" if span == at => Ty::Float,
-            "bool" if span == at => Ty::Bool,
-            "text" if span == at => Ty::Text,
+            _ if surface.is_some() => surface.unwrap_or(Ty::Error),
             "list" | "option" | "map" | "set" | "result" => {
                 self.err(
                     "MZ0919",
