@@ -2120,8 +2120,8 @@ on Wave 0's pull request). Built and tested in `compiler/tests/program_numbers.r
 - **Not built:** `in`, indexing, `[ … ]` and the collection forms of §3 (C7), text methods
   (C6), records and their text form (C8), and the guide change of §18.5.
 
-**Wave 1, C4: control flow in function bodies** (Refs #69; on `staging` after Wave 0, #80,
-and C1 + C5, #83).
+**Wave 1, C4: control flow in function bodies** (Refs #69; #89, after Wave 0, #80,
+and C1 + C5, #83; on `main` since 2026-10-08, #91).
 Built and tested in `compiler/tests/program_control.rs`, with `examples/control.mz` run in CI
 against `examples/control.expected`; nothing measured.
 
@@ -2237,8 +2237,8 @@ against `examples/control.expected`; nothing measured.
   on the other, the two `match`es and the two `enum` declarations coexist only across
   branches, never in one tree.
 
-**Wave 1, C9: errors (§12)** (Refs #69; PR #87, on `staging` after C4, #89, and the language
-harness, #88). Built and tested in `compiler/tests/program_errors.rs`, with
+**Wave 1, C9: errors (§12)** (Refs #69; PR #87, after C4, #89, and the language
+harness, #88; on `main` since 2026-10-08, #91). Built and tested in `compiler/tests/program_errors.rs`, with
 `examples/errors.mz` run through `mz run` against `examples/errors.expected`; nothing
 measured.
 
