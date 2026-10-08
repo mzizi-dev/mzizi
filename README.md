@@ -19,7 +19,7 @@ component model, the way React is JavaScript's.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 744 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 760 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 **What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
 
@@ -76,7 +76,7 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (744 tests in 27 suites, gated in CI; 613 of them in the compiler crate):**
+**Built and tested (760 tests in 27 suites, gated in CI; 629 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
@@ -89,12 +89,11 @@ C5: `float` and the numeric methods), its control flow (RFC-0013 §7, C4:
 enums, `else when`, exhaustive `match`, `when` and `match` as values, `for each` over
 `range(a, to = b)`, `while`, `break` and `continue`), its errors (RFC-0013 §12, C9: enum
 columns, `result(T, E)`, `return error(e)`, prefix `try`, a `match` on a result, and `main`
-returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-0013 §9, C7, on
-`staging`: `list(T)`, `map(K, V)` and `set(K)`, bracket literals, indexing that returns an
+returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-0013 §9, C7: `list(T)`, `map(K, V)` and `set(K)`, bracket literals, indexing that returns an
 option read with `otherwise`, `in`, `for each` over a list, and the named folds, lowered to
-`Vec`, `BTreeMap` and `BTreeSet`), and the Phase 0 benchmark harness,
+`Vec`, `BTreeMap` and `BTreeSet`), its text (RFC-0013 §10, C6: the text methods, `s[i]`, `slice`, `find`, `split`, `chars`, `parse_int` and `parse_float`, lowered to Rust), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is about 31,300 lines.
+task, B1. `compiler/src` is 33,438 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
@@ -148,7 +147,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 613 tests; the compiler crate has zero dependencies
+cargo test                                                           # 629 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check

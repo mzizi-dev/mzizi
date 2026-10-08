@@ -1083,21 +1083,21 @@ the only one consistent with no lambdas (§6.4, F20) that does not add a third l
 character. There is no `char` type: one character is a `text` of length 1. The minimum C6 needs,
 all methods:
 
-| Method                               | Returns         | Notes                                                       |
-| ------------------------------------ | --------------- | ----------------------------------------------------------- |
-| `s.length()`                         | `int`           | scalar values, not bytes                                    |
-| `s[i]`, `s.slice(a, to = b)`         | `option(text)`  | `none` out of range (§3.7, survey F23)                      |
-| `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                      |
-| `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`       |
-| `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                             |
-| `s.split(sep)`                       | `list(text)`    | `sep` is not empty; `s.split("")` is `MZ0915` when literal  |
-| `s.chars()`                          | `list(text)`    | one element per scalar value                                |
-| `s.trim()`                           | `text`          | Unicode whitespace at both ends; `strip` is `MZ0962`        |
-| `s.to_upper()`, `s.to_lower()`       | `text`          | Unicode case mapping                                        |
-| `s.replace(old, by = new)`           | `text`          | every occurrence                                            |
-| `s.repeat(n)`                        | `text`          | `n` ≥ 0                                                     |
-| `s.parse_int()`                      | `option(int)`   | RFC-0011 §4.2's rule: `-`? then ASCII digits, fitting `int` |
-| `s.parse_float()`                    | `option(float)` | `-`? digits, `.` and digits optional; no exponent, no `inf` |
+| Method                               | Returns         | Notes                                                                                                                                                               |
+| ------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s.length()`                         | `int`           | scalar values, not bytes                                                                                                                                            |
+| `s[i]`, `s.slice(a, to = b)`         | `option(text)`  | `none` out of range (§3.7, survey F23)                                                                                                                              |
+| `s.contains(t)`                      | `bool`          | substring; `t in s` is `MZ0962` (§3.3)                                                                                                                              |
+| `s.find(t)`                          | `option(int)`   | the first scalar-value index, or `none`; `0` for `""`                                                                                                               |
+| `s.starts_with(t)`, `s.ends_with(t)` | `bool`          |                                                                                                                                                                     |
+| `s.split(sep)`                       | `list(text)`    | `sep` is not empty; `s.split("")` is `MZ0915` when literal                                                                                                          |
+| `s.chars()`                          | `list(text)`    | one element per scalar value                                                                                                                                        |
+| `s.trim()`                           | `text`          | Unicode whitespace at both ends; `strip` is `MZ0962`                                                                                                                |
+| `s.to_upper()`, `s.to_lower()`       | `text`          | Unicode case mapping                                                                                                                                                |
+| `s.replace(old, by = new)`           | `text`          | every occurrence                                                                                                                                                    |
+| `s.repeat(n)`                        | `text`          | `n` ≥ 0                                                                                                                                                             |
+| `s.parse_int()`                      | `option(int)`   | RFC-0011 §4.2's rule: `-`? then ASCII digits, fitting `int`                                                                                                         |
+| `s.parse_float()`                    | `option(float)` | `-`? digits, then an optional `.` only if at least one digit follows it; a digit is required before the `.`, so `"1."` and `".5"` are `none`; no exponent, no `inf` |
 
 `parse_int` reuses RFC-0011 §4.2's rule on purpose, so a query parameter and a parsed string agree
 (HD-4): `"0x10"`, `"1e2"`, `" 7 "` and `"1.5"` are all `none`. Formatting is interpolation (§3.6);
@@ -1106,8 +1106,8 @@ fixed decimal places, padding and number formatting are P2's. Regular expression
 C6's "Done when" asks for these "in the standard library (P2) with tests". They are built-in
 methods with a fixed lowering table (§14.2), and that table is the seed of P2's `text` module:
 when modules exist (P1), the module is where they are documented, not a second implementation.
-Whether built-in methods with tests meet C6's "Done when", or C6 waits for P2, is the owner's to
-decide (§20, Q20). Until then the C6 row does not turn ✅ on built-in methods alone.
+Built-in methods with tests meet C6's "Done when" (owner, 2026-10-08, §20 Q20): C6 does not wait
+for P2. P2's `text` module documents the same operations once modules (P1) exist.
 
 ## 11. Records and methods — _C8_
 
@@ -1779,7 +1779,7 @@ fills, the next family is `MZ10xx`.
 | `MZ0916` | `mz check`    | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                                                                                                                                     |
 | `MZ0917` | `mz check`    | a line or expression a function body cannot read: a value expected and something else found, a missing `)`, an unknown escape, a second `else`, or tokens left over on a statement line (claimed by Wave 0)                                                                                                      |
 | `MZ0918` | `mz check`    | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                                                                                                                                     |
-| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, text methods that return an option or a list, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                  |
+| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                                                                |
 | `MZ0920` | `mz check`    | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                                                                                                                                          |
 | `MZ0921` | `mz check`    | a name a program reserves: a record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word where §1 bans it, or any name starting with `mz_` (shadowing is `MZ0713`)                                                                                                            |
 | `MZ0922` | `mz check`    | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                                                                                                                                    |
@@ -2417,12 +2417,50 @@ its own branch). Built and tested in `compiler/tests/program_text.rs` and
   `MZ0962`, `MZ0708` and `MZ0991` say what this adds. `compiler/tests/harness.rs` checks that
   the method entries are exactly `numbers::METHODS` and `text::METHODS`, and that the
   examples between them call every one.
-- **Not built:** the methods that return an option or a list, `s[i]`, `s.slice(a, to = b)`,
-  `s.find(t)`, `s.parse_int()`, `s.parse_float()`, `s.split(sep)` and `s.chars()` (each one
-  `MZ0919`, naming what it returns, until C7's lists and options and §18.2's "C4 options"
-  exist), with `split("")`'s `MZ0915`; `t in s` and its `MZ0962` (it waits for C7's `in`);
-  §20 Q20's decision on whether built-in methods meet C6's "Done when", so the row stays
-  🟡; and the guide change of §18.5.
+- **Not built at the end of this slice:** the methods above, which the second slice below
+  builds (they were `MZ0919` here, as C7's options and lists were not yet on `main`); and the
+  guide change of §18.5.
+
+**Wave 2, C6, the second slice: the methods that return an option or a list, and `s[i]` (§10, §3.7)**
+(Refs #69; on `staging`, after the first slice above, on C7's options and lists). Built and tested in
+`compiler/tests/program_text.rs`, with `examples/text.mz` run through `mz run` against
+`examples/text.expected`; nothing measured. The owner decided §20 Q20 on 2026-10-08, so the
+built-in methods with tests are C6's "Done when".
+
+- **Built:** `s[i]` (`option(text)`, the one character at a scalar-value index, `none` out of
+  range and below 0), `s.slice(a, to = b)` (`option(text)`, half-open, `none` when an end is
+  outside the text or `a` is past `b`), `s.find(t)` (`option(int)`, the scalar-value index of the
+  first occurrence, `0` for `""`), `s.split(sep)` (`list(text)`, empty pieces kept), `s.chars()`
+  (`list(text)`), `s.parse_int()` (`option(int)`) and `s.parse_float()` (`option(float)`). Each
+  is a call to a helper in `text/ops.rs`, which uses no byte index and no unwrap.
+- **`parse_int` is RFC-0011 §4.2's rule**: an optional `-`, then one or more ASCII digits that fit
+  an `int`. `text/ops.rs` holds the rule, and a unit test checks it against `serve::decode_query`
+  for the query parameter on a table of inputs, so the two agree (HD-4).
+- **`parse_float` is decided here where §10 is open.** §10's "`-`? digits, `.` and digits
+  optional" is read as: an optional `-`, one or more digits, and then, only if there is a `.`, one
+  or more digits after it. So `"1."` and `".5"` are `none`, as are `"+1"`, `"1e2"`, `"inf"`,
+  `"nan"` and `" 1.5"`. A number too large for a `float` is `none` as well, so a parsed value is
+  always finite; §10 does not say what an overflow is, and this is the choice.
+- **`s.split("")` with a literal empty separator is `MZ0915`**, a fault visible in constants,
+  with the `guess` `s.chars()` (one text per character, which is what the other languages'
+  `split("")` means). An empty separator that is empty only at run time traps, `MZ0991`, exit
+  101, as `repeat` does (§4.3): `mz: trap MZ0991 at <file>:<line>:<col>: empty separator in …`.
+- **`t in s` on text stays `MZ0962`, with the `exact` fix `s.contains(t)`** (§3.3). §10's note
+  "`t in s` is `MZ0962` (§3.3)" is the rule, so it is not built, and the row's `in` is C7's
+  collection `in` only.
+- **Other languages' spellings, all `MZ0962`:** `int(s)` and `float(s)` on text (`guess`
+  `s.parse_int()` and `s.parse_float()`: the conversions raise on text that is no number and the
+  methods answer `none`); `parseInt(s)` and `parseFloat(s)`, which are one diagnostic with the
+  lexer's `MZ0101` for the camelCase name, as `sortedBy` is (`guess` the same); `s.toCharArray()`
+  (`guess` `chars`, since Java counts UTF-16 units); and the existing `indexOf` (`guess` `find`)
+  and `substring` (`guess` `slice`). A spelling whose Mzizi form answers an option is typed as an
+  error after its one `MZ0962`, so a use of its answer is not a second diagnostic.
+- **The harness** registers each method (`text::METHODS`, now fifteen, with `slice`'s and
+  `length`'s collection counterparts as `collection slice` and `collection length`), and the
+  `index` entry gains text. `compiler/tests/harness.rs` checks that the method entries are exactly
+  `numbers::METHODS`, `text::METHODS` and the collections'. `MZ0919`'s `say` no longer names text
+  indexing or the text methods; its test's place count is 9.
+- **Not built:** nothing in §10's table. The guide change of §18.5 is not part of this slice.
 
 **Wave 1, C7: collections (§9)** (Refs #69; on `staging`, after C4, C9 and the language
 harness). Built and tested in `compiler/tests/program_collections.rs`, with
@@ -2673,6 +2711,11 @@ owner's yes, no or change before the wave that builds it.**
     with tests". §10 builds them as built-in methods with tests, before P2 exists. Do built-in
     methods meet C6, or does C6 wait for P2? If the first, the tracker's wording should change
     to say so, by the owner's decision, before C6 turns ✅.
+    **Decided (owner, 2026-10-08, #69): built-in methods with tests meet C6.** C6's "Done when" is
+    now "The operations exist as built-in methods with tests, each registered in the language
+    harness; P2's text module documents them once modules (P1) exist", and C6 does not wait for
+    P2 (the owner's comment on #69). The tracker's C6 row says so; it turns ✅ when its own rule
+    does, on `main`.
 21. **Split C8.** Q21 to Q29 come from the survey amendment (§21); this one is the concrete
     proposal Q8 asks for. The owner deferred generics ("methods for now", issue #69), and C8's
     "Done when" still names a generic function and an interface, so C8 cannot turn ✅ in M1 and M1
