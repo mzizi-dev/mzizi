@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — RFC-0012 amended: the language harness, the spine of the language (2026-10-07)
+
+- **Design only; nothing is measured.** [RFC-0012](./design/RFC-0012-harness.md) is renamed **the language harness** throughout, from the owner's direction of 2026-10-07 (quoted there, lightly edited): every feature of the language is defined once, as a harness entry inside the compiler, and the checker's tables where practical, `mz harness definition`, the agent skills and the benchmark guides are generated from or checked against those entries. `benchmarks/harness/` keeps its name, the benchmark harness.
+- §1 is restated as **the spine**, with **§1.1, the harness entry** (name and kind, grammar, a one-paragraph `teach` text, type rules, diagnostic codes with `say` text and fix kind, and tested examples) and **§1.2, the registration rule**: a pull request that adds or changes a feature adds or updates its entry, and a test fails when the compiler emits a code or builds a construct with no entry. §4.1 now says first-party features register through the same interface as third-party plugins, which may add and may not change the language's meaning.
+- §5 designs `mz harness version`, `mz harness definition [--agent]` and `mz harness entry <name>`; §7 says the skills and the benchmark guides are generated from the definition; §9 decides question 3 (the definition comes from the compiler's own registered entries, not a hand-written file) and adds question 9: whether an agent taught by the language harness does better is a hypothesis for the benchmark to test, not a result.
+- AGENTS.md, README.md, `LANGUAGE-TRACKER.md` (H1 and H2's wording; H1 stays 🟡, H2 stays 📝) and RFC-0013 §18.5 use the new name. Refs #69.
 ### Added — `float`, numeric methods and the rest of C1 in programs: RFC-0013 §3 and §4 (2026-10-07)
 
 - **`float` in a `program`** (RFC-0013 §4.2, Wave 1's C1 + C5 of §18.2; Refs #69). Literals are digits, `.`, digits (`1.5`, `0.25`); `float` is a type for bindings, parameters and returns. Arithmetic is IEEE 754 binary64 and never traps: `1.0 / 0.0` is `inf`, `0.0 / 0.0` is `nan`, `nan is nan` is `false`, and `%` is the truncated remainder (`-5.0 % 3.0` is `-2.0`). `int` and `float` never mix: `1 + 1.5` is `MZ0912`, with the `exact` fix `1.0` on an `int` literal and the `guess` `x.to_float()` on anything else, in arithmetic, comparisons and `min` / `max`.
