@@ -1,0 +1,132 @@
+## Control flow in function bodies, RFC-0013 §7 (C4): `else when`, `match` over an enum,
+## an int and a text, `when` and `match` used as values, `for each` over `range(a, to = b)`,
+## `while`, `break`, `continue` and early `return`.
+## `mz run examples/control.mz` prints what control.expected holds; CI compares the two.
+program control
+
+  enum shape
+    circle
+    square
+    triangle
+  end
+
+  fn main
+    for each n in range(1, to = 16)
+      print(fizzbuzz(n))
+    end
+    for each s in range(0, to = 3)
+      print("{pick(s)} has {corners(pick(s))} corners and is {kind(pick(s))}")
+    end
+    print("first multiple of 7 above 50 is {first_multiple(7, 50)}")
+    print("the odd numbers below 10 sum to {odd_sum(10)}")
+    print("collatz(27) takes {collatz(27)} steps")
+    print(day(6))
+    print(day(9))
+    print(greeting("fr"))
+    print(greeting("de"))
+  end fn main
+
+  fn fizzbuzz(n: int): text
+    when n % 15 is 0
+      return "FizzBuzz"
+    else when n % 3 is 0
+      return "Fizz"
+    else when n % 5 is 0
+      return "Buzz"
+    end
+    return "{n}"
+  end fn fizzbuzz
+
+  fn pick(i: int): shape
+    return match i
+      case 0
+        circle
+      case 1
+        square
+      else
+        triangle
+    end
+  end fn pick
+
+  fn corners(s: shape): int
+    match s
+      case circle
+        return 0
+      case square
+        return 4
+      case triangle
+        return 3
+    end
+  end fn corners
+
+  fn kind(s: shape): text
+    let label = when s is circle
+      "round"
+    else
+      "angular"
+    end
+    return label
+  end fn kind
+
+  fn first_multiple(of: int, above: int): int
+    var n = above + 1
+    while true
+      when n % of is 0
+        return n
+      end
+      n = n + 1
+    end
+  end fn first_multiple
+
+  fn odd_sum(limit: int): int
+    var total = 0
+    for each i in range(0, to = 100)
+      when i >= limit
+        break
+      end
+      when i % 2 is 0
+        continue
+      end
+      total = total + i
+    end
+    return total
+  end fn odd_sum
+
+  fn collatz(start: int): int
+    var n = start
+    var steps = 0
+    while n is not 1
+      n = match n % 2
+        case 0
+          n / 2
+        else
+          3 * n + 1
+      end
+      steps = steps + 1
+    end
+    return steps
+  end fn collatz
+
+  fn day(n: int): text
+    match n
+      case 6 7
+        return "{n} is a weekend day"
+      case 1 2 3 4 5
+        return "{n} is a weekday"
+      else
+        return "{n} is not a day of the week"
+    end
+  end fn day
+
+  fn greeting(lang: text): text
+    match lang
+      case "fr"
+        return "bonjour"
+      case "sw"
+        return "habari"
+      else
+        return "hello"
+    end
+  end fn greeting
+
+end program control
