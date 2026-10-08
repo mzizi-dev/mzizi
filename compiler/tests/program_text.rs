@@ -1,7 +1,8 @@
-//! RFC-0013 §10 in a program, tracker row C6: the text methods that need no option or list
-//! (`length`, `contains`, `starts_with`, `ends_with`, `trim`, `to_upper`, `to_lower`,
-//! `replace`, `repeat`), their types and diagnostics, other languages' spellings and their
-//! fixes, the lowering, and `mz run` end to end, on non-ASCII text throughout.
+//! RFC-0013 §10 in a program, tracker row C6: every text method (`length`, `contains`,
+//! `starts_with`, `ends_with`, `trim`, `to_upper`, `to_lower`, `replace`, `repeat`, and
+//! with C7's options and lists `slice`, `find`, `split`, `chars`, `parse_int`,
+//! `parse_float`) and `s[i]`, their types and diagnostics, other languages' spellings and
+//! their fixes, the lowering, and `mz run` end to end, on non-ASCII text throughout.
 //!
 //! As in `program_numbers.rs`: each diagnostic with its `exact` fix applied by
 //! `apply_exact_fixes` (what `mz fix` runs) and the result checked again; the lowered text;
@@ -152,21 +153,145 @@ fn mz0915_a_constant_negative_repeat_count() {
     clean(&wrap("print(\"ab\".repeat(0))"));
 }
 
-/// The methods §10 designs that return an option or a list wait for those (C7, and §18.2's
-/// "C4 options"): one `MZ0919` each, naming what it returns.
+/// RFC-0013 §10's option and list methods, and `s[i]` (§3.7), type as the table says: each
+/// is clean where its answer is read with `otherwise`, `for each` or a `let` of the right
+/// type, and an answer used as its value is `MZ0710`.
 #[test]
-fn mz0919_methods_that_return_an_option_or_a_list() {
-    for (call, ret) in [
-        ("s.slice(0, to = 1)", "option(text)"),
-        ("s.find(\"b\")", "option(int)"),
-        ("s.parse_int()", "option(int)"),
-        ("s.parse_float()", "option(float)"),
-        ("s.split(\",\")", "list(text)"),
-        ("s.chars()", "list(text)"),
+fn the_option_and_list_methods_type_as_section_10_says() {
+    clean(&wrap(
+        "let s = \"héllo\"\nprint(s[1] otherwise \"?\")\nprint(s.slice(0, to = 2) otherwise \"?\")\nprint(s.find(\"l\") otherwise -1)\nprint(s.parse_int() otherwise 0)\nprint(s.parse_float() otherwise 0.0)\nlet parts: list(text) = s.split(\"l\")\nlet cs: list(text) = s.chars()\nfor each c in s.chars()\n  print(c)\nend\nprint(parts.length() + cs.length())",
+    ));
+    for call in [
+        "s.slice(0, to = 1)",
+        "s.find(\"b\")",
+        "s.parse_int()",
+        "s.parse_float()",
+        "s[0]",
     ] {
-        let d = unfixed(&wrap(&format!("let s = \"ab\"\nlet x = {call}")), "MZ0919");
-        assert!(d.say.contains(ret), "{call}: {}", d.say);
+        one(
+            &wrap(&format!("let s = \"ab\"\nlet x = {call} + 1")),
+            "MZ0710",
+        );
     }
+    for call in ["s.split(\",\")", "s.chars()"] {
+        let d = one(
+            &wrap(&format!("let s = \"ab\"\nlet x: int = {call}")),
+            "MZ0711",
+        );
+        assert!(d.say.contains("list(text)"), "{call}: {}", d.say);
+    }
+}
+
+/// `s[i]` is `option(text)` (§3.7, §10): an index that is not an int is `MZ0711`, and a
+/// literal negative index is `MZ0915` with the guess the rest of the language uses.
+#[test]
+fn text_indexing_is_an_int_index_and_an_option() {
+    one(
+        &wrap("let s = \"ab\"\nprint(s[\"x\"] otherwise \"\")"),
+        "MZ0711",
+    );
+    guessed(
+        &wrap("let s = \"ab\"\nprint(s[-1] otherwise \"\")"),
+        "MZ0915",
+        "s[s.length() - 1]",
+    );
+    clean(&wrap(
+        "let s = \"ab\"\nlet c = s[0] otherwise \"\"\nprint(c)",
+    ));
+}
+
+/// The new methods' argument checks: `slice`'s `to` is a label (`MZ0927`), and arity and
+/// types are `MZ0905`, as for every text method.
+#[test]
+fn the_new_methods_check_their_arguments() {
+    fixed_by(
+        &wrap("let s = \"abc\"\nprint(s.slice(0, 2) otherwise \"\")"),
+        "MZ0927",
+        "to = 2",
+    );
+    let d = unfixed(&wrap("print(\"a\".find(1) otherwise -1)"), "MZ0905");
+    assert!(d.say.contains("takes text"), "{}", d.say);
+    unfixed(&wrap("print(\"a\".slice(0) otherwise \"\")"), "MZ0905");
+    unfixed(&wrap("print(\"a\".parse_int(1) otherwise 0)"), "MZ0905");
+    unfixed(&wrap("print(\"a\".split(\",\", 2).length())"), "MZ0905");
+}
+
+/// RFC-0013 §10: `split("")` with a literal empty separator is `MZ0915` (it traps at run
+/// time every time), with the guess `chars()`. A separator that is empty only at run time
+/// is the trap, tested below.
+#[test]
+fn mz0915_split_with_a_literal_empty_separator() {
+    guessed(
+        &wrap("let s = \"ab\"\nprint(s.split(\"\").length())"),
+        "MZ0915",
+        "s.chars()",
+    );
+    clean(&wrap("let s = \"ab\"\nprint(s.split(\"b\").length())"));
+}
+
+/// §3.3: `t in s` on text stays `MZ0962` with the exact fix `s.contains(t)`; `in` takes a
+/// collection on its right, never text.
+#[test]
+fn t_in_s_on_text_stays_mz0962() {
+    fixed_by(
+        &wrap("let s = \"abc\"\nprint(\"b\" in s)"),
+        "MZ0962",
+        "s.contains(\"b\")",
+    );
+}
+
+/// The other languages' free functions and methods on text, each with a `guess` to the
+/// method that answers `none`: `int(s)` and `float(s)` raise on text that is no number;
+/// `parseInt(s)` and `parseFloat(s)` are JavaScript's, and `toCharArray()` is Java's (one
+/// text per UTF-16 unit, so a guess).
+#[test]
+fn text_conversions_and_arrays_from_other_languages_are_guesses() {
+    guessed(
+        &wrap("let s = \"12\"\nprint(int(s) otherwise 0)"),
+        "MZ0962",
+        "s.parse_int()",
+    );
+    guessed(
+        &wrap("let s = \"1.5\"\nprint(float(s) otherwise 0.0)"),
+        "MZ0962",
+        "s.parse_float()",
+    );
+    // The lexer's MZ0101 for the camelCase name and the checker's MZ0962 are one mistake, so
+    // only the checker's diagnostic is reported.
+    let d = one(
+        &wrap("let s = \"12\"\nprint(parseInt(s) otherwise 0)"),
+        "MZ0962",
+    );
+    assert_eq!(
+        d.fix.as_ref().map(|f| f.replace.as_str()),
+        Some("s.parse_int()")
+    );
+    guessed(
+        &wrap("let s = \"ab\"\nprint(s.toCharArray().length())"),
+        "MZ0962",
+        "chars",
+    );
+}
+
+/// The spellings of the option methods (`indexOf`, `substring`) get their guesses, one
+/// diagnostic each: the Mzizi form answers an option, so the spelling is not reported again
+/// at every use of its answer.
+#[test]
+fn foreign_spellings_of_the_option_methods_are_one_guess_each() {
+    guessed(
+        &wrap("let s = \"Ä\"\nprint(s.indexOf(\"a\") otherwise -1)"),
+        "MZ0962",
+        "find",
+    );
+    guessed(
+        &wrap("let s = \"Ä\"\nprint(s.substring(0, 1) otherwise \"\")"),
+        "MZ0962",
+        "s.slice(0, to = 1)",
+    );
+    unfixed(
+        &wrap("let s = \"Ä\"\nprint(s.substr(0, 1) otherwise \"\")"),
+        "MZ0962",
+    );
 }
 
 // ------------------------------------------------------------------- idioms
@@ -240,23 +365,6 @@ fn mz0962_other_languages_method_names() {
     // Python's `strip(chars)` strips those characters: renaming it would only move the
     // error, so there is no fix.
     unfixed(&wrap("let s = \"Ä\"\nprint(s.strip(\"x\"))"), "MZ0962");
-}
-
-#[test]
-fn mz0962_methods_waiting_for_options_get_a_guess() {
-    // JavaScript's `substring` clamps and swaps its ends, and `slice` is not built: a
-    // guess that names the form to write.
-    guessed(
-        &wrap("let s = \"Ä\"\nprint(s.substring(0, 1))"),
-        "MZ0962",
-        "s.slice(0, to = 1)",
-    );
-    guessed(
-        &wrap("let s = \"Ä\"\nprint(s.indexOf(\"a\"))"),
-        "MZ0962",
-        "find",
-    );
-    unfixed(&wrap("let s = \"Ä\"\nprint(s.substr(0, 1))"), "MZ0962");
 }
 
 /// RFC-0013 §3.3: a text is not a collection and is never `none`, so its emptiness is
@@ -342,8 +450,12 @@ fn mz0927_replace_labels_its_second_argument() {
     );
     // On a number, `replace` is not a method at all: that is the one diagnostic.
     one(&wrap("print(3.replace(1, 2))"), "MZ0708");
-    // `slice` is not built: its one diagnostic is `MZ0919`, labelled or not.
-    unfixed(&wrap("let s = \"ab\"\nlet x = s.slice(0, 1)"), "MZ0919");
+    // `slice`'s second argument is labelled `to` (§10), and its one diagnostic says so.
+    fixed_by(
+        &wrap("let s = \"ab\"\nlet x = s.slice(0, 1)"),
+        "MZ0927",
+        "to = 1",
+    );
 }
 
 // ------------------------------------------------------------------- lowering
@@ -359,10 +471,9 @@ fn main_rs(src: &str) -> String {
 /// for one that has none).
 #[test]
 fn every_text_method_lowers() {
+    use mzizi_lang_compiler::expr::Ty;
     for name in mzizi_lang_compiler::text::METHODS {
-        let (params, _) =
-            mzizi_lang_compiler::text::method(mzizi_lang_compiler::expr::Ty::Text, name)
-                .expect("typed");
+        let (params, ret) = mzizi_lang_compiler::text::method(Ty::Text, name).expect("typed");
         let args: Vec<String> = params
             .iter()
             .enumerate()
@@ -374,7 +485,19 @@ fn every_text_method_lowers() {
                 }
             })
             .collect();
-        let src = wrap(&format!("print(\"ab\".{name}({}))", args.join(", ")));
+        // An answer that is an option is read with a default, as a program must (§8).
+        let call = format!("\"ab\".{name}({})", args.join(", "));
+        let src = match ret {
+            Ty::Option(inner) => {
+                let default = match *inner {
+                    Ty::Int => "0",
+                    Ty::Float => "0.0",
+                    _ => "\"\"",
+                };
+                wrap(&format!("print({call} otherwise {default})"))
+            }
+            _ => wrap(&format!("print({call})")),
+        };
         clean(&src);
         let main = main_rs(&src);
         assert!(!main.contains("compile_error!"), "{name}:\n{main}");
@@ -523,4 +646,101 @@ fn mz_run_repeat_traps_exit_101_with_mz0991() {
         );
         assert_eq!(code, Some(101), "{src}");
     }
+}
+
+/// C6's option and list methods, run: indices and slices count scalar values, out-of-range
+/// and negative ends are `none` (read as the defaults below), `find` gives a scalar-value
+/// index, `split` keeps empty pieces, and `parse_int` and `parse_float` follow RFC-0011 §4.2
+/// and the §10 rule. Every expected line is worked out by hand from the source.
+#[test]
+fn mz_run_the_option_and_list_methods_count_by_scalar_value() {
+    let src = wrap(
+        "let s = \"héllo, 日本語\"\nprint(s[9] otherwise \"?\")\nprint(s[10] otherwise \"?\")\nprint(s[id(-1)] otherwise \"?\")\nprint(s.slice(7, to = 10) otherwise \"?\")\nprint(s.slice(10, to = 10) otherwise \"?\")\nprint(s.slice(5, to = 11) otherwise \"?\")\nprint(s.slice(6, to = 5) otherwise \"?\")\nprint(s.find(\"本\") otherwise -1)\nprint(s.find(\"\") otherwise -1)\nprint(s.find(\"x\") otherwise -1)\nprint(\"🙂a🙂\".find(\"🙂\") otherwise -1)\nprint(\"🙂a🙂\".find(\"a\") otherwise -1)\nprint(\"a,,b,\".split(\",\").length())\nprint(\"日本\".split(\"本\").length())\nprint(\"ab\".split(\"x\").length())\nprint(\"ab\".chars().length())\nprint(\"é🙂\".chars().length())\nprint(\"42\".parse_int() otherwise 0)\nprint(\"-9223372036854775808\".parse_int() otherwise 0)\nprint(\"9223372036854775808\".parse_int() otherwise 0)\nprint(\"+1\".parse_int() otherwise 0)\nprint(\"1e2\".parse_int() otherwise 0)\nprint(\"1.5\".parse_float() otherwise 0.0)\nprint(\"-0.25\".parse_float() otherwise 0.0)\nprint(\".5\".parse_float() otherwise 0.0)\nprint(\"1e2\".parse_float() otherwise 0.0)\nprint(\"1\".parse_float() otherwise 0.0)\nprint(\"1.\".parse_float() otherwise 0.0)",
+    )
+    .replace(
+        "\nend program t\n",
+        "\n  fn id(n: int): int\n    return n\n  end fn id\n\nend program t\n",
+    );
+    let Some((out, err, code)) = run_program("options.mz", &src) else {
+        return;
+    };
+    assert_eq!(
+        out,
+        "語\n?\n?\n日本語\n\n?\n?\n8\n0\n-1\n0\n1\n4\n2\n1\n2\n2\n42\n-9223372036854775808\n0\n0\n0\n1.5\n-0.25\n0.0\n0.0\n1.0\n0.0\n",
+        "stderr: {err}"
+    );
+    assert_eq!(err, "");
+    assert_eq!(code, Some(0));
+}
+
+/// `split` with an empty separator that is empty only at run time traps (RFC-0013 §4.3,
+/// §10), exit 101 and `MZ0991`, as `repeat`'s traps do.
+#[test]
+fn mz_run_split_with_an_empty_separator_traps_exit_101_with_mz0991() {
+    let src = "program t\n\n  fn main\n    print(\"before\")\n    print(\"ab\".split(empty_text()).length())\n  end fn main\n\n  fn empty_text: text\n    return \"\"\n  end fn empty_text\n\nend program t\n";
+    let name = "split_trap.mz";
+    let Some((out, err, code)) = run_program(name, src) else {
+        return;
+    };
+    assert_eq!(out, "before\n");
+    assert_eq!(
+        err,
+        format!(
+            "mz: trap MZ0991 at {name}:5:11: empty separator in `\"ab\".split(empty_text())`\n"
+        )
+    );
+    assert_eq!(code, Some(101));
+}
+
+/// The lowering of the option and list methods: each calls its `text/ops.rs` helper, and
+/// the generated code holds no `unwrap`, `expect`, `panic!`, `unsafe` or byte index.
+#[test]
+fn the_lowering_of_the_option_and_list_methods() {
+    let main = main_rs(&wrap(
+        "let s = \"héllo\"\nprint(s[1] otherwise \"?\")\nprint(s.slice(0, to = 2) otherwise \"?\")\nprint(s.find(\"l\") otherwise -1)\nprint(s.split(\",\").length())\nprint(s.chars().length())\nprint(s.parse_int() otherwise 0)\nprint(s.parse_float() otherwise 0.0)",
+    ));
+    for want in [
+        "pub fn mz_text_index(s: &str, i: i64) -> Option<String> {",
+        "pub fn mz_text_slice(s: &str, a: i64, b: i64) -> Option<String> {",
+        "pub fn mz_text_find(s: &str, t: &str) -> Option<i64> {",
+        "pub fn mz_text_chars(s: &str) -> Vec<String> {",
+        "pub fn mz_text_split(s: &str, sep: &str) -> Result<Vec<String>, &'static str> {",
+        "pub fn mz_text_parse_int(s: &str) -> Option<i64> {",
+        "pub fn mz_text_parse_float(s: &str) -> Option<f64> {",
+        "fn mz_split(s: &str, sep: &str, at: &MzAt) -> Vec<String> {",
+    ] {
+        assert!(main.contains(want), "`{want}` not in:\n{main}");
+    }
+    for banned in ["unwrap", "expect(", "panic!", "unsafe"] {
+        assert!(!main.contains(banned), "the lowering holds `{banned}`");
+    }
+    let body = main.split("fn mz_main").nth(1).unwrap_or_default();
+    for banned in ["[..", "[0", "..="] {
+        assert!(
+            !body.contains(banned),
+            "the lowering of main emitted `{banned}`"
+        );
+    }
+}
+
+/// `mz fix` applies every exact fix in one pass: a second pass over its output changes
+/// nothing, and the guess that is left (a literal empty separator) is not applied.
+#[test]
+fn mz_fix_converges_in_one_pass_on_foreign_text_spellings() {
+    let src = wrap(
+        "let s = \"abc\"\nprint(\"b\" in s)\nprint(len(s))\nprint(s.toUpperCase())\nprint(s.startswith(\"a\"))\nprint(s.split(\"\").length())",
+    );
+    let once = apply_exact_fixes(&src, &check(&src, "t.mz"));
+    let codes: Vec<&str> = check(&once, "t.mz")
+        .diagnostics
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["MZ0915"], "{once}");
+    let twice = apply_exact_fixes(&once, &check(&once, "t.mz"));
+    assert_eq!(once, twice, "a second pass changes nothing");
+    assert!(once.contains("s.contains(\"b\")"), "{once}");
+    assert!(once.contains("s.length()"), "{once}");
+    assert!(once.contains("s.to_upper()"), "{once}");
+    assert!(once.contains("s.starts_with(\"a\")"), "{once}");
 }

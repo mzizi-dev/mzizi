@@ -1755,7 +1755,7 @@ impl<'a> FnCheck<'a> {
         if !self.fns.contains_key(name)
             && self.visible(name).is_none()
             && let Some(t) = self
-                .free_text(name, args, &types, at)
+                .free_text(name, name_span, args, &types, at)
                 .or_else(|| self.free_numeric(name, args, &types, at))
         {
             return t;

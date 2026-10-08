@@ -278,24 +278,29 @@ impl<'a> FnCheck<'a> {
             return Ty::Error;
         }
         match bt {
-            Ty::List(t) => {
+            Ty::List(_) | Ty::Text => {
                 let it = self.expr_want(index, Ty::Int);
                 if it != Ty::Int
                     && !it.has_error()
                     && !self.unnarrowed(index, it, "an index is an int")
                 {
+                    let what = if bt == Ty::Text {
+                        "a text's index is an int, counted from 0 in Unicode scalar values"
+                    } else {
+                        "a list's index is an int, counted from 0"
+                    };
                     self.err(
                         "MZ0711",
                         index.span,
-                        format!(
-                            "`{}` is {}, and a list's index is an int, counted from 0",
-                            canonical(index),
-                            it.name()
-                        ),
+                        format!("`{}` is {}, and {what}", canonical(index), it.name()),
                     );
                     return Ty::Error;
                 }
-                Ty::option(*t)
+                // A text's element is one character, a one-scalar-value text (§3.7).
+                Ty::option(match bt {
+                    Ty::List(t) => *t,
+                    _ => Ty::Text,
+                })
             }
             Ty::Map(&(k, v)) => {
                 let it = self.expr_want(index, k);
@@ -317,15 +322,6 @@ impl<'a> FnCheck<'a> {
             }
             Ty::Error => {
                 self.expr(index);
-                Ty::Error
-            }
-            Ty::Text => {
-                self.expr(index);
-                self.err(
-                    "MZ0919",
-                    e.span,
-                    "indexing text is designed (RFC-0013 §3.7, §10) but not built yet: text operations are C6's",
-                );
                 Ty::Error
             }
             Ty::Set(_) => {

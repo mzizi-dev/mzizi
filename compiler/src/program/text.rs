@@ -1,15 +1,16 @@
 //! Text methods in a function body (RFC-0013 §10, tracker row C6): the checker's half.
 //!
 //! The method table is [`crate::text`]'s. Here: a call's arity and types (`MZ0905`), a
-//! method text does not have (`MZ0708`, with the nearest name), a negative constant
-//! `repeat` count (`MZ0915`), the methods that wait for options and lists (`MZ0919`), and
+//! method text does not have (`MZ0708`, with the nearest name), a constant fault a call can
+//! see (a negative `repeat` count and an empty literal `split` separator, `MZ0915`), and
 //! other languages' spellings (`MZ0962`): `len(s)`, `s.len()`, `s.length`, `s.strip()`,
-//! `s.toUpperCase()`, `s.replaceAll(a, b)`, `s.substring(a, b)`, and emptiness asked as
-//! `s.is_empty()` or `s.length() is 0`, which Mzizi asks as `s is ""` (§3.3).
+//! `s.toUpperCase()`, `s.replaceAll(a, b)`, `s.substring(a, b)`, `int(s)`, `parseInt(s)`,
+//! and emptiness asked as `s.is_empty()` or `s.length() is 0`, which Mzizi asks as `s is ""`
+//! (§3.3).
 
 use super::{FnCheck, receiver_text};
 use crate::diagnostic::{Confidence, Span};
-use crate::expr::{BinOp, Expr, ExprKind, Ty, UnOp, canonical, fold};
+use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, fold};
 use crate::resolve::nearest;
 use crate::text;
 
@@ -138,29 +139,54 @@ impl FnCheck<'_> {
         }
     }
 
-    /// `len(s)`, Python's free function, on text: `MZ0962` with the `exact` fix
-    /// `s.length()` (RFC-0013 §3.7). `None` when it is not that, so the call is checked as
-    /// any other.
+    /// Python's and JavaScript's free functions on text (RFC-0013 §3.7, §10): `len(s)`, with
+    /// the `exact` fix `s.length()`, and the conversions `int(s)`, `float(s)`, `parseInt(s)`
+    /// and `parseFloat(s)` (`parse_int`, `parse_float` after the lexer's snake_case), which
+    /// become `s.parse_int()` and `s.parse_float()` as a `guess`: the conversions raise on
+    /// text that is no number, and the methods answer `none`. The conversions are reported at
+    /// the name, where the lexer's `MZ0101` for `parseInt` stands, so the two are one
+    /// diagnostic (`lib.rs`), and they type as an error, so the answer is not reported again
+    /// as an option used as its value. `None` when it is none of these, so the call is
+    /// checked as any other.
     pub(super) fn free_text(
         &mut self,
         name: &str,
+        name_span: Span,
         args: &[Expr],
         types: &[Ty],
         at: Span,
     ) -> Option<Ty> {
-        if name != "len" || args.len() != 1 || types[0] != Ty::Text {
+        if args.len() != 1 || types[0] != Ty::Text {
             return None;
         }
-        let fixed = format!("{}.length()", receiver_text(&args[0]));
+        let r = receiver_text(&args[0]);
+        let method = match name {
+            "len" => {
+                let fixed = format!("{r}.length()");
+                let say = format!(
+                    "`len(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
+                );
+                if args[0].has_error() {
+                    self.err("MZ0962", at, say);
+                } else {
+                    self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+                }
+                return Some(Ty::Int);
+            }
+            "int" | "parse_int" => "parse_int",
+            "float" | "parse_float" => "parse_float",
+            _ => return None,
+        };
+        let fixed = format!("{r}.{method}()");
         let say = format!(
-            "`len(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
+            "`{name}(…)` is not a Mzizi function — text is read by a method that answers `none` when it is no number: `{fixed}`"
         );
         if args[0].has_error() {
-            self.err("MZ0962", at, say);
+            self.err("MZ0962", name_span, say);
         } else {
-            self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+            self.err_fix("MZ0962", name_span, say, at, fixed, Confidence::Guess);
         }
-        Some(Ty::Int)
+        Some(Ty::Error)
     }
 
     /// `recv.name(args)` with `recv` a `text`, its arguments already typed (RFC-0013 §10).
@@ -181,21 +207,6 @@ impl FnCheck<'_> {
             let parens = self.tight.contains(&e.span);
             self.empty_fix(recv, false, name_span, e.span, parens);
             return Ty::Bool;
-        }
-        if let Some(ret) = text::waiting(name) {
-            let (what, rfc) = if ret.starts_with("list") {
-                ("lists", "§9")
-            } else {
-                ("options", "§8")
-            };
-            self.err(
-                "MZ0919",
-                name_span,
-                format!(
-                    "`.{name}` on text returns {ret}, and {what} in a function body are designed (RFC-0013 {rfc}) but not built yet"
-                ),
-            );
-            return Ty::Error;
         }
         let Some((params, ret)) = text::method(Ty::Text, name) else {
             return self.text_idiom(e, &r, name, name_span, args, called);
@@ -268,6 +279,30 @@ impl FnCheck<'_> {
                 ),
             );
         }
+        // `s.split("")`: an empty separator traps at run time (§10, §4.3), so a literal one
+        // is `MZ0915`. The guess `s.chars()` is what the other languages' `split("")` means,
+        // one text per character.
+        if name == "split"
+            && let [sep] = args
+            && let ExprKind::Text(parts) = &sep.kind
+            && parts
+                .iter()
+                .all(|p| matches!(p, TextPart::Lit(l) if l.is_empty()))
+            && !e.has_error()
+        {
+            let fixed = format!("{r}.chars()");
+            self.err_fix(
+                "MZ0915",
+                e.span,
+                format!(
+                    "`{}` splits on an empty separator, which traps every time it runs (§10); one text per character is `{fixed}`",
+                    canonical(e)
+                ),
+                e.span,
+                fixed,
+                Confidence::Guess,
+            );
+        }
         ret
     }
 
@@ -308,7 +343,12 @@ impl FnCheck<'_> {
             return Ty::Error;
         };
         let sig = text::method(Ty::Text, to);
-        let ret = sig.as_ref().map_or(Ty::Error, |(_, ret)| *ret);
+        // An answer that is an option or a list is typed as an error here: the one `MZ0962`
+        // is the diagnostic, not that and an `MZ0710` or `MZ0912` at every use of it.
+        let ret = match sig.as_ref().map_or(Ty::Error, |(_, ret)| *ret) {
+            Ty::Option(_) | Ty::List(_) => Ty::Error,
+            ret => ret,
+        };
         // A built method called with another arity (Python's `strip(chars)`) has no fix:
         // renaming it would only move the error.
         let fits = sig
@@ -330,10 +370,7 @@ impl FnCheck<'_> {
         } else {
             (name_span, to.to_string())
         };
-        let mut say = format!("`.{name}` is another language's — Mzizi's text method is `.{to}`");
-        if text::waiting(to).is_some() {
-            say.push_str(", designed (RFC-0013 §10) but not built yet");
-        }
+        let say = format!("`.{name}` is another language's — Mzizi's text method is `.{to}`");
         if fixed.is_empty() || e.has_error() || !fits {
             self.err("MZ0962", name_span, say);
         } else {

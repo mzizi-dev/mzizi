@@ -268,18 +268,6 @@ const NOT_BUILT: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "indexing text and text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`",
-        &[
-            "program t\n  fn main\n    let s = \"ab\"\n    print(s[0] otherwise \"\")\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.slice(0, to = 1)\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.find(\"b\")\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"12\"\n    let x = s.parse_int()\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"1.5\"\n    let x = s.parse_float()\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"a,b\"\n    let x = s.split(\",\")\n  end fn main\nend program t\n",
-            "program t\n  fn main\n    let s = \"ab\"\n    let x = s.chars()\n  end fn main\nend program t\n",
-        ],
-    ),
-    (
         "a method that changes `self`",
         &[
             "program t\n  record counter\n    field count: int\n    fn bump changes self\n      self.count = self.count + 1\n    end fn bump\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
@@ -364,7 +352,7 @@ fn every_form_mz0919_names_is_still_not_built() {
     }
     assert_eq!(
         literals - 1 + calls,
-        11,
+        9,
         "the number of places a program reports MZ0919 changed: name each new form in \
          MZ0919's say and in NOT_BUILT, then update this count"
     );
@@ -954,13 +942,15 @@ fn every_method_the_checker_types_has_an_entry() {
         .iter()
         .chain(mzizi_lang_compiler::text::METHODS)
         .copied()
-        .chain(mzizi_lang_compiler::collections::METHODS.iter().map(|m| {
-            if m.name == "length" {
-                "collection length"
-            } else {
-                m.name
-            }
-        }))
+        .chain(
+            mzizi_lang_compiler::collections::METHODS
+                .iter()
+                .map(|m| match m.name {
+                    "length" => "collection length",
+                    "slice" => "collection slice",
+                    name => name,
+                }),
+        )
         .collect();
     assert_eq!(methods, typed);
     let replace = harness::entry("replace").unwrap();
