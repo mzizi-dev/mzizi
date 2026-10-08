@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# The pre-commit hook. Install it once per clone with scripts/install-hooks.sh.
+#
+# 1. A CHANGELOG.md entry on every branch (owner rule, 2026-10-07: "We need to always have
+#    change log updates"; AGENTS.md, "Changelog"). The commit fails unless CHANGELOG.md is
+#    staged, or the branch's net changes since it left origin/staging or origin/main
+#    already include it. Of those two refs the hook uses the nearer merge base (fewest
+#    commits back from HEAD), so a branch cut from main is not credited with main's release
+#    commits, which touch CHANGELOG.md. The hook trusts those local refs. If they are older
+#    than the commit the branch was cut from (not fetched lately), or the branch is stacked
+#    on another unmerged branch, the diff takes in entries that are not this branch's, and
+#    the hook passes a branch with no entry of its own. Fetch before relying on it; CI's job
+#    checks the pull request against its real base. With neither ref, only the staged
+#    changes count. There are no path exemptions, the rule
+#    .github/scripts/changelog-entry.sh applies to a pull request ("every pull request
+#    needs an entry"). That script compares two commits and treats an
+#    empty diff as a pass, which is every first commit on a branch, so the hook carries the
+#    same one-line test against the index rather than calling it. MZ_NO_CHANGELOG=1 skips
+#    this check, the local twin of the `no-changelog` label, and says so.
+# 2. `cargo fmt --all -- --check`, only when a staged file is Rust under compiler/ or
+#    benchmarks/. It reads the working tree, not the index, so an unstaged edit can fail it
+#    and a partly staged file is judged by its working copy.
+#
+# Nothing slower runs here. The full block in AGENTS.md, "Build, test, run" (clippy,
+# cargo test, the mz check and mz contract loops) is for before you push.
+#
+# `git commit --no-verify` bypasses the hook. CI's `changelog / entry required` job still
+# checks the pull request.
+set -euo pipefail
+
+staged=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACDMRT)
+
+# A commit that stages nothing (`git commit --allow-empty`) changes nothing to record.
+if [[ -z $staged ]]; then
+  exit 0
+fi
+
+# --- 1. the changelog entry -------------------------------------------------------------
+if [[ ${MZ_NO_CHANGELOG:-} == 1 ]]; then
+  echo "pre-commit: changelog check skipped (MZ_NO_CHANGELOG=1). The pull request still"
+  echo "needs a CHANGELOG.md entry, or the no-changelog label, to pass CI."
+elif grep -qxF 'CHANGELOG.md' <<<"$staged"; then
+  : # this commit adds the entry
+else
+  base="" base_ref="" best=-1
+  if git rev-parse --verify --quiet 'HEAD^{commit}' >/dev/null; then
+    for ref in origin/staging origin/main; do
+      git rev-parse --verify --quiet "$ref^{commit}" >/dev/null || continue
+      mb=$(git merge-base HEAD "$ref" 2>/dev/null) || continue
+      n=$(git rev-list --count "$mb..HEAD")
+      if ((best < 0 || n < best)); then
+        base=$mb base_ref=$ref best=$n
+      fi
+    done
+  fi
+
+  # A net change, the diff CI's job reads: an entry added and then removed is no entry.
+  if [[ -z $base ]] || git diff --quiet "$base" HEAD -- CHANGELOG.md; then
+    if [[ -n $base ]]; then
+      where="neither this commit nor the branch's changes since it left $base_ref (${base:0:12}) touch"
+    else
+      where="this commit does not touch (there is no origin/staging or origin/main to compare the branch with)"
+    fi
+    echo "pre-commit: every change needs a CHANGELOG.md entry under ## [Unreleased]"
+    echo "(AGENTS.md, \"Changelog\"), and $where CHANGELOG.md."
+    echo "Add the entry and stage it. If this branch genuinely has nothing to record, commit"
+    echo "with MZ_NO_CHANGELOG=1 and label the pull request no-changelog."
+    exit 1
+  fi
+fi
+
+# --- 2. rustfmt -------------------------------------------------------------------------
+if grep -Eq '^(compiler|benchmarks)/.*\.rs$' <<<"$staged"; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "pre-commit: Rust is staged but cargo is not on PATH, so cargo fmt did not run."
+    echo "CI's fmt check will still run on the pull request."
+  elif ! cargo fmt --version >/dev/null 2>&1; then
+    echo "pre-commit: Rust is staged but \`cargo fmt --version\` failed (rustfmt is not installed,"
+    echo "or the toolchain is broken), so cargo fmt did not run. \`rustup component add rustfmt\`"
+    echo "installs rustfmt. CI's fmt check will still run on the pull request."
+  else
+    top=$(git rev-parse --show-toplevel)
+    if ! (cd "$top" && cargo fmt --all -- --check); then
+      echo "pre-commit: cargo fmt --all -- --check failed. Run \`cargo fmt --all\` from the"
+      echo "repo root, stage the result, and commit again."
+      exit 1
+    fi
+  fi
+fi

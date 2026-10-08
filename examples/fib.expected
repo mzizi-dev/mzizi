@@ -1,0 +1,4 @@
+fib(9) is 34
+fib(20) is 6765
+fib(10) + fib(11) is 144, and that is fib(12): true
+6765 is odd, or not positive

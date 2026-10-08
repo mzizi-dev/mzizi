@@ -5,8 +5,8 @@
 //! No fuzzing crate: the compiler takes no dependencies, so the inputs come from a small
 //! seeded generator. Each case runs every entry point an untrusted file reaches (`check`,
 //! `check_contract`, `apply_exact_fixes` and its re-check, the NDJSON writer, and, when a
-//! tree comes back, `outline`, the IR and service lowering), on a thread with a deadline,
-//! so a hang fails the test rather than the CI job. A failing case prints its seed and its
+//! tree comes back, `outline`, the IR, service lowering and program lowering), on a thread
+//! with a deadline, so a hang fails the test rather than the CI job. A failing case prints its seed and its
 //! input, so it reproduces.
 
 use std::path::PathBuf;
@@ -60,6 +60,11 @@ fn exercise(src: &str) {
         && report.error_count() == 0
     {
         let _ = mzizi_lang_compiler::lower::lower(&service, file);
+    }
+    if let (Some(Program::Program(program)), report) = check_program(src, file)
+        && report.error_count() == 0
+    {
+        let _ = mzizi_lang_compiler::run::lower(&program, file);
     }
 }
 
@@ -508,4 +513,243 @@ fn long_and_odd_lines_terminate() {
     run("a NUL file", "\u{0}".repeat(10_000));
     run("a BOM and nothing", "\u{feff}".to_string());
     run("empty", String::new());
+}
+
+/// A `program` whose `fn main` holds `body`.
+fn deep_program(body: &str) -> String {
+    format!("program deep\n\n  fn main\n{body}  end fn main\n\nend program deep\n")
+}
+
+/// A program's expressions and `when` blocks under the same cap (`MZ0411`): 100,000
+/// nested parentheses, `not`s, prefix `-`s, `+`s and `<`s on one line, and 5,000 nested
+/// `when`s, each give exactly one diagnostic, `MZ0411`. Before the cap a debug build
+/// aborted at 2,000 parentheses and at 3,000 `when`s.
+#[test]
+fn a_deep_program_is_one_mz0411() {
+    let n = 100_000;
+    let cases = [
+        (
+            "100,000 nested parentheses",
+            format!("{}1{}", "(".repeat(n), ")".repeat(n)),
+        ),
+        ("100,000 `not`s", format!("{}true", "not ".repeat(n))),
+        ("100,000 prefix `-`s", format!("{}1", "- ".repeat(n))),
+        ("100,000 `+`s", format!("1{}", " + 1".repeat(n))),
+        ("100,000 chained `<`s", format!("1{}", " < 1".repeat(n))),
+        (
+            "100,000 nested parentheses in an interpolation",
+            format!("\"{{{}1{}}}\"", "(".repeat(n), ")".repeat(n)),
+        ),
+    ];
+    for (label, value) in cases {
+        let src = deep_program(&format!("    let x = {value}\n    print(\"{{x}}\")\n"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "{label}");
+        run(label, src);
+    }
+    let src = deep_program(&format!(
+        "{}    print(\"in\")\n{}    print(\"after\")\n",
+        "    when true\n".repeat(5_000),
+        "    end\n".repeat(5_000)
+    ));
+    let codes: Vec<_> = check(&src, "case.mz")
+        .diagnostics
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["MZ0411"], "5,000 nested `when`s");
+    run("5,000 nested `when`s", src);
+}
+
+/// A kind of expression nesting: its name, and the expression `n` levels of it deep.
+type Shape = (&'static str, fn(usize) -> String);
+
+/// The deepest programs the cap lets through check clean and lower on the 1 MiB stack, so
+/// the checker's and the lowering's walks stay within the stack too. A program's blocks
+/// and expressions share one budget of 32 levels: the program, the `fn` and the `let`'s
+/// expression take three, and the other 29 are split between nested `when`s and one kind
+/// of expression nesting, each around a `+` chain that makes the operator tree 64 deep
+/// (with `not`, the chain is one shorter and `> 0` is the 64th level). One level more,
+/// of the shape or of `when`s, is `MZ0411`.
+#[test]
+fn the_deepest_program_under_the_cap_checks_and_lowers() {
+    let shapes: [Shape; 4] = [
+        ("parentheses", |n| {
+            format!("{}{}{}", "(".repeat(n), chain(), ")".repeat(n))
+        }),
+        ("calls", |n| {
+            format!("{}{}{}", "f(".repeat(n), chain(), ")".repeat(n))
+        }),
+        ("prefix `-`", |n| format!("{}({})", "- ".repeat(n), chain())),
+        ("`not`", |n| {
+            format!("{}({} > 0)", "not ".repeat(n), chain_of(62))
+        }),
+    ];
+    for (name, shape) in shapes {
+        // The parentheses a prefix operator's operand needs are one level of their own.
+        let room = if name == "parentheses" || name == "calls" {
+            29
+        } else {
+            28
+        };
+        // The `print("{x}")` beside the `let` takes three levels: the statement's
+        // expression, the call's argument and the `{x}`.
+        for whens in [0, 13, 27] {
+            let value = shape(room - whens);
+            let src = deep_main(whens, &value);
+            let errors: Vec<_> = check(&src, "case.mz")
+                .diagnostics
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .map(|d| format!("{} {}", d.code, d.say))
+                .collect();
+            assert_eq!(errors, Vec::<String>::new(), "{whens} `when`s, {name}");
+            let (program, _) = check_program(&src, "case.mz");
+            assert!(matches!(program, Some(Program::Program(_))));
+            run(&format!("{whens} `when`s around {name}"), src);
+            // One level more of the shape is past the cap; one more `when`, too.
+            let over = deep_main(whens, &shape(room - whens + 1));
+            assert_eq!(count(&over, "MZ0411"), 1, "{whens} `when`s, {name} + 1");
+            let over = deep_main(whens + 1, &value);
+            assert_eq!(count(&over, "MZ0411"), 1, "{} `when`s, {name}", whens + 1);
+        }
+    }
+}
+
+/// `1 + 1 + …`, 64 levels deep: the longest chain the cap lets through.
+fn chain() -> String {
+    chain_of(63)
+}
+
+/// `1` and `n` more `+ 1`s: a tree `n + 1` levels deep.
+fn chain_of(n: usize) -> String {
+    format!("1{}", " + 1".repeat(n))
+}
+
+/// `fn main` holding `whens` nested `when`s around `let x = value`, and an `fn f`.
+fn deep_main(whens: usize, value: &str) -> String {
+    format!(
+        "program deep\n\n  fn main\n{}      let x = {value}\n      print(\"{{x}}\")\n{}  end fn main\n\n  fn f(n: int): int\n    return n\n  end fn f\n\nend program deep\n",
+        "    when true\n".repeat(whens),
+        "    end\n".repeat(whens)
+    )
+}
+
+/// RFC-0013 §7's blocks share the program's nesting budget: 5,000 nested `while`s,
+/// `for each`es, `match`es or `when`s used as values each give exactly one `MZ0411`, and
+/// the deepest nesting under the cap checks and lowers on the 1 MiB stack. An `else when`
+/// chain is flat, so 10,000 links cost no nesting at all.
+#[test]
+fn deep_control_flow_is_one_mz0411_and_a_long_chain_is_flat() {
+    let n = 5_000;
+    let shapes: [(&str, String, String); 4] = [
+        (
+            "`while`",
+            "    while true\n".repeat(n),
+            "    end\n".repeat(n),
+        ),
+        (
+            "`for each`",
+            (0..n)
+                .map(|k| format!("    for each i{k} in range(0, to = 1)\n"))
+                .collect(),
+            "    end\n".repeat(n),
+        ),
+        (
+            "`match`",
+            "    match 1\n      case 1\n".repeat(n),
+            "      else\n    end\n".repeat(n),
+        ),
+        (
+            "`when`s around a `when` used as a value",
+            format!("{}    let x = when true\n", "    when true\n".repeat(n)),
+            format!(
+                "      1\n    else\n      2\n    end\n{}",
+                "    end\n".repeat(n)
+            ),
+        ),
+    ];
+    for (label, open, close) in shapes {
+        let src = deep_program(&format!("{open}    print(\"in\")\n{close}"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "5,000 nested {label}");
+        run(&format!("5,000 nested {label}"), src);
+    }
+    // Under the cap: the program and `fn main` take two levels, each loop one, and the
+    // `print`'s statement, argument and `{i0}` three.
+    let loops = 27;
+    let src = deep_program(&format!(
+        "{}    print(\"{{i0}}\")\n{}",
+        (0..loops)
+            .map(|k| format!("    for each i{k} in range(0, to = 1)\n"))
+            .collect::<String>(),
+        "    end\n".repeat(loops)
+    ));
+    assert_eq!(count(&src, "MZ0411"), 0);
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("27 nested `for each`es", src);
+    let mut chain = String::from("    let n = 7\n    when n is 0\n      print(0)\n");
+    for k in 1..10_000 {
+        chain.push_str(&format!("    else when n is {k}\n      print({k})\n"));
+    }
+    chain.push_str("    end\n");
+    let src = deep_program(&chain);
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("an `else when` chain of 10,000 links", src);
+}
+
+/// RFC-0013 §12's forms under the same cap: 100,000 prefix `try`s, `.name`s and postfix
+/// `?`s on one line, and 5,000 nested `match`es on results, each give exactly one
+/// diagnostic, `MZ0411`, and every pass after the parser stays within the 1 MiB stack.
+#[test]
+fn deep_errors_are_one_mz0411() {
+    let n = 100_000;
+    let program = |body: &str| {
+        format!(
+            "program deep\n\n  fn main: result(none, text)\n{body}  end fn main\n\n  fn check(n: int): result(int, text)\n    return n\n  end fn check\n\nend program deep\n"
+        )
+    };
+    let cases = [
+        (
+            "100,000 prefix `try`s",
+            format!("{}check(1)", "try ".repeat(n)),
+        ),
+        ("100,000 `.name`s", format!("(1){}", ".a".repeat(n))),
+        ("100,000 postfix `?`s", format!("check(1){}", "?".repeat(n))),
+    ];
+    for (label, value) in cases {
+        let src = program(&format!("    let x = {value}\n    print(\"{{x}}\")\n"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "{label}");
+        run(label, src);
+    }
+    let depth = 5_000;
+    let mut body = String::new();
+    for i in 0..depth {
+        body.push_str(&format!("    match check({i})\n    case ok v{i}\n"));
+    }
+    body.push_str("    print(\"in\")\n");
+    for i in (0..depth).rev() {
+        body.push_str(&format!("    case error e{i}\n    print(e{i})\n    end\n"));
+    }
+    let src = program(&body);
+    let codes: Vec<_> = check(&src, "case.mz")
+        .diagnostics
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["MZ0411"], "5,000 nested `match`es");
+    run("5,000 nested `match`es", src);
 }

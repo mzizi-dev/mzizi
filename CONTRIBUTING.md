@@ -65,7 +65,7 @@ cd compiler
 
 cargo fmt -- --check                        # formatting, not negotiable
 cargo clippy --all-targets -- -D warnings   # every lint is an error, including in tests
-cargo test                                  # 306 tests in the compiler crate
+cargo test                                  # 512 tests in the compiler crate
 
 # The ones that are the point — the shipped binary, not the test harness:
 cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
@@ -141,9 +141,12 @@ and run `cargo deny check` from the repository root.
 
 ### What CI does not check
 
-The `lowering` job gates one lowered package: `mz build` of `examples/registry.mz`, which it
-compiles, tests and serves. No component lowers, and there is no runtime and no rendering, so
-there is nothing more there to gate.
+The `lowering` job gates one lowered service: `mz build` of `examples/registry.mz`, which it
+compiles, tests and serves. It also runs `mz run` on every example program and diffs its output
+against `examples/<name>.expected`, and runs `benchmarks/perf/run.sh --check-only`, which
+builds each perf-suite program and its two Rust references and checks that all three print the
+committed `.expected`; it times nothing. No component lowers, and there is no runtime and no
+rendering, so there is nothing more there to gate.
 
 Contract evaluation **is** gated, but read what it proves narrowly. `mz contract` checks a
 component against its own declarations: its variant tables, its view tree, its prop
@@ -353,13 +356,44 @@ keeps the RFC from drifting into fiction. An RFC that is pure design is fine too
 `Status`. Either way the branch is merged, not squashed, so the RFC's review history stays
 readable.
 
+## The language harness
+
+A pull request that adds or changes a language feature adds or updates its harness entry in
+the same pull request (owner, 2026-10-07: "The harness work should be part of the build").
+The entry lives in `compiler/src/harness.rs`: one entry in `FEATURES` per feature, one `Code`
+in `CODES` per diagnostic code with a `trigger` that emits it, and examples that check and, for
+a program, run with their stated output. [RFC-0012](./design/RFC-0012-harness.md) §1.2 is the
+rule, and `compiler/tests/harness.rs`, part of `cargo test` in CI, enforces it.
+`mz harness entry <name>` prints what an agent will read.
+
 ## The changelog
 
-A pull request that changes behaviour, diagnostics, the language, the charter, an RFC or
-the benchmarks adds an entry to [`CHANGELOG.md`](./CHANGELOG.md) under `## [Unreleased]`.
-[`AGENTS.md`](./AGENTS.md), "Changelog", has the rules, and the `changelog / entry
-required` CI job checks for the entry. Label a pull request `no-changelog` when it
-genuinely has nothing to record.
+Every pull request adds an entry to [`CHANGELOG.md`](./CHANGELOG.md) under
+`## [Unreleased]` (owner rule, 2026-10-07). [`AGENTS.md`](./AGENTS.md), "Changelog", has the
+rules, and the `changelog / entry required` CI job checks for the entry. Label a pull request
+`no-changelog` only when it genuinely has nothing to record; Dependabot version bumps are let
+through. Each release to `main` publishes the entries added since the previous release as its
+release notes (`.github/scripts/release_notes.py`), so write the entry for someone reading
+the release.
+
+Install the pre-commit hook once per clone, before your first commit (agents too):
+
+```bash
+scripts/install-hooks.sh   # sets core.hooksPath to .githooks
+```
+
+It refuses a commit when neither the staged changes nor the branch's earlier commits (since
+it left `origin/staging` or `origin/main`, whichever is nearer) touch `CHANGELOG.md`, and runs
+`cargo fmt --all -- --check` when Rust under `compiler/` or `benchmarks/` is staged.
+`MZ_NO_CHANGELOG=1` skips the changelog check, the local twin of the `no-changelog` label.
+The hook is fast on purpose; the six gates below are still what you run before pushing.
+`scripts/test-pre-commit.sh` tests it, and CI's `compiler` job runs that test. The hook
+trusts your local `origin/staging` and `origin/main`, so fetch first: with stale refs, or on
+a branch stacked on another unmerged one, other people's entries count as yours.
+
+The hook is code from the checked-out branch: committing on someone else's branch, a fork's
+pull request included, runs their `.githooks/pre-commit`. Read any change under `.githooks/`
+before committing there, or commit with `--no-verify`.
 
 ## Changing the primitives, the examples, or the compiler
 

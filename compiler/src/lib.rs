@@ -5,8 +5,9 @@
 //! a recursive-descent parser with per-line recovery, a name and type resolver
 //! ([RFC-0008](../../design/RFC-0008-types-collections-records.md)), and the agent-facing
 //! NDJSON diagnostic protocol. A `service` lowers to a local Rust + axum package (`mz build`,
-//! RFC-0011 §8); no component lowers yet (RFC-0007 G2.1), and there is no Workers, WebAssembly
-//! or Containers target.
+//! RFC-0011 §8), and a `program` in RFC-0013's foundation slice lowers to a dependency-free
+//! Rust package that `mz run` builds and runs ([`run`]); no component lowers yet (RFC-0007
+//! G2.1), and there is no Workers, WebAssembly or Containers target.
 //!
 //! The point of the prototype is to make the design's two central claims testable:
 //!
@@ -30,13 +31,19 @@
 pub mod ast;
 pub mod contract;
 pub mod diagnostic;
+pub mod expr;
+pub mod harness;
 pub mod hash;
+pub mod intern;
 pub mod ir;
 pub mod lex;
 pub mod lower;
+pub mod numbers;
 pub mod outline;
 pub mod parse;
+pub mod program;
 pub mod resolve;
+pub mod run;
 pub mod serve;
 pub mod service;
 
@@ -54,6 +61,7 @@ fn front_end_program(
     let resolved = match &program {
         Some(parse::Program::Component(component)) => resolve::resolve(component, file),
         Some(parse::Program::Service(s)) => service::check(s, file),
+        Some(parse::Program::Program(p)) => program::check(p, file),
         None => Vec::new(),
     };
     // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.
@@ -83,6 +91,9 @@ fn front_end(src: &str, file: &str) -> (Option<ast::Component>, Vec<diagnostic::
 pub fn check(src: &str, file: &str) -> CheckReport {
     let (_program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     report
@@ -113,9 +124,15 @@ pub fn check_contract(src: &str, file: &str) -> (CheckReport, contract::Tally) {
                 tally = evaluated;
                 report.diagnostics.append(&mut failures);
             }
+            // A program's contract block is a later wave's (RFC-0013 §15.1); the parser
+            // reports one as `MZ0919`, so a program that checks has no clause to run.
+            Some(parse::Program::Program(_)) => {}
             None => {}
         }
     }
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (report, tally)
@@ -199,6 +216,9 @@ pub fn apply_exact_fixes(src: &str, report: &CheckReport) -> String {
 pub fn check_program(src: &str, file: &str) -> (Option<parse::Program>, CheckReport) {
     let (program, diagnostics) = front_end_program(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (program, report)
@@ -208,6 +228,9 @@ pub fn check_program(src: &str, file: &str) -> (Option<parse::Program>, CheckRep
 pub fn check_with_ast(src: &str, file: &str) -> (Option<ast::Component>, CheckReport) {
     let (component, diagnostics) = front_end(src, file);
     let mut report = CheckReport { diagnostics };
+    // Before overlapping `exact` fixes are demoted to `guess`, so the fix kinds checked are
+    // the ones each diagnostic was raised with.
+    harness::debug_assert_registered(&report);
     report.disjoint_exact_fixes();
     report.sort();
     (component, report)

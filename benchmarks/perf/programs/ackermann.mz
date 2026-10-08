@@ -1,0 +1,30 @@
+## Performance suite (benchmarks/perf): the Ackermann function, small arguments only. Deep,
+## irregular recursion (ack(3, 10) is about 8,000 frames deep) with one checked `+` or `-`
+## per call. The last line is the checksum the runner compares.
+program ackermann
+
+  fn main
+    print("ack(2, 3) is {ack(2, 3)}")
+    print("ack(3, 10) is {ack(3, 10)}")
+    print("checksum {ack_sum(10)}")
+  end fn main
+
+  fn ack(m: int, n: int): int
+    when m is 0
+      return n + 1
+    end
+    when n is 0
+      return ack(m - 1, 1)
+    end
+    return ack(m - 1, ack(m, n - 1))
+  end fn ack
+
+  ## ack(3, 0) + ack(3, 1) + … + ack(3, n), by recursion: the slice has no loops.
+  fn ack_sum(n: int): int
+    when n < 0
+      return 0
+    end
+    return ack(3, n) + ack_sum(n - 1)
+  end fn ack_sum
+
+end program ackermann
