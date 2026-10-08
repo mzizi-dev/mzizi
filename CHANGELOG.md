@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+## 2026-10-08
+
+### Changed — the third release of 2026-10-08: C7 and C8 are ✅ on `main` (2026-10-08)
+
+- **`LANGUAGE-TRACKER.md`:** rows C7 (collections) and C8 (records and methods) are ✅, since this release carries #99, #101 and #102 to `main` and both rows' "Done when" holds there: `map(K, V)` exists and collections are built and transformed in a function, and a record is built by field name, copied with `with`, has methods and reports a broken `always` invariant, each with its language-harness entries. C6 (text) stays 🟡: its methods are on `main` (#98), and the row waits on the standard library (P2) and the owner's answer to RFC-0013 §20 Q20. The C6 row also now says which of its idiom fixes are `guess`, as #98's review made them (`s.len()`, `s.length`, `s.size()`, `s.count()`, `strip()`), and every "on `staging`" in the tracker reads as on `main`. Counts read on `staging` at `cadcd88`: `cargo test --workspace` 744 (613 in the compiler crate), `mz harness definition` 191 entries and 49 pending codes; README, AGENTS.md and CONTRIBUTING.md carry the test counts.
+
 ### Changed — C8 wording: records' diagnostics and harness text (2026-10-08)
 
 Wording only, from the independent review of #101. No code is added or removed, and no severity or fix changes.
@@ -66,8 +72,6 @@ Refs #69.
 ### Fixed — the tracker's H1 row says the 70 harness codes are on `main` (2026-10-08)
 
 - **`LANGUAGE-TRACKER.md` row H1** still said "70 diagnostic codes on `staging` … 66 on `main`" and "51 codes (55 on `main`)" after the 2026-10-08 release (#96) carried #93 to `main`. It now says 70 codes and 51 pending, with `MZ0301`, `MZ0302`, `MZ0303` and `MZ0704` registered by #93. Read from `mz harness definition` on `main` (`dc156c5`): 137 entries, 70 codes, 51 pending. Nothing else changes.
-
-## 2026-10-08
 
 ### Changed
 
