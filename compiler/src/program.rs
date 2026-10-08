@@ -794,6 +794,19 @@ impl<'a> FnCheck<'a> {
                     Some(t) => self.expr_want(value, t.ty),
                     None => self.expr(value),
                 };
+                // `let x: int = f()` with `f` a result: unhandled (§12.3), not a mismatch.
+                let vt = match ty {
+                    Some(t) if t.ty != vt && t.ty.as_result().is_none() => {
+                        if self.unhandled(value, vt, || {
+                            format!("`{name}` is declared {}", t.ty.name())
+                        }) {
+                            Ty::Error
+                        } else {
+                            vt
+                        }
+                    }
+                    _ => vt,
+                };
                 let mut bound = self.binding_type(name, ty.as_ref(), vt, value.span);
                 // A `var` already reported for holding a result is not also `MZ0924`: the
                 // one fix, `let`, answers both.
@@ -1078,8 +1091,9 @@ impl<'a> FnCheck<'a> {
         if t == Ty::Bool || t == Ty::Error {
             return;
         }
-        // A result is not a condition (§12.3): `MZ0950`, with `try` where it propagates.
-        if self.unhandled(cond, t, || format!("`{word}` needs a bool")) {
+        // A result is not a condition (§12.3): `MZ0950`, with `try` where it propagates and
+        // its success is a `bool`.
+        if self.unhandled_wanting(cond, t, Some(Ty::Bool), || format!("`{word}` needs a bool")) {
             return;
         }
         let question = match t {
@@ -1249,20 +1263,23 @@ impl<'a> FnCheck<'a> {
             } => self.field(e, base, name, *name_span),
             ExprKind::Unary { op, operand } => {
                 let t = self.expr(operand);
-                // `try` is typed by `try_expr`, in the arm above.
-                let want = match op {
-                    UnOp::Neg if t == Ty::Float => Ty::Float,
-                    UnOp::Neg => Ty::Int,
-                    UnOp::Not | UnOp::Try => Ty::Bool,
+                // `try` is typed by `try_expr`, in the arm above; this is `-` or `not`.
+                let want = if *op == UnOp::Not {
+                    Ty::Bool
+                } else if t == Ty::Float {
+                    Ty::Float
+                } else {
+                    Ty::Int
                 };
                 let how = || format!("`{}` needs its success value", canonical(e));
                 if self.unhandled(operand, t, how) {
                     return Ty::Error;
                 }
                 if t != want && t != Ty::Error {
-                    let (word, kind) = match op {
-                        UnOp::Neg => ("-", "an int or a float"),
-                        UnOp::Not | UnOp::Try => ("not", "a bool"),
+                    let (word, kind) = if *op == UnOp::Not {
+                        ("not", "a bool")
+                    } else {
+                        ("-", "an int or a float")
                     };
                     self.err(
                         "MZ0912",
@@ -1535,8 +1552,13 @@ impl<'a> FnCheck<'a> {
         if name == "error" {
             return self.fail_value(args, &types, at);
         }
-        // A result is matched or propagated, never passed on (§12.3).
-        for (a, t) in args.iter().zip(types.iter_mut()) {
+        // A result is matched or propagated, never passed on (§12.3). A parameter declared
+        // as a result was reported at the parameter, so its arguments say nothing more.
+        for (k, (a, t)) in args.iter().zip(types.iter_mut()).enumerate() {
+            if params.get(k).is_some_and(|p| p.as_result().is_some()) {
+                *t = Ty::Error;
+                continue;
+            }
             if self.unhandled(a, *t, || format!("`{name}` takes the value, not a result")) {
                 *t = Ty::Error;
             }
@@ -1616,7 +1638,12 @@ impl<'a> FnCheck<'a> {
             return ret;
         }
         for ((a, t), p) in args.iter().zip(&types).zip(&f.params) {
-            if *t != Ty::Error && p.ty.ty != Ty::Error && *t != p.ty.ty {
+            // A result parameter is `MZ0950` at the parameter already.
+            if *t != Ty::Error
+                && p.ty.ty != Ty::Error
+                && p.ty.ty.as_result().is_none()
+                && *t != p.ty.ty
+            {
                 self.err(
                     "MZ0905",
                     a.span,
