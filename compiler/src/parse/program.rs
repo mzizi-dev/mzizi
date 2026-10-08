@@ -364,7 +364,7 @@ impl P {
             "MZ0919",
             join(at, line_end),
             format!(
-                "{what} is designed (RFC-0013) but not built yet — a program has `fn`, `let`, `var`, `when`, `return`, `print`, and int, float, bool and text values"
+                "{what} is designed (RFC-0013) but not built yet — a program has `fn`s, `enum`s, `let`, `var`, `when`, `match`, loops, results, `print`, and int, float, bool and text values"
             ),
         );
         if block {
@@ -550,7 +550,7 @@ impl P {
             "MZ0901",
             from,
             format!(
-                "a program holds `fn`s, not statements ({lines}) — statements live inside a `fn`; the entry point is `fn main` … `end fn main`"
+                "a program holds `fn`s and `enum`s, not statements ({lines}) — statements live inside a `fn`; the entry point is `fn main` … `end fn main`"
             ),
         );
     }
