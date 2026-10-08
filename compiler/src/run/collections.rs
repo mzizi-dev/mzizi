@@ -235,12 +235,14 @@ impl Lower<'_> {
             ExprKind::List(items) => {
                 let anchor = items
                     .iter()
-                    .find(|i| !matches!(&i.kind, ExprKind::List(v) if v.is_empty()))
+                    .find(|i| !is_empty_bracket(i))
                     .or(items.first());
                 anchor.map_or(Ty::list(Ty::Error), |a| Ty::list(self.ty(a)))
             }
             ExprKind::MapLit(entries) => entries
-                .first()
+                .iter()
+                .find(|(k, v)| !is_empty_bracket(k) && !is_empty_bracket(v))
+                .or(entries.first())
                 .map_or(Ty::Error, |(k, v)| Ty::map(self.ty(k), self.ty(v))),
             _ => Ty::Error,
         }
@@ -334,13 +336,15 @@ impl Lower<'_> {
 
     /// `x otherwise d` (§8.1): `d` runs only when `x` is `None`.
     pub(super) fn otherwise(&mut self, lhs: &Expr, rhs: &Expr) -> String {
-        let inner = match self.ty(lhs) {
+        let lt = self.ty(lhs);
+        let inner = match lt {
             Ty::Option(t) => *t,
             _ => Ty::Error,
         };
         let x = self.expr(lhs);
-        let rt = self.ty(rhs);
-        let (some, d) = if matches!(rt, Ty::Option(_)) {
+        // A default of the option's own type keeps the result an option; any other default
+        // is the element's type (`option(option(T)) otherwise option(T)` is the second).
+        let (some, d) = if self.ty(rhs) == lt {
             ("Some(mz_v)", self.expr(rhs))
         } else {
             ("mz_v", self.expr_want(rhs, inner))
@@ -350,12 +354,11 @@ impl Lower<'_> {
 
     /// The type of `x otherwise d`.
     pub(super) fn otherwise_ty(&self, lhs: &Expr, rhs: &Expr) -> Ty {
-        match self.ty(rhs) {
-            t @ Ty::Option(_) => t,
-            _ => match self.ty(lhs) {
-                Ty::Option(t) => *t,
-                _ => Ty::Error,
-            },
+        let lt = self.ty(lhs);
+        match lt {
+            _ if self.ty(rhs) == lt => lt,
+            Ty::Option(t) => *t,
+            _ => Ty::Error,
         }
     }
 
@@ -401,10 +404,10 @@ impl Lower<'_> {
         &mut self,
         e: &Expr,
         recv: &Expr,
+        rt: Ty,
         name: &str,
         args: &[Expr],
     ) -> String {
-        let rt = self.ty(recv);
         let el = rt.element().unwrap_or(Ty::Error);
         let r = self.place(recv);
         let f = |k: usize| match args.get(k).map(|a| &a.kind) {
@@ -473,4 +476,9 @@ impl Lower<'_> {
             _ => "()".to_string(),
         }
     }
+}
+
+/// `[]`, whose type comes from where it stands.
+fn is_empty_bracket(e: &Expr) -> bool {
+    matches!(&e.kind, ExprKind::List(v) if v.is_empty())
 }

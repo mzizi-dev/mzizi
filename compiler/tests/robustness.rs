@@ -806,6 +806,14 @@ fn deep_collections_are_one_mz0411_and_huge_literals_check() {
         assert_eq!(codes, ["MZ0411"], "{label}");
         run(label, src);
     }
+    // A chain of methods as long as the cap allows types and lowers in linear time: the
+    // lowering once typed each receiver twice per link, doubling the time with each one.
+    let src = format!(
+        "program deep\n\n  fn main\n    print([1, 3]{})\n  end fn main\n\n  fn keep(n: int): bool\n    return n > 0\n  end fn keep\n\nend program deep\n",
+        ".filter(keep)".repeat(60)
+    );
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("a chain of 60 `filter`s", src);
     let items = vec!["7"; n].join(", ");
     let src = deep_program(&format!("    let xs = [{items}]\n    print(xs.sum())\n"));
     assert_eq!(check(&src, "case.mz").error_count(), 0);

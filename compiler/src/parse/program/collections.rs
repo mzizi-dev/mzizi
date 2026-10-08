@@ -348,6 +348,9 @@ impl P {
     /// no `=` follows the index, the expression it starts.
     pub(super) fn index_statement(&mut self, at: Span) -> Option<StmtKind> {
         let target = self.expr();
+        if let Tok::Op(op @ ("+=" | "-=" | "*=" | "/=" | "++" | "--")) = self.peek().clone() {
+            return self.index_operator_assignment(target, op);
+        }
         if !matches!(self.peek(), Tok::Equals) {
             self.finish_line("an expression");
             return Some(StmtKind::Expr(target));
@@ -379,6 +382,73 @@ impl P {
                 None
             }
         }
+    }
+
+    /// `xs[i] += v` and the rest (`MZ0918`), the cursor on the operator. `xs[i]` is an
+    /// option, so the repair needs a default only the author knows: the fix is a `guess`
+    /// with `0` (or `0.0` beside a float literal), and there is none beside any other value.
+    /// The statement is still an indexed assignment, so the `var` counts as changed.
+    fn index_operator_assignment(&mut self, target: Expr, op: &'static str) -> Option<StmtKind> {
+        let op_at = self.bump().span;
+        let rhs = if matches!(op, "++" | "--") {
+            Expr {
+                kind: ExprKind::Int(1),
+                span: op_at,
+            }
+        } else {
+            self.expr()
+        };
+        let line = join(
+            target.span,
+            if matches!(op, "++" | "--") {
+                op_at
+            } else {
+                rhs.span
+            },
+        );
+        self.finish_line("an assignment");
+        let ExprKind::Index { base, index } = target.kind else {
+            return None;
+        };
+        let ExprKind::Name(name) = base.kind else {
+            return None;
+        };
+        let written = format!("{name}[{}]", canonical(&index));
+        let zero = match rhs.kind {
+            ExprKind::Int(_) => Some("0"),
+            ExprKind::Float(_) => Some("0.0"),
+            _ => None,
+        };
+        let sym = match op {
+            "+=" | "++" => "+",
+            "-=" | "--" => "-",
+            "*=" => "*",
+            _ => "/",
+        };
+        let rhs_text = {
+            let t = canonical(&rhs);
+            if rhs.level() >= 4 {
+                format!("({t})")
+            } else {
+                t
+            }
+        };
+        let say = format!(
+            "`{op}` is not a Mzizi operator, and `{written}` is an option — write `{written} = ({written} otherwise <default>) {sym} {rhs_text}`"
+        );
+        match zero {
+            Some(zero) if !index.has_error() && !rhs.has_error() => {
+                let fixed = format!("{written} = ({written} otherwise {zero}) {sym} {rhs_text}");
+                self.err_fix("MZ0918", op_at, say, line, fixed, Confidence::Guess);
+            }
+            _ => self.err("MZ0918", op_at, say),
+        }
+        Some(StmtKind::IndexAssign {
+            name,
+            name_span: base.span,
+            index: *index,
+            value: self.error_expr(line),
+        })
     }
 
     /// Whether the argument at the cursor is a lambda: `x => …`, `(x, y) => …` or Python's
