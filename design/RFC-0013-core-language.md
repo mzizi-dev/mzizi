@@ -1246,7 +1246,8 @@ C8's "Done when" asks for "a record has a method; a generic function works for t
 interface is satisfied". Wave 1 meets the first clause only, so **C8 cannot turn ✅ at M1** as the
 tracker defines M1 ("all of Tier 1 ✅"). That conflict is the owner's to resolve (§20, Q8), and
 §20 Q21 proposes the split: C8 for records and methods in M1, a new row for generics and
-interfaces after it. This RFC does not change the tracker's row.
+interfaces after it. **Decided (owner, 2026-10-08): split.** The tracker's C8 is now records and
+methods, and generics and interfaces are row P12, after M1.
 
 When they come, the survey's design holds (F25, F26): every type parameter names an interface,
 with no specialisation; an interface is nominal, declared in the record's own block, and a
@@ -2433,6 +2434,8 @@ owner's yes, no or change before the wave that builds it.**
     "a generic function works for two types; an interface is satisfied", outside Tier 1 and after
     M1, carrying survey F25 and F26. This RFC does not edit `LANGUAGE-TRACKER.md`; the owner's
     answer does, in its own pull request.
+    **Decided (owner, 2026-10-08, #69): split as proposed.** `LANGUAGE-TRACKER.md` C8 is now
+    "User types: records and methods", and the new row P12 is "Generics and interfaces".
 22. **Indexing returns an option** (§3.7, survey F2). This reverses the draft's trapping `xs[i]`
     and drops `.get`. The cost is an `otherwise` or a guard wherever the author knows the index is
     in range, the commonest case in loops over `range(0, to = xs.length())`. Accept, or keep the
