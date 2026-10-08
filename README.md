@@ -89,12 +89,11 @@ C5: `float` and the numeric methods), its control flow (RFC-0013 §7, C4:
 enums, `else when`, exhaustive `match`, `when` and `match` as values, `for each` over
 `range(a, to = b)`, `while`, `break` and `continue`), its errors (RFC-0013 §12, C9: enum
 columns, `result(T, E)`, `return error(e)`, prefix `try`, a `match` on a result, and `main`
-returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-0013 §9, C7, on
-`staging`: `list(T)`, `map(K, V)` and `set(K)`, bracket literals, indexing that returns an
+returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-0013 §9, C7: `list(T)`, `map(K, V)` and `set(K)`, bracket literals, indexing that returns an
 option read with `otherwise`, `in`, `for each` over a list, and the named folds, lowered to
-`Vec`, `BTreeMap` and `BTreeSet`), its text (RFC-0013 §10, C6, on `staging`: the rest of the text methods, `s[i]`, `slice`, `find`, `split`, `chars`, `parse_int` and `parse_float`, lowered to Rust), and the Phase 0 benchmark harness,
+`Vec`, `BTreeMap` and `BTreeSet`), its text (RFC-0013 §10, C6: the text methods, `s[i]`, `slice`, `find`, `split`, `chars`, `parse_int` and `parse_float`, lowered to Rust), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is about 33,400 lines.
+task, B1. `compiler/src` is 33,438 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
