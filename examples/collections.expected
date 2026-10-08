@@ -1,0 +1,21 @@
+[2, 3, 5, 7, 11]
+5 primes: the first is 2, the tenth -1
+220
+[4, 9, 25, 49, 121]
+26
+28
+4 odd, any even: true, all odd: false
+2
+[3, 5]
+[]
+[9, 5, 3, 1]
+[false: [2], true: [3, 5, 7, 11]]
+["ada": 37, "grace": 85]
+grace 85, linus 0, 2 people, 122 years
+["ada", "grace"]
+[2, 3, 10] holds 3: true, 3 values
+true
+[hearts, hearts, spades, spades, spades]
+true
+["a \"b\"", "c"]
+a "b" + c

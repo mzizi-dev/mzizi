@@ -142,7 +142,9 @@ fn the_control_example_parses_and_checks_clean() {
             StmtKind::When { .. } => "when",
             StmtKind::Return(_) => "return",
             StmtKind::Bind { .. } => "bind",
-            StmtKind::Assign { .. } => "assign",
+            StmtKind::Assign { .. }
+            | StmtKind::IndexAssign { .. }
+            | StmtKind::FieldAssign { .. } => "assign",
             StmtKind::Expr(_) => "expr",
             StmtKind::Break | StmtKind::Continue => "jump",
         })
@@ -650,8 +652,8 @@ fn conditions_and_sources_have_their_types() {
         &wrap("for each i in range(0, to = \"3\")\n  print(i)\nend"),
         "MZ0905",
     );
-    // `range` outside a `for each` is a list, which is a later wave's.
-    one(&wrap("let r = range(0, to = 3)\nprint(1)"), "MZ0919");
+    // `range` outside a `for each` is a list (C7, RFC-0013 §9).
+    assert!(errors(&wrap("let r = range(0, to = 3)\nprint(r)")).is_empty());
     // A case of the wrong type, and a case that is not a literal.
     one(
         &wrap("let n = 1\nmatch n\n  case \"a\"\n    print(1)\n  else\n    print(0)\nend"),
@@ -1163,21 +1165,19 @@ fn two_bare_variants_compare_against_the_one_whose_enum_is_unambiguous() {
 }
 
 #[test]
-fn a_list_after_for_each_in_is_the_lexers_error_with_no_range_guess() {
-    // `[` and `]` are `MZ0104` until lists are built (C7). What the parser reads in between
-    // is not the loop's source, so no `range(0, to = 1)` guess is written over it.
+fn a_list_after_for_each_in_is_a_list_literal() {
+    // `[` and `]` were `MZ0104` until C7 built lists; a `for each` over a list literal now
+    // checks clean.
     let found = errors(&wrap(
         "var x = 0\nfor each k in [1, 2]\n  x = x + k\nend\nprint(x)",
     ));
-    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
-    assert_eq!(codes, ["MZ0104", "MZ0104"], "{found:#?}");
-    assert!(found.iter().all(|d| d.fix.is_none()), "{found:#?}");
-    // TypeScript's loop over a list the lexer respelt (`MZ0105`) is still `MZ0934`, with
-    // no rewrite built on the respelt list.
-    let found = errors(&wrap("let n = 1\nfor (const k of [n])\n  print(k)\nend"));
-    let codes: Vec<&str> = found.iter().map(|d| d.code).collect();
-    assert_eq!(codes, ["MZ0934", "MZ0105"], "{found:#?}");
-    assert!(found[0].fix.is_none(), "{:#?}", found[0]);
+    assert!(found.is_empty(), "{found:#?}");
+    // TypeScript's loop over a list literal is `MZ0934` with its exact rewrite, which the
+    // lexer no longer respells as a type (`MZ0105`).
+    let src = wrap("let n = 1\nfor (const k of [n])\n  print(k)\nend");
+    let d = one(&src, "MZ0934");
+    assert_eq!(d.fix.expect("exact").replace, "for each k in [n]");
+    fixed_by(&src, "MZ0934", "for each k in [n]");
 }
 
 #[test]

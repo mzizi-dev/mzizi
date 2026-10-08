@@ -108,9 +108,10 @@ impl Lower<'_> {
         out.push_str("}\n");
     }
 
-    /// The type of `base.name`, a column of an enum value.
+    /// The type of `base.name`: a column of an enum value, or a field of a record.
     pub(super) fn field_ty(&self, base: &Expr, name: &str) -> Ty {
         match self.ty(base) {
+            Ty::Record(r) => self.field_of(r, name),
             Ty::Enum(en) => self
                 .enums
                 .iter()
@@ -121,8 +122,23 @@ impl Lower<'_> {
         }
     }
 
-    /// `base.name` as Rust: the column's accessor call.
+    /// `base.name` as Rust: the column's accessor call, or a record's field, copied out when
+    /// its type is not `Copy` (RFC-0013 §14.1).
     pub(super) fn field(&mut self, base: &Expr, name: &str) -> String {
+        if let Ty::Record(_) = self.ty(base) {
+            let t = self.field_ty(base, name);
+            // A binding's field is read in place, without copying the whole record.
+            let owner = match &base.kind {
+                ExprKind::Name(n) => ident(n),
+                _ => self.atom(base),
+            };
+            let read = format!("{owner}.{}", ident(name));
+            return if t.is_copy() {
+                read
+            } else {
+                format!("{read}.clone()")
+            };
+        }
         format!("{}.{}()", self.atom(base), ident(name))
     }
 

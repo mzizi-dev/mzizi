@@ -15,16 +15,28 @@ use std::collections::BTreeMap;
 use crate::diagnostic::{Confidence, Diagnostic, Span};
 use crate::expr::{
     Arm, BinOp, ElseArm, Expr, ExprKind, Fault, TextPart, Ty, UnOp, binary_type, canonical,
-    canonical_text, fold, has_text_form,
+    canonical_text, fold, has_text_form, method_signature,
 };
 use crate::numbers;
 use crate::resolve::nearest;
 
+mod collections;
 mod control;
 mod errors;
+mod records;
+mod text;
+
+/// How `MZ0962`'s `say` opens for text emptiness asked another way (`s.length() is 0`), so
+/// the front end can fold an operator idiom inside it into its one fix.
+pub const EMPTINESS: &str = "text is not a collection";
+
+/// How every `MZ0962` on a list's, map's or set's emptiness begins (RFC-0013 §3.3), so
+/// `lib.rs` can fold a parser's fix inside one into it, as for [`EMPTINESS`].
+pub const COLLECTION_EMPTINESS: &str = "a collection's emptiness is asked with `none`";
 
 pub use control::{canonical_stmts, variant_owner};
 pub use errors::{Column, EnumDecl, Variant};
+pub use records::{Invariant, RecordDecl, RecordField};
 
 /// `program <name>` … `end program <name>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -39,6 +51,8 @@ pub struct Program {
     pub fns: Vec<FnDecl>,
     /// Every `enum`, in source order (RFC-0013 §1, §7.2, §12.1).
     pub enums: Vec<EnumDecl>,
+    /// Every `record`, in source order (RFC-0013 §11).
+    pub records: Vec<RecordDecl>,
     /// Whether statements stood outside every `fn` (reported as `MZ0901`, whose message
     /// names `fn main`, so a missing `fn main` is not reported a second time).
     pub stray_statements: bool,
@@ -187,6 +201,32 @@ pub enum StmtKind {
         /// The loop's body.
         body: Vec<Stmt>,
     },
+    /// `name[index] = value`: replaces a list's element, or inserts or replaces a map's
+    /// value (RFC-0013 §9.2). On a list it traps out of range (§4.3).
+    IndexAssign {
+        /// The `var` changed.
+        name: String,
+        /// Where the name is.
+        name_span: Span,
+        /// The position or key.
+        index: Expr,
+        /// The new value.
+        value: Expr,
+    },
+    /// `name.field = value`: replaces one field of a record held by a `var` (RFC-0013
+    /// §11.1). The lowering checks the record's `always` clauses after it.
+    FieldAssign {
+        /// The record's binding, which is changed.
+        name: String,
+        /// Where the binding's name is.
+        name_span: Span,
+        /// The field assigned.
+        field: String,
+        /// Where the field's name is.
+        field_span: Span,
+        /// The new value.
+        value: Expr,
+    },
     /// `break`: leaves the innermost loop.
     Break,
     /// `continue`: starts the innermost loop's next pass.
@@ -323,8 +363,9 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
     for e in &p.enums {
         errors::check_columns(e, file, &mut diags);
     }
+    diags.extend(records::check_records(&p.records, &p.enums, &fns, file));
     for f in &p.fns {
-        let mut cx = FnCheck::new(f, &fns, &p.enums, file);
+        let mut cx = FnCheck::new(f, &fns, &p.enums, &p.records, file);
         cx.run();
         diags.append(&mut cx.diags);
     }
@@ -383,6 +424,14 @@ struct FnCheck<'a> {
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
     /// The program's enums, whose variants a bare name may be (RFC-0008 §5).
     enums: &'a [EnumDecl],
+    /// The program's records, whose fields and methods a value of their type has (§11).
+    records: &'a [RecordDecl],
+    /// The record whose method this is, when it is one: `self` is bound to that record
+    /// (§11.2). `None` for an ordinary `fn`.
+    receiver: Option<&'static str>,
+    /// Whether an `always` clause is being checked, which may read a record's fields and
+    /// call nothing (§11.4, `MZ0975`).
+    in_always: bool,
     /// How many loops enclose the statement being checked (`MZ0935` at none).
     loops: usize,
     /// Where each statement `match` reported as missing a case (`MZ0930`) starts, by its
@@ -399,6 +448,12 @@ struct FnCheck<'a> {
     /// Each `let` that holds a result: its binding, its name and its value, so one never
     /// read before its block ends is `MZ0950` (§12.3).
     results: Vec<(usize, Span, Span)>,
+    /// Each `x.is_empty()` written as the operand of a comparison or of `not`, whose fix to
+    /// `x is ""` needs parentheses there (`program/text.rs`).
+    tight: Vec<Span>,
+    /// How many `{…}` interpolations enclose the expression being checked: a fix that
+    /// writes a string literal cannot go inside one (RFC-0013 §3.6).
+    interp: u32,
 }
 
 impl<'a> FnCheck<'a> {
@@ -406,12 +461,16 @@ impl<'a> FnCheck<'a> {
         f: &'a FnDecl,
         fns: &'a BTreeMap<&'a str, &'a FnDecl>,
         enums: &'a [EnumDecl],
+        records: &'a [RecordDecl],
         file: &'a str,
     ) -> Self {
         let mut cx = FnCheck {
             f,
             fns,
             enums,
+            records,
+            receiver: None,
+            in_always: false,
             loops: 0,
             partial: Vec::new(),
             file,
@@ -422,6 +481,8 @@ impl<'a> FnCheck<'a> {
             whens: Vec::new(),
             assigns: BTreeMap::new(),
             results: Vec::new(),
+            tight: Vec::new(),
+            interp: 0,
         };
         cx.collect(&f.body, &mut Vec::new());
         cx
@@ -534,6 +595,9 @@ impl<'a> FnCheck<'a> {
 
     fn run(&mut self) {
         let f = self.f;
+        if let Some(record) = self.receiver {
+            self.bind("self", Kind::Param, Ty::Record(record), None);
+        }
         for p in &f.params {
             if let Some(why) = reserved_name(&p.name) {
                 self.err(
@@ -674,7 +738,7 @@ impl<'a> FnCheck<'a> {
                 numeric(self.shallow_ty(lhs), self.shallow_ty(rhs))
             }
             ExprKind::Method { recv, name, .. } => {
-                numbers::method(self.shallow_ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
+                method_signature(self.shallow_ty(recv), name).map_or(Ty::Error, |(_, ret)| ret)
             }
             _ => shallow_type(e),
         }
@@ -863,12 +927,15 @@ impl<'a> FnCheck<'a> {
                     .visible(name)
                     .map_or(Ty::Error, |i| self.bindings[i].ty);
                 let vt = self.expr_want(value, want);
-                let vt =
-                    if self.unhandled(value, vt, || "an assignment stores it unexamined".into()) {
-                        Ty::Error
-                    } else {
-                        vt
-                    };
+                // An option assigned to a `var` that holds one is not used un-narrowed.
+                let vt = if matches!(vt, Ty::Option(_)) && vt == want {
+                    vt
+                } else if self.unhandled(value, vt, || "an assignment stores it unexamined".into())
+                {
+                    Ty::Error
+                } else {
+                    vt
+                };
                 match self.visible(name) {
                     Some(i) => {
                         // Python's annotated assignment to a name already bound: the type
@@ -913,6 +980,11 @@ impl<'a> FnCheck<'a> {
                                     None => self.err("MZ0922", *name_span, say),
                                 }
                             }
+                            Kind::Param if name == "self" => self.err(
+                                "MZ0922",
+                                *name_span,
+                                "`self` is a method's receiver, and a method cannot reassign its receiver — write a changed copy as `self with (field = value)` and return it",
+                            ),
                             Kind::Param => self.err(
                                 "MZ0922",
                                 *name_span,
@@ -923,7 +995,7 @@ impl<'a> FnCheck<'a> {
                             Kind::Var => {
                                 self.bindings[i].assigned = true;
                                 let bt = self.bindings[i].ty;
-                                if bt != Ty::Error && vt != Ty::Error && bt != vt {
+                                if !bt.has_error() && !vt.has_error() && bt != vt {
                                     self.err(
                                         "MZ0711",
                                         value.span,
@@ -1019,7 +1091,7 @@ impl<'a> FnCheck<'a> {
                         let how = || format!("`{}` returns {}", f.signature(), r.ty.name());
                         if self.unhandled(v, t, how) {
                             // Reported: a result returned where its type does not fit.
-                        } else if t != Ty::Error && r.ty != Ty::Error && t != r.ty {
+                        } else if !t.has_error() && !r.ty.has_error() && t != r.ty {
                             self.err(
                                 "MZ0908",
                                 v.span,
@@ -1058,6 +1130,19 @@ impl<'a> FnCheck<'a> {
                 }
                 self.whens.pop();
             }
+            StmtKind::IndexAssign {
+                name,
+                name_span,
+                index,
+                value,
+            } => self.index_assign(name, *name_span, index, value),
+            StmtKind::FieldAssign {
+                name,
+                name_span,
+                field,
+                field_span: _,
+                value,
+            } => self.field_assign(name, *name_span, field, value),
             StmtKind::Match { .. }
             | StmtKind::For { .. }
             | StmtKind::While { .. }
@@ -1100,6 +1185,7 @@ impl<'a> FnCheck<'a> {
             Ty::Int => Some(format!("{} is not 0", canonical(cond))),
             Ty::Float => Some(format!("{} is not 0.0", canonical(cond))),
             Ty::Text => Some(format!("{} is not \"\"", canonical(cond))),
+            t if t.is_collection() => Some(format!("{} is not none", canonical(cond))),
             _ => None,
         };
         let say = format!(
@@ -1127,7 +1213,7 @@ impl<'a> FnCheck<'a> {
         }
         match ty {
             Some(t) => {
-                if t.ty != Ty::Error && vt != Ty::Error && t.ty != vt {
+                if !t.ty.has_error() && !vt.has_error() && t.ty != vt {
                     self.err(
                         "MZ0711",
                         at,
@@ -1214,6 +1300,9 @@ impl<'a> FnCheck<'a> {
 
     /// Type an expression, reporting what is wrong with it once.
     fn expr(&mut self, e: &Expr) -> Ty {
+        if let Some(t) = self.text_emptiness(e) {
+            return t;
+        }
         match &e.kind {
             ExprKind::Int(_) => Ty::Int,
             ExprKind::Float(_) => Ty::Float,
@@ -1221,7 +1310,9 @@ impl<'a> FnCheck<'a> {
             ExprKind::Text(parts) => {
                 for part in parts {
                     if let TextPart::Expr(inner) = part {
+                        self.interp += 1;
                         let t = self.expr(inner);
+                        self.interp -= 1;
                         if self.unhandled(inner, t, || "a result has no text form".into()) {
                             // Reported.
                         } else if !has_text_form(t) {
@@ -1244,13 +1335,15 @@ impl<'a> FnCheck<'a> {
                 name,
                 name_span,
                 args,
-            } => self.call(name, *name_span, args, e.span),
+                labelled,
+            } => self.call(name, *name_span, args, *labelled, e.span),
             ExprKind::Method {
                 recv,
                 name,
                 name_span,
                 args,
                 called,
+                ..
             } => self.method(e, recv, name, *name_span, args, *called),
             ExprKind::Unary {
                 op: UnOp::Try,
@@ -1261,7 +1354,20 @@ impl<'a> FnCheck<'a> {
                 name,
                 name_span,
             } => self.field(e, base, name, *name_span),
+            ExprKind::Record {
+                name,
+                name_span: _,
+                fields,
+            } => self.record_literal(e, name, fields),
+            ExprKind::With { base, fields } => self.with_expr(e, base, fields),
+            ExprKind::Unary {
+                op: UnOp::Not,
+                operand,
+            } if self.is_empty_call(operand) => self.not_is_empty(e, operand),
             ExprKind::Unary { op, operand } => {
+                if *op == UnOp::Not {
+                    self.mark_tight(operand);
+                }
                 let t = self.expr(operand);
                 // `try` is typed by `try_expr`, in the arm above; this is `-` or `not`.
                 let want = if *op == UnOp::Not {
@@ -1313,11 +1419,30 @@ impl<'a> FnCheck<'a> {
             }
             ExprKind::Binary { op: BinOp::Add, .. } => self.add_chain(e),
             ExprKind::Binary {
+                op: BinOp::In,
+                lhs,
+                rhs,
+                ..
+            } => self.in_expr(e, lhs, rhs),
+            ExprKind::Binary {
+                op: BinOp::Otherwise,
+                lhs,
+                rhs,
+                ..
+            } => self.otherwise(e, lhs, rhs),
+            ExprKind::List(_) | ExprKind::MapLit(_) => self.bracket(e, Ty::Nothing),
+            ExprKind::Index { base, index } => self.index(e, base, index),
+            ExprKind::None => self.none_value(e),
+            ExprKind::Binary {
                 op: op @ (BinOp::Is | BinOp::IsNot | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge),
                 lhs,
                 rhs,
                 ..
-            } => self.compare(e, *op, lhs, rhs),
+            } => {
+                self.mark_tight(lhs);
+                self.mark_tight(rhs);
+                self.compare(e, *op, lhs, rhs)
+            }
             ExprKind::Variant { .. } | ExprKind::When { .. } | ExprKind::Match { .. } => {
                 self.control_expr(e)
             }
@@ -1330,10 +1455,16 @@ impl<'a> FnCheck<'a> {
         }
     }
 
+    /// Whether `e` is `x.is_empty()`, whose negation is one idiom (`MZ0962`).
+    fn is_empty_call(&self, e: &Expr) -> bool {
+        matches!(&e.kind, ExprKind::Method { name, args, called: true, .. } if name == "is_empty" && args.is_empty())
+    }
+
     /// The type of a binary expression whose operands are typed, with its diagnostics.
     fn binary(&mut self, e: &Expr, op: BinOp, lhs: &Expr, rhs: &Expr, l: Ty, r: Ty) -> Ty {
         let how = || format!("`{}` needs its success value", op.text());
-        if self.unhandled(lhs, l, how) | self.unhandled(rhs, r, how) {
+        // `otherwise` takes an option on its left, and checked its sides itself.
+        if op != BinOp::Otherwise && (self.unhandled(lhs, l, how) | self.unhandled(rhs, r, how)) {
             return if op.is_arithmetic() {
                 Ty::Error
             } else {
@@ -1346,6 +1477,10 @@ impl<'a> FnCheck<'a> {
                     self.constant_fault(e, op, lhs, rhs);
                 }
                 t
+            }
+            Err(why) if matches!(op, BinOp::In | BinOp::Otherwise) => {
+                self.err("MZ0912", e.span, format!("`{}`: {why}", canonical(e)));
+                if op == BinOp::In { Ty::Bool } else { Ty::Error }
             }
             Err(why) => {
                 // `int` with `float`: no implicit conversion (RFC-0013 §3.2). The fix
@@ -1479,6 +1614,15 @@ impl<'a> FnCheck<'a> {
             self.bindings[i].read = true;
             return self.bindings[i].ty;
         }
+        if name == "self" {
+            // Bound in every method (RFC-0013 §11.2), so unbound here, outside one.
+            self.err(
+                "MZ0970",
+                at,
+                "`self` is the receiver of a method, and only a method has one — a record's `fn` names it",
+            );
+            return Ty::Error;
+        }
         if let Some(t) = self.bare_variant(name, at) {
             self.bare_ok_error(name, at, t);
             return t;
@@ -1531,7 +1675,25 @@ impl<'a> FnCheck<'a> {
         Ty::Error
     }
 
-    fn call(&mut self, name: &str, name_span: Span, args: &[Expr], at: Span) -> Ty {
+    fn call(&mut self, name: &str, name_span: Span, args: &[Expr], labelled: bool, at: Span) -> Ty {
+        if self.in_always && self.fns.contains_key(name) {
+            self.err(
+                "MZ0975",
+                at,
+                format!(
+                    "`{name}` is a `fn`, and an `always` clause may not call one — a clause reads the fields of a value and nothing else"
+                ),
+            );
+            return Ty::Error;
+        }
+        if !self.fns.contains_key(name) && self.visible(name).is_none() {
+            if name == "range" {
+                return self.range_value(at, args);
+            }
+            if let Some(t) = self.free_collection(name, args, labelled, at) {
+                return t;
+            }
+        }
         // `error(e)`'s one argument is read against the function's error type (§12.1), so a
         // bare variant of the error enum resolves there.
         let params: Vec<Ty> = if name == "error" {
@@ -1547,7 +1709,17 @@ impl<'a> FnCheck<'a> {
         let mut types: Vec<Ty> = args
             .iter()
             .enumerate()
-            .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
+            .map(|(k, a)| {
+                // `print` expects nothing in particular, so `print([])` has no type to take
+                // (`MZ0961`); an unknown function's arguments were expected as something
+                // already reported.
+                let none = if name == "print" {
+                    Ty::Nothing
+                } else {
+                    Ty::Error
+                };
+                self.expr_want(a, params.get(k).copied().unwrap_or(none))
+            })
             .collect();
         if name == "error" {
             return self.fail_value(args, &types, at);
@@ -1582,7 +1754,9 @@ impl<'a> FnCheck<'a> {
         }
         if !self.fns.contains_key(name)
             && self.visible(name).is_none()
-            && let Some(t) = self.free_numeric(name, args, &types, at)
+            && let Some(t) = self
+                .free_text(name, args, &types, at)
+                .or_else(|| self.free_numeric(name, args, &types, at))
         {
             return t;
         }
@@ -1591,14 +1765,6 @@ impl<'a> FnCheck<'a> {
                 "MZ0711",
                 name_span,
                 format!("`{name}` is a binding, not a function, so it cannot be called"),
-            );
-            return Ty::Error;
-        }
-        if name == "range" {
-            self.err(
-                "MZ0919",
-                at,
-                "`range(a, to = b)` outside a `for each` line is a list, and lists are designed (RFC-0013 §9) but not built yet — in this slice `range` is a `for each` source",
             );
             return Ty::Error;
         }
@@ -1639,8 +1805,8 @@ impl<'a> FnCheck<'a> {
         }
         for ((a, t), p) in args.iter().zip(&types).zip(&f.params) {
             // A result parameter is `MZ0950` at the parameter already.
-            if *t != Ty::Error
-                && p.ty.ty != Ty::Error
+            if !t.has_error()
+                && !p.ty.ty.has_error()
                 && p.ty.ty.as_result().is_none()
                 && *t != p.ty.ty
             {
@@ -1784,7 +1950,7 @@ impl<'a> FnCheck<'a> {
     /// parentheses, which the parser reads as a dotted path (`errors::field`) and hands here
     /// when `recv` is a number.
     #[allow(clippy::too_many_arguments)]
-    fn method_on(
+    pub(super) fn method_on(
         &mut self,
         e: &Expr,
         recv: &Expr,
@@ -1794,6 +1960,9 @@ impl<'a> FnCheck<'a> {
         args: &[Expr],
         called: bool,
     ) -> Ty {
+        if rt.is_collection() || matches!(rt, Ty::Option(_)) {
+            return self.collection_method(e, recv, rt, name, name_span, args, called);
+        }
         let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
         // `x.to_string()`: a value's text is interpolation (RFC-0013 §3.6), on any value
         // with a text form; on a `text` it is the value itself.
@@ -1819,15 +1988,9 @@ impl<'a> FnCheck<'a> {
         match rt {
             Ty::Error => return Ty::Error,
             Ty::Int | Ty::Float => {}
-            Ty::Text => {
-                self.err(
-                    "MZ0919",
-                    e.span,
-                    format!(
-                        "`.{name}` on text: methods on text are designed (RFC-0013 §10) but not built yet — a program has the numeric methods of §4.4"
-                    ),
-                );
-                return Ty::Error;
+            Ty::Text => return self.text_method(e, recv, name, name_span, args, &types, called),
+            Ty::Record(r) => {
+                return self.record_method(e, recv, r, name, name_span, args, &types, called);
             }
             Ty::Enum(_) => {
                 self.err(
@@ -1843,12 +2006,14 @@ impl<'a> FnCheck<'a> {
                 return Ty::Error;
             }
             Ty::Result(_) => return self.method_on_result(e, recv, rt, name, args, called),
+            // Dispatched above, to the collections' methods.
+            Ty::List(_) | Ty::Option(_) | Ty::Map(_) | Ty::Set(_) => return Ty::Error,
             Ty::Bool | Ty::Nothing => {
                 self.err(
                     "MZ0708",
                     name_span,
                     format!(
-                        "`{}` is {}, which has no method `{name}` — only numbers have methods in a program yet",
+                        "`{}` is {}, which has no method `{name}` — only numbers and text have methods in a program yet",
                         canonical(recv),
                         rt.name()
                     ),
@@ -1860,42 +2025,7 @@ impl<'a> FnCheck<'a> {
         let Some((params, ret)) = numbers::method(rt, name) else {
             return self.no_such_method(e, rt, &r, name, name_span, args, called);
         };
-        if !called {
-            let say = format!(
-                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
-            );
-            if params.is_empty() {
-                self.err_fix(
-                    "MZ0962",
-                    name_span,
-                    say,
-                    Span::single(name_span.end_line, name_span.end_col, 0),
-                    "()",
-                    Confidence::Exact,
-                );
-            } else {
-                self.err("MZ0962", name_span, say);
-            }
-            return ret;
-        }
-        if args.len() != params.len() {
-            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
-            self.err(
-                "MZ0905",
-                e.span,
-                format!(
-                    "`.{name}` on {} takes {} argument{}{}, and this call gives {}",
-                    rt.name(),
-                    params.len(),
-                    if params.len() == 1 { "" } else { "s" },
-                    if wanted.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({})", wanted.join(", "))
-                    },
-                    args.len()
-                ),
-            );
+        if self.method_shape(e, rt, &r, name, name_span, &params, args.len(), called) {
             return ret;
         }
         for ((a, t), p) in args.iter().zip(&types).zip(&params) {
@@ -1987,6 +2117,70 @@ impl<'a> FnCheck<'a> {
             }
         }
         ret
+    }
+
+    /// A call of a built-in method `name` on a receiver of type `rt` (written `r`), whose
+    /// signature takes `params`: written without parentheses (`MZ0962`, `exact` `()` when
+    /// it takes nothing), or with the wrong number of arguments (`MZ0905`). True when it
+    /// reported, so the caller says nothing more. Numbers and text share it (§4.4, §10).
+    #[allow(clippy::too_many_arguments)]
+    fn method_shape(
+        &mut self,
+        e: &Expr,
+        rt: Ty,
+        r: &str,
+        name: &str,
+        name_span: Span,
+        params: &[Ty],
+        argc: usize,
+        called: bool,
+    ) -> bool {
+        if !called {
+            let say = format!(
+                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
+            );
+            if params.is_empty() {
+                // JavaScript's `s.length` counts UTF-16 code units, Mzizi's `s.length()`
+                // Unicode scalar values (§10): `"🙂".length` is 2 there and 1 here, so
+                // that fix may change what the program means, and is a guess.
+                let c = if rt == Ty::Text && name == "length" {
+                    Confidence::Guess
+                } else {
+                    Confidence::Exact
+                };
+                self.err_fix(
+                    "MZ0962",
+                    name_span,
+                    say,
+                    Span::single(name_span.end_line, name_span.end_col, 0),
+                    "()",
+                    c,
+                );
+            } else {
+                self.err("MZ0962", name_span, say);
+            }
+            return true;
+        }
+        if argc != params.len() {
+            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            self.err(
+                "MZ0905",
+                e.span,
+                format!(
+                    "`.{name}` on {} takes {} argument{}{}, and this call gives {argc}",
+                    rt.name(),
+                    params.len(),
+                    if params.len() == 1 { "" } else { "s" },
+                    if wanted.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", wanted.join(", "))
+                    },
+                ),
+            );
+            return true;
+        }
+        false
     }
 
     /// `MZ0708`: a method the receiver's type does not have. When the other numeric type
@@ -2115,7 +2309,7 @@ fn shallow_type(e: &Expr) -> Ty {
         ExprKind::Binary { .. } => Ty::Bool,
         ExprKind::Method { recv, name, .. } => {
             let rt = shallow_type(recv);
-            numbers::method(rt, name).map_or(Ty::Error, |(_, ret)| ret)
+            method_signature(rt, name).map_or(Ty::Error, |(_, ret)| ret)
         }
         _ => Ty::Error,
     }

@@ -29,6 +29,7 @@
 #![deny(missing_docs)]
 
 pub mod ast;
+pub mod collections;
 pub mod contract;
 pub mod diagnostic;
 pub mod expr;
@@ -46,6 +47,7 @@ pub mod resolve;
 pub mod run;
 pub mod serve;
 pub mod service;
+pub mod text;
 
 use diagnostic::{CheckReport, Severity};
 
@@ -73,6 +75,22 @@ fn front_end_program(
             || !resolved
                 .iter()
                 .any(|r| r.severity == Severity::Error && r.span == d.span)
+    });
+    // An operator idiom inside emptiness asked another way (`s.length() == 0`,
+    // `not s.length() is 0`, `not xs.length() is 0`): the checker's `exact` fix rewrites
+    // the whole expression to `s is ""` or `xs is none`, so the parser's fix inside it is
+    // folded in, one diagnostic for the line and one `mz fix` pass (RFC-0013 §16). A
+    // checker fix that is only a guess folds nothing, so the parser's `exact` one stays.
+    diagnostics.retain(|d| {
+        d.code != "MZ0910"
+            || !resolved.iter().any(|r| {
+                r.code == "MZ0962"
+                    && (r.say.starts_with(program::EMPTINESS)
+                        || r.say.starts_with(program::COLLECTION_EMPTINESS))
+                    && r.fix.as_ref().is_some_and(|f| {
+                        f.confidence == diagnostic::Confidence::Exact && f.span.overlaps(&d.span)
+                    })
+            })
     });
     diagnostics.extend(resolved);
     (program, diagnostics)

@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 
 use super::{Lower, ident};
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, fold, intern};
-use crate::program::{EnumDecl, Stmt, StmtKind, variant_owner};
+use crate::program::{EnumDecl, RecordDecl, Stmt, StmtKind, variant_owner};
 
 /// Names a Rust prelude or derive already takes, which an enum is not emitted as
 /// (RFC-0013 §14.2).
@@ -78,6 +78,7 @@ fn pascal(name: &str) -> String {
 /// no Mzizi name becomes an `MzUser` one.
 pub(super) fn rust_enum_names(
     enums: &[EnumDecl],
+    records: &[RecordDecl],
 ) -> BTreeMap<String, (String, BTreeMap<String, String>)> {
     let mut out = BTreeMap::new();
     let mut used: Vec<String> = Vec::new();
@@ -102,6 +103,18 @@ pub(super) fn rust_enum_names(
             variants.insert(v.clone(), rust);
         }
         out.insert(e.name.clone(), (name, variants));
+    }
+    // A record shares the enums' Rust namespace (RFC-0013 §14.2), and has no variants.
+    for (k, r) in records.iter().enumerate() {
+        let mut name = pascal(&r.name);
+        if PRELUDE.contains(&name.as_str()) {
+            name = format!("MzUser{name}");
+        }
+        if name.is_empty() || used.contains(&name) {
+            name = format!("MzUser{}{name}", enums.len() + k + 1);
+        }
+        used.push(name.clone());
+        out.insert(r.name.clone(), (name, BTreeMap::new()));
     }
     out
 }
@@ -188,6 +201,9 @@ impl Lower<'_> {
         }
         if matches!(e.kind, ExprKind::When { .. } | ExprKind::Match { .. }) {
             return self.block_value(e, want);
+        }
+        if matches!(e.kind, ExprKind::List(_) | ExprKind::MapLit(_)) {
+            return self.bracket(e, want);
         }
         self.expr(e)
     }
@@ -335,14 +351,25 @@ impl Lower<'_> {
             StmtKind::For {
                 name, source, body, ..
             } => {
-                self.types.insert(name.clone(), Ty::Int);
                 let range = match &source.kind {
-                    ExprKind::Call { args, .. } if args.len() == 2 => {
+                    ExprKind::Call {
+                        name: callee, args, ..
+                    } if callee == "range"
+                        && !self.fns.contains_key("range")
+                        && args.len() == 2 =>
+                    {
+                        self.types.insert(name.clone(), Ty::Int);
                         let a = self.bound(&args[0]);
                         let b = self.bound(&args[1]);
                         format!("{a}..{b}")
                     }
-                    _ => "0i64..0i64".to_string(),
+                    // A list: the loop iterates the value it had when it began (§7.3, §14.1).
+                    _ => {
+                        let el = self.ty(source).element().unwrap_or(Ty::Error);
+                        let list = self.expr(source);
+                        self.types.insert(name.clone(), el);
+                        list
+                    }
                 };
                 let _ = writeln!(out, "{pad}for {} in {range} {{", ident(name));
                 self.block(body, depth + 1, out);

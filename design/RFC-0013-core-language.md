@@ -1246,7 +1246,8 @@ C8's "Done when" asks for "a record has a method; a generic function works for t
 interface is satisfied". Wave 1 meets the first clause only, so **C8 cannot turn ✅ at M1** as the
 tracker defines M1 ("all of Tier 1 ✅"). That conflict is the owner's to resolve (§20, Q8), and
 §20 Q21 proposes the split: C8 for records and methods in M1, a new row for generics and
-interfaces after it. This RFC does not change the tracker's row.
+interfaces after it. **Decided (owner, 2026-10-08): split.** The tracker's C8 is now records and
+methods, and generics and interfaces are row P12, after M1.
 
 When they come, the survey's design holds (F25, F26): every type parameter names an interface,
 with no specialisation; an interface is nominal, declared in the record's own block, and a
@@ -1778,7 +1779,7 @@ fills, the next family is `MZ10xx`.
 | `MZ0916` | `mz check`    | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                                                                                                                                     |
 | `MZ0917` | `mz check`    | a line or expression a function body cannot read: a value expected and something else found, a missing `)`, an unknown escape, a second `else`, or tokens left over on a statement line (claimed by Wave 0)                                                                                                      |
 | `MZ0918` | `mz check`    | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                                                                                                                                     |
-| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, methods on text, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                                               |
+| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, text methods that return an option or a list, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                  |
 | `MZ0920` | `mz check`    | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                                                                                                                                          |
 | `MZ0921` | `mz check`    | a name a program reserves: a record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word where §1 bans it, or any name starting with `mz_` (shadowing is `MZ0713`)                                                                                                            |
 | `MZ0922` | `mz check`    | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                                                                                                                                    |
@@ -2341,6 +2342,254 @@ error(e)`) as well as returned.
   "C9 via" follow-up of §18.2; `mz run --agent`'s NDJSON line for `MZ0992`; and the guide
   change of §18.5.
 
+**Wave 2, C6: text operations, the part that needs no option or list (§10)** (Refs #69;
+built on `staging` after the 2026-10-08 release, while C7 builds collections and options on
+its own branch). Built and tested in `compiler/tests/program_text.rs` and
+`compiler/src/text.rs`, with `examples/text.mz` run through `mz run` against
+`examples/text.expected`; nothing measured.
+
+- **Modules.** `compiler/src/text.rs` holds §10's method table (`text::method`, read by the
+  checker, the lowering and the language harness), the label table (`replace`'s `by`,
+  `slice`'s `to`) and the other languages' spellings; `text/ops.rs` holds the helpers that
+  need more than one call to `std` (`mz_text_length`, `mz_text_repeat`), compiled into `mz`,
+  where its unit tests run, and emitted verbatim into every lowered `main.rs`, as
+  `numbers/float_text.rs` is. The checker's half is `program/text.rs`. `expr::method_signature`
+  is the one lookup the checker and the lowering use for a numeric or a text method.
+- **Built:** `s.length()`, `s.contains(t)`, `s.starts_with(t)`, `s.ends_with(t)`, `s.trim()`,
+  `s.to_upper()`, `s.to_lower()`, `s.replace(old, by = new)` and `s.repeat(n)`, as §10's
+  table types them, with lengths in Unicode scalar values as §10 chooses (not bytes, not
+  grapheme clusters: `"🇰🇪".length()` is `2`). The lowering is §14.2's: `chars().count()`
+  for `length`, and `str`'s own `contains`, `starts_with`, `ends_with`, `trim`,
+  `to_uppercase`, `to_lowercase` and `replace`, none of which cuts a character, so none can
+  panic on non-ASCII text; a text argument is passed as a `&str`, borrowed, not cloned.
+- **Codes emitted:** `MZ0905` (a text method's arity or argument type), `MZ0708` (a method
+  text does not have, with the nearest of §10's names as a `guess`), `MZ0915` (a literal
+  negative `repeat` count), `MZ0919` (the methods below), `MZ0927` (`replace`'s label), and
+  `MZ0962`: `len(s)` (`exact` `s.length()`, since Python counts scalar values too);
+  `s.len()`, `s.size()`, `s.count()` and `s.length` (`guess` `s.length()`: Rust's `len`
+  counts bytes and JavaScript's `length` UTF-16 units, so the fix may change the meaning);
+  `strip()` (`guess` `trim()`: Python also strips U+001C to U+001F); `upper()`, `lower()`, `to_uppercase()`, `to_lowercase()`,
+  `toUpperCase()`, `toLowerCase()`, `startswith`, `endswith` and `includes` (`exact`, the
+  name alone); `replace_all(a, b)` and `replaceAll(a, b)` (`exact` `replace(a, by = b)`);
+  and §3.3's emptiness, `s.is_empty()`, `s.length() is 0`, `is not 0`, `> 0` and
+  `not s.is_empty()`, with `len(s)`, `s.len()`, `s.size()`, `s.count()` or `s.length` in
+  place of `s.length()` (`exact` `s is ""` or `s is not ""`, in one pass). No code is
+  claimed.
+- **Retired from `MZ0919`:** methods on text, except the six below.
+- **Where the code departs from this text, the code is the fact.**
+  - _`s.repeat(n)` traps_ on a negative `n` (`negative repeat count`) and on a result longer
+    than a `String` can hold (`text too long`), both `MZ0991` with exit 101. §10 says only
+    "`n` ≥ 0", and §4.3's table of traps does not list either; this adds them to it. The
+    length is checked before `str::repeat` runs, so its capacity-overflow panic cannot
+    happen. A result that fits but cannot be allocated aborts the process as any allocation
+    failure does, which is not a trap (as for recursion depth, §4.3).
+  - _A literal negative `repeat` count is `MZ0915`_, a fault visible in constants, which
+    §16's row does not name.
+  - _`replace`'s second argument is labelled `by`_ (§10's `s.replace(old, by = new)`), and
+    `s.replace(a, b)` without the label is `MZ0927`, §16's "a positional argument after the
+    first", with the `exact` fix inserting the `by =` label; `by: b` and another name in
+    its place (`with = b`, §16's "an unknown label") get the `exact` `by = b`. The checker
+    reports it, not the parser, so `3.replace(1, 2)` is `MZ0708` alone. §6.5's labels are
+    not built for any other call, so `range` and `replace` are the two whose label the
+    parser reads (and `slice`'s `to`, read so that its one diagnostic is `MZ0919`, labelled
+    or not); `range(0, stop = 3)` is still C4's `MZ0905`. An empty `old` inserts `new` before every scalar value and at the end, as
+    Python's `replace` does; §10 does not say.
+  - _`to_upper` and `to_lower` are Rust's full Unicode case mappings_, so a character may
+    become two (`"straße".to_upper()` is `"STRASSE"`) and a final sigma lowers to `ς`.
+    `trim` removes Unicode `White_Space` at both ends, which is Rust's `str::trim`.
+  - _Emptiness's fix_ is one `MZ0962` for the whole expression. Inside a comparison it is
+    parenthesised (`(s is "") is false`); inside an interpolation it has no fix, since a
+    string literal cannot stand in `{…}` (§3.6). Where Python's `==` or a prefix `!` sits
+    inside the expression (`s.length() == 0`), the operator's `MZ0910` is folded into the one
+    fix, as §16 asks. `count()` with no argument is `length()` on text too, by §9.4's rule
+    for lists; `s.count(t)` (Python's occurrence count) is `MZ0708`.
+  - _Spellings that mean one of the waiting methods get a `guess`_, never an `exact` fix,
+    because the meanings differ and the fix leads to `MZ0919`: JavaScript's
+    `substring(a, b)` is `slice(a, to = b)` and `indexOf(t)` is `find(t)`; `substr`, which
+    takes a length, has no fix. Python's `strip(chars)` has no fix either.
+  - _A camelCase method name_ (`toUpperCase`) is one diagnostic: the lexer's `MZ0101` is
+    dropped where the checker reports the same word, as the front end already does for
+    names, and `MZ0962`'s fix replaces the word as written. `startsWith` is `MZ0101` alone,
+    since its snake_case form is the Mzizi method.
+- **The language harness** (RFC-0012 §1.2): `compiler/src/harness.rs` gains a method entry
+  for each of the nine methods, typed from `text::method`, each with `examples/text.mz` as its
+  runnable example; the `text` type's entry lists them; `MZ0919`, `MZ0915`, `MZ0927`,
+  `MZ0962`, `MZ0708` and `MZ0991` say what this adds. `compiler/tests/harness.rs` checks that
+  the method entries are exactly `numbers::METHODS` and `text::METHODS`, and that the
+  examples between them call every one.
+- **Not built:** the methods that return an option or a list, `s[i]`, `s.slice(a, to = b)`,
+  `s.find(t)`, `s.parse_int()`, `s.parse_float()`, `s.split(sep)` and `s.chars()` (each one
+  `MZ0919`, naming what it returns, until C7's lists and options and §18.2's "C4 options"
+  exist), with `split("")`'s `MZ0915`; `t in s` and its `MZ0962` (it waits for C7's `in`);
+  §20 Q20's decision on whether built-in methods meet C6's "Done when", so the row stays
+  🟡; and the guide change of §18.5.
+
+**Wave 1, C7: collections (§9)** (Refs #69; on `staging`, after C4, C9 and the language
+harness). Built and tested in `compiler/tests/program_collections.rs`, with
+`examples/collections.mz` run through `mz run` against `examples/collections.expected`;
+nothing measured.
+
+- **Modules.** Each of Wave 0's modules gains a child for §9: `parse/program/collections.rs`
+  (the types, bracket literals, indexing, `xs[i] = v`, `otherwise`, and the tuple, lambda and
+  `not in` idioms), `program/collections.rs` (the checker) and `run/collections.rs` (the
+  lowering and its runtime helpers); `compiler/src/collections.rs` is the one table of §9.2's
+  methods and §9.4's folds that the checker, the lowering and the language harness read. `Ty`
+  gains `List`, `Option`, `Map` and `Set`, each interned as `Result` is (`intern::one`); the
+  trees gain `ExprKind::List`, `MapLit`, `Index` and `None`, `BinOp::In` and `Otherwise`, and
+  `StmtKind::IndexAssign`.
+- **Built:** `list(T)`, `map(K, V)` and `set(K)` as types; bracket literals (§9.1); indexing
+  that returns an option (§3.7); `x otherwise d` (§8.1); `in` (§3.3); `c is none` and
+  `c is not none` on a collection; `for each` over a list (§7.3); `range(a, to = b)` as a list
+  anywhere; every operation of §9.2's two tables; `map`, `filter` and `fold` (§9.3); the
+  eight named folds of §9.4; §3.8's text forms for collections; and §14.2's rows for them.
+  Codes emitted: `MZ0909`, `MZ0960`–`MZ0964`, and `MZ0105`, `MZ0710`, `MZ0711`, `MZ0712`,
+  `MZ0905`, `MZ0910`, `MZ0912`, `MZ0915` and `MZ0950` reused as §16 says. `MZ0105` moved from
+  the lexer to the type parser in a program, and a component's and a service's `MZ0105`
+  tests are unchanged.
+- **Retired from `MZ0919`:** `list`, `map` and `set` types, `range` off a `for each` line, and
+  `none` in `c is none`. `MZ0919` still names `option(T)` written as a type, `none` as a value
+  and narrowing an option (below), and indexing text with the text methods (C6).
+- **Split: what this pull request leaves to the "C4 options" follow-up (§18.2).** C7 builds
+  options only as far as indexing needs: an option is what `xs[i]`, `m[k]`, `first` and
+  `slice` return, it may be bound with `let` or `var` and held in a collection, and it is read
+  with `otherwise`. Writing `option(T)` as a type, `none` as a value, `when x is none` /
+  `when x is not none` and the guard that narrows the rest of its block, implicit wrapping of
+  a `T` where an `option(T)` is expected, `MZ0938` (`??`, `.unwrap_or(d)`, and `otherwise` on
+  a non-option with its `exact` deletion) and `MZ0939` are that follow-up's.
+- **Where the code departs from this text, the code is the fact.**
+  - _`otherwise` on a value that is not an option is `MZ0912`, with no fix_, not §8.1's
+    `MZ0938` with its `exact` deletion: `MZ0938` is the "C4 options" follow-up's code, and
+    C7 claims only `MZ0909` and `MZ0960`–`MZ0964`.
+  - _The harness's precedence levels are §3.5's table_: `otherwise` takes level 6, so
+    comparison and `in` are 7, `not` 8, `and` 9 and `or` 10. Waves 0 and 1 numbered
+    comparison 6 to `or` 9, with no level for `otherwise`.
+  - _A type constructor's harness entry is named with its parameters_, `list(T)`,
+    `option(T)`, `map(K, V)` and `set(K)`, so the type `map` and the method `xs.map(f)` are two
+    entries.
+  - _§6.5's labels are not built_, so a collection method reads one label each, as `range`
+    reads `to`: `slice(a, to = b)` and `fold(init, step = f)` (and Python's
+    `sorted(xs, key = f)`, to repair it); the positional `xs.fold(0, add)` is still read.
+  - _`xs.slice(a, to = b)` is also `none` when `a` is past `b`_, not only when an end is
+    outside the list. §9.2 does not say what a reversed range is.
+  - _An empty `[]` where a type that is not a collection is expected_ (`let n: int = []`) is
+    `MZ0711`, one mismatch, not `MZ0961`; `MZ0961` is `[]` where nothing is expected.
+  - _`MZ0962`'s fixes that rewrite around a receiver_ (`.contains(x)` to `x in xs`,
+    `.is_empty()` to `xs is none`, `len(xs)`) are `exact` when the receiver is a name or a
+    path and a `guess` otherwise, as §16 says; a rename (`find` to `first`, `.append` to
+    `.push`, `.length` to `.length()`) is `exact` on any receiver. `x in xs` replacing
+    `xs.contains(x)` inside another comparison (`a is xs.contains(x)`) reads as a chained
+    comparison, `MZ0913`, on the next check.
+  - _`.append(v)` counts as a mutation_, as `push` does, so a `var` it changes is not
+    `MZ0924`, and on a `let` it is `MZ0960` beside `MZ0962`: applying both fixes gives
+    `var xs` and `xs.push(v)`.
+  - _A key written twice in a map literal_ is `MZ0961` only for literal keys (an `int`, a
+    `text` with no interpolation, a `bool`, a variant written with its enum), the ones the
+    checker can compare.
+  - _A function argument is the bare name of a `fn` of the program_, not shadowed by a
+    binding. A binding or any other expression there is `MZ0909`. The lowering passes the Rust
+    `fn` item to a generic helper (`mz_map(&xs, double)`), and each helper clones what it
+    hands on, so the list itself is read by reference and never copied for the call.
+  - _A read of a binding whose type is not `Copy` clones_, as §14.1 says, except as the
+    receiver of a method that only reads, an index, `in` and `is none`, which borrow it.
+  - _Indexed assignment through two indexes_ (`grid[i][j] = v`) is `MZ0917`, naming the
+    repair: bind the inner list to its own `var`. §9.2 lists one index.
+  - _Nesting:_ each type nested in another (`list(list(…))`, `[[…]]`) is a level of the
+    program's 32, as each bracket literal, index and `otherwise` link is, so 100,000 of any
+    of them is one `MZ0411` on a 1 MiB stack. A signature cut short by it has an unknown
+    return type, so its `return`s say nothing more.
+- **The language harness** (RFC-0012 §1.2): entries for the type constructors `list(T)`,
+  `option(T)`, `map(K, V)` and `set(K)`; the operators `in`, `otherwise`, `index` and `none`;
+  `bracket literal`, `indexed assignment` and `range`; one method entry per row of
+  `compiler/src/collections.rs`, which the harness's tests compare with the registry; the
+  `for each` entry's list form; and code entries for `MZ0710` (off the pending list),
+  `MZ0960`, `MZ0961`, `MZ0963` and `MZ0964`, each with a trigger. `examples/collections.mz`
+  and two smaller programs are the runnable examples, with their output compared.
+- **Beside C6 (#98, which merged first; this branch rebased onto it).** C6's text `length`
+  keeps the harness entry `length`, and a collection's is `collection length`.
+  `xs.len()`, `.size()` and `.count()` on a collection are `exact` to `length()` on a name or
+  a path, since each counts elements as `length()` does; C6's review made the text forms a `guess` where the
+  units differ. `len(x)` is `exact` on text (Python counts scalar values, as `length()`
+  does) and on a collection that is a name or a path. `t in s` on text is `MZ0962` with the
+  `exact` fix `s.contains(t)`, C6's method, so the fix now leads to a program that checks.
+  C6's methods that return an option or a list (`s[i]`, `slice`, `find`, `parse_int`,
+  `parse_float`, `split`, `chars`) still report `MZ0919` (`text::WAITING`): C7 builds the
+  options and lists they need, and a follow-up builds them.
+- **Fixed after an independent review of #99.**
+  - `sorted(xs, key = f)` is `exact` only when the label is `key` and `f` is a function of
+    the program. Another label (`reverse = true`) is `MZ0905`, and the sort gets no fix. A
+    key that is not a function gets a `guess`. A call now records whether its labelled
+    argument was written with its label.
+  - Another language's length compared with 0 now goes straight to `c is none` (or
+    `is not none`), so one `mz fix` pass converges. This covers `len(xs)`, `.len()`,
+    `.size()`, `.count()` and `.length` with `is 0`, `is not 0`, `> 0`, `==` and `!=`, and
+    under `not` (`not xs.length() is 0` is `xs is not none`). Before, it went to
+    `c.length() is 0` and needed a second pass. The parser's `MZ0910` inside such a
+    comparison (`==`, `not a is b`) is folded into the checker's `exact` fix in `lib.rs`,
+    as it already was for text. When the checker's fix is only a guess (the receiver is not
+    a name or a path), nothing is folded, and the parser's `exact` fix stays. A test runs
+    `mz fix` once on the shipped binary, then `mz check`, and expects a clean result.
+  - `xs.is_empty()` beside another comparison is fixed to `(xs is none)`, not the chain
+    `xs is none is true`, which did not check.
+  - `range(a, to = b)` as a list computes its length with checked arithmetic and reserves
+    it with `try_reserve_exact`. A list too long for memory is `MZ0991` (exit 101), not a
+    capacity-overflow panic or the allocator's abort (exit 134). `xs.map(f)` reserves its
+    result the same way. The reservation is only as good as the host's: on Linux with
+    overcommit, a reservation that succeeds can still be killed for memory later. Other
+    growth is not checked: a loop of `push`, `filter`, `sort_by` and `group_by` copies,
+    each bounded by a collection the program already holds.
+  - `.find(f)` gets a `guess` `first`, not `exact`: `first` returns an option, which the
+    program may then need to read with `otherwise` (`MZ0710`).
+- **Found in that review and not changed here:**
+  - A map literal whose keys are equal only at run time keeps the last value:
+    `[a: 1, "k": 2]` with `a` bound to `"k"` is `["k": 2]`. A key written twice as a literal
+    is `MZ0961`.
+  - `range(1, 3)` and `xs.slice(0, 2)` are accepted without their `to` label, and
+    `xs.fold(0, add)` without `step`. §6.5's labels are read only where they are written.
+    The parser records whether a call's label was written (`ExprKind::Call::labelled`),
+    but only `sorted` reads it, and the `slice` and `fold` methods do not record it.
+  - `xs[0].push(1)` is `MZ0710`, whose say suggests `otherwise` on a receiver that is being
+    changed. No default makes that a change to `xs`.
+- **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and C6's
+  methods that return an option or a list (above); `p in "a" "b"` as `MZ0910` (§3.3); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
+
+**C8, records and methods** (Refs #69; tracker row C8, 🟡 until it is on `main`). Built and tested in
+`compiler/tests/program_records.rs`, with `examples/records.mz` run by `mz run` against `examples/records.expected`.
+Nothing here is measured.
+
+- **Built:** the `record` block with `field`s, `fn` methods and a `contract` of `always` clauses (§11, §11.2, §11.4);
+  construction by field name (`point(x = 1.0, y = 2.0)`, §11.1); `p with (x = 3.0)` (§11.1); field reads `p.x`; a
+  field assigned through a `var` (`p.x = v`, the statement form of §11.1); `is` on records;
+  the text form `point(x = 1.0, y = 2.0)`, with text fields quoted (§3.8). A method's receiver is `self`, bound in the
+  method and never declared; `self` outside a method and in a parameter list is `MZ0970`.
+- **Checked at check time:** `MZ0808` for a literal (positional, unknown field with its nearest name as a `guess`,
+  missing, repeated, out of declaration order, a value of the wrong type); `MZ0974` for `with` on the same kinds of
+  mistake and on a value that is not a record; `MZ0971` for assigning to `self` in a method; `MZ0975` for a literal
+  that breaks an `always` clause (folded over literal fields), and for a clause that calls a `fn` or a method, builds
+  or copies a record, or uses `try`; `MZ0712` for a clause that is not a `bool`; `MZ0950` for a result field;
+  `MZ0904`, `MZ0921` for names; `MZ0708` for a field or method that is not there, and for a method named without its
+  parentheses; `MZ0905` for a method's arguments; `MZ0960` and `MZ0711` for a field assignment.
+- **Checked at run time:** `always` is checked after every construction, `with` and field assignment, and a broken
+  clause traps with `MZ0991` and exit 101, naming the record, the clause and the line (§4.3, §11.4). The check is in
+  every build, as §11.4 says.
+- **Lowered:** a record is a Rust struct deriving `Clone`, `Debug` and `PartialEq`; each method is an `impl` method
+  named `m_<name>` taking `&self`, so no user method can shadow a derived trait or a generated helper; each `always`
+  clause is an `mz_check` method. The record shares the enums' Rust naming (`rust_enum_names`).
+- **Where the code departs from this text, the code is the fact.**
+  - _The `MZ0808` fixes are not built._ §11.1's `exact` fixes for positional construction and out-of-order fields are
+    not built: both are `MZ0808` with no fix, and a `guess` only for an unknown name's nearest field. A field left out
+    is reported once, and not again when a misspelt name is guessed to be that field.
+  - _`MZ0919` reports two designed forms that are not built_: a method that says `changes self` (§11.2), and a record
+    that holds itself, directly or through an `option` (§11.5's boxes; a `list` holds one with no box). `MZ0972`,
+    `MZ0973` and `MZ0976` are not emitted.
+  - _A method's name cannot be a field's_ (`MZ0970`, §11.2). Two methods of one record may not share a name
+    (`MZ0904`); a method and a `fn` are in different namespaces and may share one.
+  - _A record is not a map key or a set element_ (§11.1): `MZ0964`, as the key rule already gives.
+  - _Positional values of a record_ are reported as `MZ0808` with no fix, not `exact`, because a record's order is
+    the author's to state.
+- **Not built:** `changes self` (`MZ0919`); a record that holds itself (`MZ0919`); payload enums (§11.5), so
+  `MZ0973` is not emitted; `to_json` (§11.1); generics and interfaces (row P12, §11.3); `option` fields built with
+  `none` (the C4 options follow-up).
+
 ## 19. What this RFC does not claim
 
 - That any of it is built. §18.6 records what lands, pull request by pull request.
@@ -2433,6 +2682,8 @@ owner's yes, no or change before the wave that builds it.**
     "a generic function works for two types; an interface is satisfied", outside Tier 1 and after
     M1, carrying survey F25 and F26. This RFC does not edit `LANGUAGE-TRACKER.md`; the owner's
     answer does, in its own pull request.
+    **Decided (owner, 2026-10-08, #69): split as proposed.** `LANGUAGE-TRACKER.md` C8 is now
+    "User types: records and methods", and the new row P12 is "Generics and interfaces".
 22. **Indexing returns an option** (§3.7, survey F2). This reverses the draft's trapping `xs[i]`
     and drops `.get`. The cost is an `otherwise` or a guard wherever the author knows the index is
     in range, the commonest case in loops over `range(0, to = xs.length())`. Accept, or keep the

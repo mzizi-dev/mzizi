@@ -2309,6 +2309,8 @@ fn describe(tok: &Tok) -> String {
         Tok::RParen => "`)`".to_string(),
         Tok::Comma => "`,`".to_string(),
         Tok::Dot => "`.`".to_string(),
+        Tok::LBracket => "`[`".to_string(),
+        Tok::RBracket => "`]`".to_string(),
         Tok::Op(op) => format!("`{op}`"),
         Tok::Newline => "end of line".to_string(),
         Tok::Eof => "end of file".to_string(),
