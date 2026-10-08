@@ -1180,7 +1180,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.5, §16",
         EXACT,
         PROGRAM,
-        "a call's label written another way: `range(a, to: b)` or `s.replace(a, by: b)`, whose exact fix writes `to = b`, or `s.replace(a, b)` with no label, whose exact fix inserts the `by =` label (§6.5's other labels are not built)",
+        "a call's label written another way: `range(a, to: b)` (exact `to = b`), or `s.replace(a, b)`, `s.replace(a, by: b)` or `s.replace(a, with = b)` (exact `by = b`); §6.5's other labels are not built",
         "program t\n  fn main\n    for each i in range(0, to: 3)\n      print(i)\n    end\n  end fn main\nend program t\n",
     ),
     code(

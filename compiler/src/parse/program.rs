@@ -2202,6 +2202,7 @@ impl P {
                 name_span: at,
                 args: vec![exponent],
                 called: true,
+                unlabelled: false,
             },
         };
         let d = Diagnostic::error(
@@ -2295,7 +2296,7 @@ impl P {
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
         let (args, close) = if name == "range" {
-            let (args, close, _) = self.args_labelled(Some((1, "to")));
+            let (args, close, _) = self.args_labelled(Some((1, "to")), false);
             (args, close)
         } else {
             self.args()
@@ -2316,15 +2317,18 @@ impl P {
 
     /// `(a, b)`: the cursor is on `(`. Returns the arguments and the `)`'s span.
     fn args(&mut self) -> (Vec<Expr>, Span) {
-        let (args, close, _) = self.args_labelled(None);
+        let (args, close, _) = self.args_labelled(None, false);
         (args, close)
     }
 
     /// [`P::args`], where `label` is an argument's position and the one label it may carry.
-    /// Also says whether that label was written.
+    /// Also says whether that label was written. With `misspelt`, another name in that
+    /// label's place is `MZ0927` with that label as its fix (a method's, RFC-0013 §10);
+    /// without it, as for `range` since C4, it is a named argument (`MZ0905`).
     pub(super) fn args_labelled(
         &mut self,
         label: Option<(usize, &str)>,
+        misspelt: bool,
     ) -> (Vec<Expr>, Span, bool) {
         let open = self.bump().span;
         let mut args = Vec::new();
@@ -2356,6 +2360,29 @@ impl P {
                     Confidence::Exact,
                 );
                 self.failed = false;
+                labelled = true;
+                self.bump();
+                self.bump();
+            } else if let (Tok::Ident(n), Tok::Equals) =
+                (self.peek().clone(), self.peek_at(1).clone())
+                && misspelt
+                && let Some((at_arg, want)) = label
+                && at_arg == args.len()
+            {
+                // `s.replace(a, with = b)`: this argument takes one label, so another
+                // name is a misspelling of it (RFC-0013 §16, `MZ0927`), and the fix is that
+                // label. The label is read, so the call is one diagnostic.
+                let at = self.span();
+                self.err_fix(
+                    "MZ0927",
+                    at,
+                    format!(
+                        "`{n} = …` names no parameter — this argument is labelled `{want} = …`"
+                    ),
+                    at,
+                    want,
+                    Confidence::Exact,
+                );
                 labelled = true;
                 self.bump();
                 self.bump();

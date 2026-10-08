@@ -1269,6 +1269,7 @@ impl<'a> FnCheck<'a> {
                 name_span,
                 args,
                 called,
+                ..
             } => self.method(e, recv, name, *name_span, args, *called),
             ExprKind::Unary {
                 op: UnOp::Try,
@@ -1878,42 +1879,7 @@ impl<'a> FnCheck<'a> {
         let Some((params, ret)) = numbers::method(rt, name) else {
             return self.no_such_method(e, rt, &r, name, name_span, args, called);
         };
-        if !called {
-            let say = format!(
-                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
-            );
-            if params.is_empty() {
-                self.err_fix(
-                    "MZ0962",
-                    name_span,
-                    say,
-                    Span::single(name_span.end_line, name_span.end_col, 0),
-                    "()",
-                    Confidence::Exact,
-                );
-            } else {
-                self.err("MZ0962", name_span, say);
-            }
-            return ret;
-        }
-        if args.len() != params.len() {
-            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
-            self.err(
-                "MZ0905",
-                e.span,
-                format!(
-                    "`.{name}` on {} takes {} argument{}{}, and this call gives {}",
-                    rt.name(),
-                    params.len(),
-                    if params.len() == 1 { "" } else { "s" },
-                    if wanted.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({})", wanted.join(", "))
-                    },
-                    args.len()
-                ),
-            );
+        if self.method_shape(e, rt, &r, name, name_span, &params, args.len(), called) {
             return ret;
         }
         for ((a, t), p) in args.iter().zip(&types).zip(&params) {
@@ -2005,6 +1971,62 @@ impl<'a> FnCheck<'a> {
             }
         }
         ret
+    }
+
+    /// A call of a built-in method `name` on a receiver of type `rt` (written `r`), whose
+    /// signature takes `params`: written without parentheses (`MZ0962`, `exact` `()` when
+    /// it takes nothing), or with the wrong number of arguments (`MZ0905`). True when it
+    /// reported, so the caller says nothing more. Numbers and text share it (§4.4, §10).
+    #[allow(clippy::too_many_arguments)]
+    fn method_shape(
+        &mut self,
+        e: &Expr,
+        rt: Ty,
+        r: &str,
+        name: &str,
+        name_span: Span,
+        params: &[Ty],
+        argc: usize,
+        called: bool,
+    ) -> bool {
+        if !called {
+            let say = format!(
+                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
+            );
+            if params.is_empty() {
+                self.err_fix(
+                    "MZ0962",
+                    name_span,
+                    say,
+                    Span::single(name_span.end_line, name_span.end_col, 0),
+                    "()",
+                    Confidence::Exact,
+                );
+            } else {
+                self.err("MZ0962", name_span, say);
+            }
+            return true;
+        }
+        if argc != params.len() {
+            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            self.err(
+                "MZ0905",
+                e.span,
+                format!(
+                    "`.{name}` on {} takes {} argument{}{}, and this call gives {argc}",
+                    rt.name(),
+                    params.len(),
+                    if params.len() == 1 { "" } else { "s" },
+                    if wanted.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", wanted.join(", "))
+                    },
+                ),
+            );
+            return true;
+        }
+        false
     }
 
     /// `MZ0708`: a method the receiver's type does not have. When the other numeric type

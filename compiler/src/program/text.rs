@@ -13,31 +13,33 @@ use crate::expr::{BinOp, Expr, ExprKind, Ty, UnOp, canonical, fold};
 use crate::resolve::nearest;
 use crate::text;
 
-/// `x.is_empty()`, called with no arguments: its receiver.
+/// `x.is_empty()`, or `x.is_empty` with no parentheses (which the parser reads as a
+/// dotted path): its receiver.
 fn is_empty_call(e: &Expr) -> Option<&Expr> {
     match &e.kind {
         ExprKind::Method {
-            recv,
-            name,
-            args,
-            called: true,
-            ..
+            recv, name, args, ..
         } if name == "is_empty" && args.is_empty() => Some(recv),
+        ExprKind::Field { base, name, .. } if name == "is_empty" => Some(base),
         _ => None,
     }
 }
 
-/// `x.length()`, or another language's `x.len()` / `x.size()`, called with no arguments:
-/// its receiver.
+/// `x.length()`, or another language's length of `x`: `x.len()`, `x.size()`, `x.count()`,
+/// `x.length` with no parentheses, or Python's `len(x)`: its receiver. A `fn len` of the
+/// program's own is the caller's to rule out.
 fn length_call(e: &Expr) -> Option<&Expr> {
+    let lengthy = |n: &str| matches!(n, "length" | "len" | "size");
     match &e.kind {
         ExprKind::Method {
             recv,
             name,
             args,
-            called: true,
+            called,
             ..
-        } if matches!(name.as_str(), "length" | "len" | "size") && args.is_empty() => Some(recv),
+        } if args.is_empty() && (lengthy(name) || (*called && name == "count")) => Some(recv),
+        ExprKind::Field { base, name, .. } if lengthy(name) => Some(base),
+        ExprKind::Call { name, args, .. } if name == "len" && args.len() == 1 => Some(&args[0]),
         _ => None,
     }
 }
@@ -61,7 +63,7 @@ impl FnCheck<'_> {
     /// comparison or of `not`. Only an `is_empty()` call is remembered, so the list stays
     /// as short as the calls written.
     pub(super) fn mark_tight(&mut self, e: &Expr) {
-        if is_empty_call(e).is_some() {
+        if is_empty_call(e).is_some() || length_compared(e).is_some() {
             self.tight.push(e.span);
         }
     }
@@ -87,14 +89,17 @@ impl FnCheck<'_> {
             }
             _ => return None,
         };
-        if self.shallow_ty(recv) != Ty::Text {
+        if self.shallow_ty(recv) != Ty::Text || self.fns.contains_key("len") {
             return None;
         }
         let t = self.expr(recv);
         if t != Ty::Text {
             return Some(Ty::Bool);
         }
-        self.empty_fix(recv, negated, at, e.span, false);
+        // Inside another comparison, `x is ""` needs the parentheses `x.length() is 0` may
+        // not have had: `(s.length() is 0) is false`.
+        let parens = self.tight.contains(&e.span);
+        self.empty_fix(recv, negated, at, e.span, parens);
         Some(Ty::Bool)
     }
 
@@ -156,7 +161,8 @@ impl FnCheck<'_> {
         called: bool,
     ) -> Ty {
         let r = receiver_text(recv);
-        if name == "is_empty" && called && args.is_empty() {
+        // `s.is_empty()`, or `s.is_empty` with no parentheses: emptiness (§3.3).
+        if name == "is_empty" && args.is_empty() {
             let parens = self.tight.contains(&e.span);
             self.empty_fix(recv, false, name_span, e.span, parens);
             return Ty::Bool;
@@ -179,40 +185,38 @@ impl FnCheck<'_> {
         let Some((params, ret)) = text::method(Ty::Text, name) else {
             return self.text_idiom(e, &r, name, name_span, args, called);
         };
-        if !called {
-            let say = format!(
-                "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
-            );
-            if params.is_empty() {
-                self.err_fix(
-                    "MZ0962",
-                    name_span,
-                    say,
-                    Span::single(name_span.end_line, name_span.end_col, 0),
-                    "()",
-                    Confidence::Exact,
-                );
-            } else {
-                self.err("MZ0962", name_span, say);
-            }
+        if self.method_shape(
+            e,
+            Ty::Text,
+            &r,
+            name,
+            name_span,
+            &params,
+            args.len(),
+            called,
+        ) {
             return ret;
         }
-        if args.len() != params.len() {
-            let wanted: Vec<&str> = params.iter().map(|p| p.name()).collect();
-            self.err(
-                "MZ0905",
-                e.span,
+        // `s.replace(a, b)`: its second argument is labelled (RFC-0013 §6.5, §10), and the
+        // `exact` fix inserts the label. The parser saw it unlabelled; only here is the
+        // receiver known to be text, so a number's `replace` is `MZ0708` alone.
+        if let ExprKind::Method {
+            unlabelled: true, ..
+        } = e.kind
+            && let (Some(label), [_, second]) = (text::label(name, 1), args)
+            && !e.has_error()
+        {
+            let at = second.span;
+            self.err_fix(
+                "MZ0927",
+                at,
                 format!(
-                    "`.{name}` on text takes {} argument{}{}, and this call gives {}",
-                    params.len(),
-                    if params.len() == 1 { "" } else { "s" },
-                    if wanted.is_empty() {
-                        String::new()
-                    } else {
-                        format!(" ({})", wanted.join(", "))
-                    },
-                    args.len()
+                    "`.{name}`'s second argument is labelled — write `{label} = {}`",
+                    canonical(second)
                 ),
+                Span::single(at.start_line, at.start_col, 0),
+                format!("{label} = "),
+                Confidence::Exact,
             );
             return ret;
         }

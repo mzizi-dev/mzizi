@@ -16,8 +16,16 @@ pub fn mz_text_length(s: &str) -> i64 {
 /// on a capacity overflow. A result that fits but cannot be allocated still stops the
 /// process the way any allocation failure does; that is not a trap.
 pub fn mz_text_repeat(s: &str, n: i64) -> Result<String, &'static str> {
-    let Ok(times) = usize::try_from(n) else {
+    if n < 0 {
         return Err("negative repeat count");
+    }
+    // Above `usize::MAX` (a 32-bit target) only the empty text has a result that fits.
+    let Ok(times) = usize::try_from(n) else {
+        return if s.is_empty() {
+            Ok(String::new())
+        } else {
+            Err("text too long")
+        };
     };
     match s.len().checked_mul(times) {
         Some(total) if total <= isize::MAX as usize => Ok(s.repeat(times)),

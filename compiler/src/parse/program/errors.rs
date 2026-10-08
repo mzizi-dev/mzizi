@@ -461,34 +461,19 @@ impl P {
     }
 
     /// A method's arguments, with the one label its signature gives (RFC-0013 §6.5):
-    /// `replace`'s `by` (§10). Written positionally, as Python writes `s.replace(a, b)`, it
-    /// is `MZ0927`, whose `exact` fix inserts the label. Every other method takes its
+    /// `replace`'s `by` and `slice`'s `to` (§10). Also says whether a second argument was
+    /// written without its label, as Python writes `s.replace(a, b)`: the checker, which
+    /// knows the receiver's type, reports that (`MZ0927`). Every other method takes its
     /// arguments by position.
-    fn method_args(&mut self, name: &str) -> (Vec<Expr>, Span) {
+    fn method_args(&mut self, name: &str) -> (Vec<Expr>, Span, bool) {
         let Some(label) = crate::text::label(name, 1) else {
-            return self.args();
+            let (args, close) = self.args();
+            return (args, close, false);
         };
         let before = self.diags.len();
-        let (args, close, labelled) = self.args_labelled(Some((1, label)));
-        if let [_, second] = args.as_slice()
-            && !labelled
-            && self.diags.len() == before
-            && !self.failed
-        {
-            let at = second.span;
-            self.err_fix(
-                "MZ0927",
-                at,
-                format!(
-                    "`.{name}`'s second argument is labelled — write `{label} = {}`",
-                    canonical(second)
-                ),
-                Span::single(at.start_line, at.start_col, 0),
-                format!("{label} = "),
-                Confidence::Exact,
-            );
-        }
-        (args, close)
+        let (args, close, labelled) = self.args_labelled(Some((1, label)), true);
+        let unlabelled = args.len() == 2 && !labelled && self.diags.len() == before && !self.failed;
+        (args, close, unlabelled)
     }
 
     /// What follows a value: `.name` (a variant through its enum, or a column), Rust's
@@ -599,16 +584,16 @@ impl P {
                         return self.error_expr(join(e.span, dot));
                     };
                     self.bump();
-                    let (args, called, end) = if matches!(self.peek(), Tok::LParen) {
+                    let (args, called, end, unlabelled) = if matches!(self.peek(), Tok::LParen) {
                         if self.nest >= PROGRAM_NESTING {
                             return self.too_deep_expr(name_at);
                         }
                         self.nest += 1;
-                        let (args, close) = self.method_args(&name);
+                        let (args, close, unlabelled) = self.method_args(&name);
                         self.nest -= 1;
-                        (args, true, close)
+                        (args, true, close, unlabelled)
                     } else {
-                        (Vec::new(), false, name_at)
+                        (Vec::new(), false, name_at, false)
                     };
                     e = Expr {
                         span: join(e.span, end),
@@ -618,6 +603,7 @@ impl P {
                             name_span: name_at,
                             args,
                             called,
+                            unlabelled,
                         },
                     };
                 }

@@ -294,6 +294,10 @@ pub enum ExprKind {
         args: Vec<Expr>,
         /// Whether the parentheses were written: `x.abs()` rather than `x.abs`.
         called: bool,
+        /// Whether an argument that takes a label (`replace`'s `by`, RFC-0013 §10) was
+        /// written without it. The parser cannot see the receiver's type, so the checker
+        /// decides whether that is `MZ0927`.
+        unlabelled: bool,
     },
     /// A prefix operator.
     Unary {

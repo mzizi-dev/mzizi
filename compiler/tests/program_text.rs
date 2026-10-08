@@ -272,7 +272,8 @@ fn mz0962_methods_waiting_for_options_get_a_guess() {
 }
 
 /// RFC-0013 §3.3: a text is not a collection and is never `none`, so its emptiness is
-/// `s is ""`, and every other spelling of the question is `MZ0962` with that `exact` fix.
+/// `s is ""`, and every other spelling of the question is `MZ0962` with that `exact` fix,
+/// applied in one pass of `mz fix`, never two.
 #[test]
 fn mz0962_emptiness_is_is_empty_text() {
     let cases = [
@@ -291,6 +292,15 @@ fn mz0962_emptiness_is_is_empty_text() {
             "print((s is \"\") is false)",
         ),
         ("print(s.trim().is_empty())", "print(s.trim() is \"\")"),
+        ("print(s.is_empty)", "print(s is \"\")"),
+        ("print(len(s) == 0)", "print(s is \"\")"),
+        ("print(len(s) > 0)", "print(s is not \"\")"),
+        ("print(s.count() is 0)", "print(s is \"\")"),
+        ("print(s.length is 0)", "print(s is \"\")"),
+        (
+            "print((s.length() is 0) is false)",
+            "print((s is \"\") is false)",
+        ),
         (
             "when s.is_empty() or s.length() is 0\n  print(1)\nend",
             "when s is \"\" or s is \"\"",
@@ -317,6 +327,13 @@ fn mz0962_emptiness_is_is_empty_text() {
     unfixed(&wrap("let s = \"ü\"\nprint(\"{s.is_empty()}\")"), "MZ0962");
 }
 
+/// A `fn len` the program declares is its own function, not Python's.
+#[test]
+fn a_program_of_its_own_len_is_not_the_idiom() {
+    let src = "program t\n\n  fn main\n    print(len(\"a\") is 0)\n  end fn main\n\n  fn len(s: text): int\n    return 1\n  end fn len\n\nend program t\n";
+    clean(src);
+}
+
 #[test]
 fn mz0927_replace_labels_its_second_argument() {
     fixed_by(
@@ -329,6 +346,16 @@ fn mz0927_replace_labels_its_second_argument() {
         "MZ0927",
         "\"aä\".replace(\"a\", by = \"b\")",
     );
+    // Another name in the label's place is a misspelling of it.
+    fixed_by(
+        &wrap("print(\"aä\".replace(\"a\", with = \"b\"))"),
+        "MZ0927",
+        "\"aä\".replace(\"a\", by = \"b\")",
+    );
+    // On a number, `replace` is not a method at all: that is the one diagnostic.
+    one(&wrap("print(3.replace(1, 2))"), "MZ0708");
+    // `slice` is not built: its one diagnostic is `MZ0919`, labelled or not.
+    unfixed(&wrap("let s = \"ab\"\nlet x = s.slice(0, 1)"), "MZ0919");
 }
 
 // ------------------------------------------------------------------- lowering
@@ -338,6 +365,32 @@ fn main_rs(src: &str) -> String {
     mzizi_lang_compiler::run::lower(&p, "t.mz").files[1]
         .1
         .clone()
+}
+
+/// Every method the checker types has a lowering arm (`run.rs` writes a `compile_error!`
+/// for one that has none).
+#[test]
+fn every_text_method_lowers() {
+    for name in mzizi_lang_compiler::text::METHODS {
+        let (params, _) =
+            mzizi_lang_compiler::text::method(mzizi_lang_compiler::expr::Ty::Text, name)
+                .expect("typed");
+        let args: Vec<String> = params
+            .iter()
+            .enumerate()
+            .map(|(k, t)| {
+                let v = if t.name() == "int" { "2" } else { "\"b\"" };
+                match mzizi_lang_compiler::text::label(name, k) {
+                    Some(l) => format!("{l} = {v}"),
+                    None => v.to_string(),
+                }
+            })
+            .collect();
+        let src = wrap(&format!("print(\"ab\".{name}({}))", args.join(", ")));
+        clean(&src);
+        let main = main_rs(&src);
+        assert!(!main.contains("compile_error!"), "{name}:\n{main}");
+    }
 }
 
 #[test]
