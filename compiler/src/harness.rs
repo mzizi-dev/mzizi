@@ -54,7 +54,7 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0 and wave 1 numbers";
+pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers and control flow";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -265,6 +265,16 @@ const NUMBERS: &str = include_str!("../../examples/numbers.mz");
 const NUMBERS_OUT: &str = include_str!("../../examples/numbers.expected");
 const METHODS: &str = "program methods\n\n  fn main\n    let f = 2.5\n    print(f.round())\n    print(f.floor())\n    print(f.ceil())\n    print(f.to_int())\n    print(16.0.sqrt())\n    print(f.is_nan())\n    print((-3).abs())\n    print(3.max(5))\n    print(1.5.min(0.5))\n    print(2.pow(10))\n    print(4.to_float())\n  end fn main\n\nend program methods\n";
 const METHODS_OUT: &str = "3.0\n2.0\n3.0\n2\n4.0\nfalse\n3\n5\n0.5\n1024\n4.0\n";
+const CONTROL: &str = include_str!("../../examples/control.mz");
+const CONTROL_OUT: &str = include_str!("../../examples/control.expected");
+const ELSE_WHEN: &str = "program grades\n\n  fn main\n    print(grade(95))\n    print(grade(75))\n    print(grade(40))\n  end fn main\n\n  fn grade(n: int): text\n    when n >= 90\n      return \"A\"\n    else when n >= 70\n      return \"B\"\n    else\n      return \"C\"\n    end\n  end fn grade\n\nend program grades\n";
+const ELSE_WHEN_OUT: &str = "A\nB\nC\n";
+const MATCH: &str = "program shapes\n\n  enum shape\n    circle\n    square\n    triangle\n  end\n\n  fn main\n    print(corners(square))\n    print(corners(shape.triangle))\n    let day = 7\n    match day\n      case 6 7\n        print(\"weekend\")\n      else\n        print(\"weekday\")\n    end\n  end fn main\n\n  fn corners(s: shape): int\n    match s\n      case circle\n        return 0\n      case square\n        return 4\n      case triangle\n        return 3\n    end\n  end fn corners\n\nend program shapes\n";
+const MATCH_OUT: &str = "4\n3\nweekend\n";
+const LOOPS: &str = "program loops\n\n  fn main\n    var total = 0\n    for each i in range(0, to = 10)\n      when i % 2 is 0\n        continue\n      end\n      total = total + i\n    end\n    print(total)\n    var n = 27\n    var steps = 0\n    while n > 1\n      when n % 2 is 0\n        n = n / 2\n      else\n        n = 3 * n + 1\n      end\n      steps = steps + 1\n    end\n    print(steps)\n    var k = 0\n    while true\n      k = k + 1\n      when k * k > 50\n        break\n      end\n    end\n    print(k)\n  end fn main\n\nend program loops\n";
+const LOOPS_OUT: &str = "25\n111\n8\n";
+const VALUES: &str = "program values\n\n  enum light\n    red\n    amber\n    green\n  end\n\n  fn main\n    let l = amber\n    let action = match l\n      case red\n        \"stop\"\n      case amber\n        \"slow\"\n      case green\n        \"go\"\n    end\n    print(action)\n    print(sign(-3))\n  end fn main\n\n  fn sign(n: int): text\n    return when n < 0\n      \"negative\"\n    else when n is 0\n      \"zero\"\n    else\n      \"positive\"\n    end\n  end fn sign\n\nend program values\n";
+const VALUES_OUT: &str = "slow\nnegative\n";
 const COMPONENT: &str = include_str!("../../primitives/badge.mz");
 const SERVICE: &str = "service t\n  route r\n    get \"/r\"\n    respond 200\n  end\n  contract\n    example get \"/r\" status is 200\n  end\nend service t\n";
 
@@ -385,9 +395,9 @@ pub const FEATURES: &[Feature] = &[
             "when <condition>\n  …\nend",
             "when <condition>\n  …\nelse\n  …\nend",
         ],
-        teach: "`when` is Mzizi's conditional statement, in a function body: a `bool` condition, a block, an optional `else` block, and a bare `end`. There is no truthiness, no trailing `:` and no braces, and `if` is not a word of the language. `else when`, `match` and loops are designed (RFC-0013 §7) and not built: nest a `when` inside `else`.",
+        teach: "`when` is Mzizi's conditional statement, in a function body: a `bool` condition, a block, an optional `else` block, and a bare `end`. There is no truthiness, no trailing `:` and no braces, and `if` is not a word of the language. A three-way choice continues with `else when` (its own entry); a choice over one enum's variants is a `match`.",
         types: "The condition is a `bool`.",
-        codes: &["MZ0712", "MZ0407", "MZ0937", "MZ0917", "MZ0919"],
+        codes: &["MZ0712", "MZ0407", "MZ0937", "MZ0917"],
         examples: &[run(WHEN, "negative\nzero\n")],
     },
     Feature {
@@ -455,6 +465,105 @@ pub const FEATURES: &[Feature] = &[
         types: "",
         codes: &["MZ0101", "MZ0104", "MZ0921", "MZ0707", "MZ0920"],
         examples: &[run(BINDINGS, "area 42\n")],
+    },
+    Feature {
+        name: "else when",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.1",
+        grammar: &["when <condition>\n  …\nelse when <condition>\n  …\nelse\n  …\nend"],
+        teach: "`else when <condition>` continues a `when` and shares its one `end`, as many times as needed; a final `else` takes what is left. Python's `elif` and the `else if` of TypeScript and Rust are other languages': the exact fix writes `else when`. A chain whose every condition is `<name> is <variant>` of one enum is a `match`, which checks that every variant has a case: that chain is an error whose guess fix rewrites it as one.",
+        types: "Each condition is a `bool`.",
+        codes: &["MZ0712", "MZ0933", "MZ0936", "MZ0937", "MZ0917"],
+        examples: &[run(ELSE_WHEN, ELSE_WHEN_OUT)],
+    },
+    Feature {
+        name: "match",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.2",
+        grammar: &["match <value>\n  case <value> …\n    …\n  else\n    …\nend"],
+        teach: "`match` tests one value against `case` lines, each listing one or more literals or variants separated by spaces (`case 6 7`), each followed by its block; `else`, last, takes the rest, and one `end` closes it. It takes an enum, an `int`, a `text` or a `bool`. On an enum it covers every variant or ends with `else`; on an `int` or a `text` it ends with `else`. A case that can never run is an error whose exact fix deletes it. There are no guards. `switch`, `default:`, `case _` and `_ =>` are other languages': exact fixes write `match` and `else`. A `match` over a `float` is an error: compare with `when`.",
+        types: "Each case value has the matched value's type; a bare variant is read against the matched enum.",
+        codes: &[
+            "MZ0930", "MZ0931", "MZ0933", "MZ0937", "MZ0711", "MZ0912", "MZ0708", "MZ0917",
+        ],
+        examples: &[run(MATCH, MATCH_OUT), run(CONTROL, CONTROL_OUT)],
+    },
+    Feature {
+        name: "for each",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.3, §6.5",
+        grammar: &["for each <name> in range(<from>, to = <to>)\n  …\nend"],
+        teach: "`for each i in range(a, to = b)` runs its block once for each `int` from `a` up to but not including `b`; the name is bound in the block only and cannot be assigned. `range` is read only on a `for each` line, and `for each` over a list waits for lists. Python's `for x in xs`, TypeScript's `for (const x of xs)` and Python's `range(n)` get exact fixes; a C-style `for (…; …; …)` is an error with no fix, and so is `for each` over an `int` (its guess is `range(0, to = n)`). `to: b` is written `to = b`.",
+        types: "`range` takes two `int`s; the name is an `int`.",
+        codes: &[
+            "MZ0934", "MZ0711", "MZ0905", "MZ0920", "MZ0922", "MZ0937", "MZ0919",
+        ],
+        examples: &[run(LOOPS, LOOPS_OUT)],
+    },
+    Feature {
+        name: "while",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.3",
+        grammar: &["while <condition>\n  …\nend"],
+        teach: "`while <condition>` runs its block for as long as the `bool` condition holds, testing it before each pass; it is Mzizi's one conditional loop. `while true` with a `break` is the loop that ends from inside; one with no `break` never ends of itself, so a function may end in it with no `return`. `loop` is Rust's (exact fix `while true`), and `do … while` has no fix.",
+        types: "The condition is a `bool`.",
+        codes: &["MZ0712", "MZ0934", "MZ0937"],
+        examples: &[run(LOOPS, LOOPS_OUT)],
+    },
+    Feature {
+        name: "break",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.3",
+        grammar: &["break"],
+        teach: "`break` leaves the innermost `for each` or `while`. Outside a loop it is an error; a line after it in the same block can never run.",
+        types: "",
+        codes: &["MZ0935", "MZ0907"],
+        examples: &[run(LOOPS, LOOPS_OUT)],
+    },
+    Feature {
+        name: "continue",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.3",
+        grammar: &["continue"],
+        teach: "`continue` starts the next pass of the innermost `for each` or `while`. Outside a loop it is an error; a line after it in the same block can never run.",
+        types: "",
+        codes: &["MZ0935", "MZ0907"],
+        examples: &[run(LOOPS, LOOPS_OUT)],
+    },
+    Feature {
+        name: "when or match as a value",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.4",
+        grammar: &[
+            "let <name> = when <condition>\n  <value>\nelse\n  <value>\nend",
+            "return match <value>\n  case <value>\n    <value>\n  else\n    <value>\nend",
+        ],
+        teach: "A `when` or a `match` may be the whole value of a `let`, a `var`, an assignment or a `return`, and nowhere else: never inside a larger expression or as an argument. Each branch is one line, an expression, and that line is its value. It is total: a `when` has an `else`, and a `match` covers every value. Every branch has one type. There is no ternary.",
+        types: "Every branch has the same type, which is the block's.",
+        codes: &["MZ0932", "MZ0936"],
+        examples: &[run(VALUES, VALUES_OUT)],
+    },
+    Feature {
+        name: "enum",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §1, §7.2, §18.6",
+        grammar: &[
+            "enum <name>\n  <variant>\n  <variant>\nend",
+            "<variant>",
+            "<enum>.<variant>",
+        ],
+        teach: "A program declares an enum with one snake_case variant name per line, closed by a bare `end`. A variant is written bare (`circle`) where the type expected settles its enum (a comparison's other side, a `case`, an annotated binding, an assignment, a `return`, an argument), and as `<enum>.<variant>` where two enums share it. Variants compare with `is` and order by declaration, and print as their names. A variant with columns is not built.",
+        types: "Each enum is its own type; its variants are its values.",
+        codes: &["MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0919"],
+        examples: &[run(MATCH, MATCH_OUT), run(VALUES, VALUES_OUT)],
     },
 ];
 
@@ -545,6 +654,7 @@ const NONE_EXACT: &[FixKind] = &[FixKind::None, FixKind::Exact];
 const NONE_GUESS: &[FixKind] = &[FixKind::None, FixKind::Guess];
 const ALL_FIXES: &[FixKind] = &[FixKind::None, FixKind::Exact, FixKind::Guess];
 const EXACT_GUESS: &[FixKind] = &[FixKind::Exact, FixKind::Guess];
+const GUESS: &[FixKind] = &[FixKind::Guess];
 
 const fn code(
     code: &'static str,
@@ -717,9 +827,9 @@ pub const CODES: &[Code] = &[
     code(
         "MZ0711",
         "RFC-0008 §6",
-        NONE,
+        NONE_GUESS,
         ALL_KINDS,
-        "a value of the wrong kind: a binding's declared type, an assignment, a call to a binding, or an interpolation with no text form",
+        "a value of the wrong kind: a binding's declared type, an assignment, a call to a binding, an interpolation with no text form, a `match` over a `float`, or `for each` over an `int` (guess `range(0, to = n)`)",
         "program t\n  fn main\n    let n: int = \"one\"\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -791,7 +901,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.2, §16",
         EXACT,
         PROGRAM,
-        "a statement after a `return` that every path takes, which can never run; the exact fix deletes it",
+        "a statement after a `return`, `break` or `continue` that every path takes, which can never run; the exact fix deletes it",
         "program t\n  fn main\n    print(one())\n  end fn main\n  fn one: int\n    return 1\n    print(2)\n  end fn one\nend program t\n",
     ),
     code(
@@ -887,8 +997,8 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "a form RFC-0013 designs that this compiler does not build yet (`while`, `for each`, `match`, `else when`, collections and options, methods on `text`, a program's `contract`, …), named and reported once",
-        "program t\n  fn main\n    let n = 1\n    match n\n    end\n    print(n)\n  end fn main\nend program t\n",
+        "a form RFC-0013 designs that this compiler does not build yet (collections and options, `range` off a `for each` line, an enum variant with columns, methods on `text`, a program's `contract`, …), named and reported once",
+        "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0920",
@@ -949,6 +1059,62 @@ pub const CODES: &[Code] = &[
         PROGRAM,
         "a binding with no value",
         "program t\n  fn main\n    let n\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0930",
+        "RFC-0013 §7.2, §16",
+        NONE,
+        PROGRAM,
+        "a `match` that misses a case: the enum variants it misses, named, or `else` on an `int` or a `text`",
+        "program t\n  enum e\n    a\n    b\n  end\n  fn main\n    let x = a\n    match x\n      case a\n        print(1)\n    end\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0931",
+        "RFC-0013 §7.2, §16",
+        EXACT,
+        PROGRAM,
+        "a case that can never run: a value listed twice, a case after `else`, or an `else` when every value has a case; the exact fix deletes it",
+        "program t\n  fn main\n    let n = 1\n    match n\n      case 1\n        print(1)\n      case 1\n        print(2)\n      else\n        print(3)\n    end\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0932",
+        "RFC-0013 §7.4, §16",
+        NONE,
+        PROGRAM,
+        "a `when` or `match` used as a value where it cannot be (inside a larger expression or an argument), without `else` or a case for every value, with a branch that is not one value line, or with branches of different types",
+        "program t\n  fn main\n    let n = when true\n      1\n    end\n    print(n)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0933",
+        "RFC-0013 §7.1, §7.2, §16",
+        EXACT,
+        PROGRAM,
+        "a conditional spelt from another language: `elif`, `else if` (exact `else when`), `switch` (exact `match`), `default:`, `case _`, `_ =>` (exact `else`)",
+        "program t\n  fn main\n    when 1 < 2\n      print(1)\n    elif 2 < 3\n      print(2)\n    end\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0934",
+        "RFC-0013 §7.3, §16",
+        ALL_FIXES,
+        PROGRAM,
+        "a loop spelt from another language: `for x in xs`, `for (const x of xs)`, `loop`, `range(n)` (exact), TypeScript's `for (… in …)` (a guess: it iterates keys), a C-style `for` and `do … while` (no fix)",
+        "program t\n  fn main\n    loop\n      break\n    end\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0935",
+        "RFC-0013 §7.3, §16",
+        NONE,
+        PROGRAM,
+        "`break` or `continue` outside a loop",
+        "program t\n  fn main\n    break\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0936",
+        "RFC-0013 §7.1, §7.4, §16",
+        GUESS,
+        PROGRAM,
+        "an `else when` chain whose every condition is `<name> is <variant>` of one enum, as statements or as a value: a `match`, which checks every variant has a case; the guess rewrites it as one",
+        "program t\n  enum e\n    a\n    b\n  end\n  fn main\n    let x = a\n    when x is a\n      print(1)\n    else when x is b\n      print(2)\n    end\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0937",
@@ -1156,7 +1322,8 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
             "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value.",
             "RFC-0013 §3.6, §3.8",
         )),
-        Ty::Nothing | Ty::Error => None,
+        // An enum is the program's own type, registered as the `enum` entry.
+        Ty::Nothing | Ty::Error | Ty::Enum(_) => None,
     }
 }
 
@@ -1449,8 +1616,14 @@ pub fn statement_entry(kind: &crate::program::StmtKind) -> &'static str {
         StmtKind::Bind { mutable: true, .. } => "var",
         StmtKind::Assign { .. } => "assignment",
         StmtKind::Return(_) => "return",
+        StmtKind::When { else_whens, .. } if !else_whens.is_empty() => "else when",
         StmtKind::When { .. } => "when",
         StmtKind::Expr(_) => "expression statement",
+        StmtKind::Match { .. } => "match",
+        StmtKind::For { .. } => "for each",
+        StmtKind::While { .. } => "while",
+        StmtKind::Break => "break",
+        StmtKind::Continue => "continue",
     }
 }
 
@@ -1472,9 +1645,12 @@ pub fn expression_entry(kind: &crate::expr::ExprKind) -> &'static str {
             .copied()
             .unwrap_or("MZ0708"),
         ExprKind::Call { name, .. } if name == "print" => "print",
+        ExprKind::Call { name, .. } if name == "range" => "for each",
         ExprKind::Call { .. } => "fn",
         ExprKind::Unary { op, .. } => unop_entry(*op).0,
         ExprKind::Binary { op, .. } => op.text(),
+        ExprKind::Variant { .. } => "enum",
+        ExprKind::When { .. } | ExprKind::Match { .. } => "when or match as a value",
         ExprKind::Error => "MZ0917",
     }
 }

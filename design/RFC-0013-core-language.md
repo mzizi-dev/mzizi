@@ -1,6 +1,6 @@
 # RFC-0013 — The core language: expressions, bindings, functions, control flow, errors and a program entry point
 
-**Status:** draft for review. Wave 0, the foundation slice of §18.1, is implemented, and §18.6 records what landed and what it changed here; the rest is design. It measures nothing. Later pull requests implement the other waves of §18, and each one updates §18.6 with what landed.
+**Status:** draft for review. Wave 0, the foundation slice of §18.1, and C4 of Wave 1 (§18.2) are implemented, and §18.6 records what landed and what it changed here; the rest is design. It measures nothing. Later pull requests implement the other waves of §18, and each one updates §18.6 with what landed.
 **Amended** on 2026-10-07 from `design/LANGUAGE-SURVEY.md` (PR #75, not merged yet), a survey of
 ten widely used languages: named arguments (§6.5), records built and copied by field name with
 invariants (§11), enum payloads (§11.5), `otherwise` (§8), indexing that returns an option and a
@@ -1778,7 +1778,7 @@ fills, the next family is `MZ10xx`.
 | `MZ0916` | `mz check`    | an expression statement whose value nothing reads (other than a `result`, which is `MZ0950`)                                                                                                                                                                                                                     |
 | `MZ0917` | `mz check`    | a line or expression a function body cannot read: a value expected and something else found, a missing `)`, an unknown escape, a second `else`, or tokens left over on a statement line (claimed by Wave 0)                                                                                                      |
 | `MZ0918` | `mz check`    | `+=`, `-=`, `*=`, `/=`, `++`, `--` — `exact` fix `x = x + 1`                                                                                                                                                                                                                                                     |
-| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (`while`, `for each`, `match`, `else when`, `float`, methods, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                                   |
+| `MZ0919` | `mz check`    | a form this RFC designs that the compiler does not build yet (lists, methods on text, records, an enum column, a program's `contract`, …), named, reported once, and its block skipped; each wave that builds a form retires it from this code (claimed by Wave 0)                                               |
 | `MZ0920` | `mz check`    | a name used before its binding, or after its block ended; `guess` fix declares a `var` before the block                                                                                                                                                                                                          |
 | `MZ0921` | `mz check`    | a name a program reserves: a record, enum or variant name, a built-in function's name (`print`, `range`), a contextual word where §1 bans it, or any name starting with `mz_` (shadowing is `MZ0713`)                                                                                                            |
 | `MZ0922` | `mz check`    | assignment to a `let` (`exact` fix `var`), a parameter or a loop binding (`self` is `MZ0971`)                                                                                                                                                                                                                    |
@@ -2119,6 +2119,104 @@ on Wave 0's pull request). Built and tested in `compiler/tests/program_numbers.r
     inside makes the covering fix a `guess`.
 - **Not built:** `in`, indexing, `[ … ]` and the collection forms of §3 (C7), text methods
   (C6), records and their text form (C8), and the guide change of §18.5.
+
+**Wave 1, C4: control flow in function bodies** (Refs #69; on `staging` after Wave 0, #80,
+and C1 + C5, #83).
+Built and tested in `compiler/tests/program_control.rs`, with `examples/control.mz` run in CI
+against `examples/control.expected`; nothing measured.
+
+- **Modules.** Each of Wave 0's modules gains a child for §7: `parse/program/control.rs`
+  (the parser), `program/control.rs` (the checker, and which statements end a path) and
+  `run/control.rs` (the lowering). The trees gain `StmtKind::Match`, `For`, `While`, `Break`
+  and `Continue`, an `else_whens` list on `StmtKind::When`, and `ExprKind::Variant`, `When` and
+  `Match`; `Ty` gains `Enum`, which carries its enum's name interned once per process.
+- **Built:** `else when` (§7.1), `match` over an enum, `int`, `text` or `bool` (§7.2),
+  `for each` over `range(a, to = b)`, `while`, `break` and `continue` (§7.3), `when` and `match` as
+  the value of a `let`, `var`, assignment or `return` (§7.4), early `return` from any of them,
+  and a program's `enum` (§1), whose variants are written bare or as `<enum>.<variant>`, print
+  as their names and order by declaration. Codes emitted: `MZ0930`–`MZ0936`, and `MZ0937` on
+  every new block line.
+- **Retired from `MZ0919`:** `while`, `for each`, `match`, `else when`, `break`, `continue`,
+  `loop` (now `MZ0934`) and a program's `enum`.
+- **Where the code departs from this text, the code is the fact.**
+  - _A program's `enum` lists one variant name per line and closes with a bare `end`_, as a
+    component's does; a variant with columns (§14.2's accessor table) is `MZ0919`. Rust's
+    `end enum x` echo is `MZ0206`, `exact` to `end`. A variant may be named `ok`, `error`,
+    `float`, `map`, `set` or `result` (§1); the other contextual words, the built-in names and
+    an `mz_` prefix are `MZ0921`, and a variant listed twice is `MZ0704`, `exact` deleting
+    its line.
+  - _A bare variant resolves against the type expected where it stands_ (RFC-0008 §5): the
+    other side of a comparison, a `match`'s value, an annotated `let` or `var`, the `var` an
+    assignment changes, the function's return type, and the parameter an argument fills.
+    Everywhere else (an unannotated `let`, a branch of a block used as a value, an
+    interpolation, `print`) it must belong to exactly one enum; one two enums share is
+    `MZ0708` there, with a `guess` fix naming its enum.
+  - _`for each` iterates `range(a, to = b)` only_, because lists are C7's. `range` anywhere else
+    is `MZ0919`, and `for each` over an `int` is `MZ0711` with the `guess` fix
+    `range(0, to = n)`. `range`'s `to` is the one label the parser reads, and the canonical
+    text writes it; §6.5's labels are not built, so the positional `range(a, b)` is still
+    read, and lowers the same, until the labels pull request makes it `MZ0927`.
+  - _A `case` lists literals (an `int`, a negative `int`, a `text` with no interpolation, a
+    `bool`) or variants._ Any other value is `MZ0917`; one of another type is `MZ0912`. Every
+    `MZ0931` has an `exact` fix: a value listed twice loses that value, a case whose every
+    value an earlier case takes and a case after `else` lose their lines, as §7.2's covered
+    `else` does. A case value already reported (a misspelt variant) suspends the coverage
+    verdict, so the `match` is not also `MZ0930` for the same mistake.
+  - _A `match` without `else` ends a path when its cases all do._ One that misses a case is
+    `MZ0930` alone: it is neither `MZ0906` (a path without `return`) nor a reason to call the
+    line after it unreachable (`MZ0907`).
+  - _`MZ0936` reads `<name> is <variant>` only_: `<e> in [<variants>]` waits for lists (C7)
+    and a path through a field waits for records (C8). Its `guess` fix rewrites the chain in
+    canonical form (§17), so a `##` comment inside the chain is not kept.
+  - **`MZ0933` also repairs Rust's `_ => <statement>` on one line**, moving the statement to
+    the line after `else`. A `match` on a `result` (`case ok <name>`) is C9's.
+  - _`MZ0934`'s TypeScript fix_ covers `for (const|let|var x of xs)`, `exact`, and the same
+    rewrite of `for (… in xs)`, a `guess`, since TypeScript's `in` iterates keys. A C-style
+    `for (…; …; …)` and a `do` line have no fix; the block is skipped to its `end`, or to
+    `do`'s `while` line, and never past `end fn`, so a loop written with braces costs no
+    more than its own lines.
+  - _A `break` or `continue` outside every loop is `MZ0935` alone_: it ends no path, so the
+    line after it is not `MZ0907`.
+  - _`MZ0937`'s `{` and `}`_ are not built: the lexer still reports a brace as `MZ0104`.
+  - _Nesting (§18.6, Wave 0):_ each `while`, `for each` and `match`, and each `when` or
+    `match` used as a value, is one level of the program's 32; an `else when` is none, since
+    the chain is flat. Wave 0 counted each `else when` as a level, so a chain of about 30
+    links was `MZ0411`; 10,000 links now check and lower on a 1 MiB stack.
+  - _Lowering:_ `while true` is `loop`, so `rustc` agrees that a `while true` no `break`
+    leaves ends every path. An enum's PascalCase name that is a Rust prelude or derive name
+    (`Vec`, `Option`, `Copy`, …) gets `MzUser` before it, and two names that PascalCase to one
+    (`a1` and `a_1`) are told apart by a numbered `MzUser` name.
+  - _A `match` over a `float` is `MZ0711`_, naming `when`: §7.2 lists an enum, an `int`, a
+    `text` and a `bool`, and a float literal in a `case` of an `int` `match` is `MZ0912`.
+    `float` values otherwise work in every C4 form (#83 merged first).
+  - _A `fn` named like a variant is `MZ0921`_ at the `fn` (§16's "a variant name"), and a
+    bare use of the name still reads as the variant. A name bound elsewhere in the function
+    (a block that ended) is never read as a variant, so it is `MZ0920`, not `MZ0708`.
+  - _A `for each` binding read after its loop is `MZ0920` with no fix_: the `var` its
+    block-ended fix would insert before the loop clashes with the loop's binding.
+  - _A bare `default` alone on a branch line of a `match` used as a value is that branch's
+    value_ (a binding may be named so); `default:` is still `MZ0933`. A case written after
+    the `else` stays after it in canonical text (§17), so `MZ0936`'s rewrite never makes it
+    run.
+- **The language harness** (RFC-0012 §1.2): each construct above has a feature entry in
+  `compiler/src/harness.rs`, with a runnable example, and `MZ0930`–`MZ0936` each have a code
+  entry with a trigger. `Ty` is not a `listed_enum!`, since `Ty::Enum` carries a name:
+  `Ty::ALL` lists the built-in types by hand, and an enum is not a surface type there; the
+  `enum` entry registers it.
+- **Not built:** `for each` over a list or a map, `x in [variants]`, a `match` on a result,
+  block braces, enum columns in a program, §18.2's "C4 options" follow-up (§8 whole:
+  `option(T)` in function bodies, `when x is not none`, guards, `otherwise`, `MZ0938`,
+  `MZ0939`), and the guide change of §18.5.
+- **One `match` for C9 to extend (#87).** C9's pull request builds its own `match` on a
+  result (`ResultMatch`, in `program/errors.rs`) and its own program `enum` with columns.
+  This one is meant to absorb both on whichever rebases second: a result `match` is a
+  `StmtKind::Match` whose scrutinee has a result type, whose cases are two more keys
+  (`ok`, `error`) in `program/control.rs`'s coverage check, with the universe `{ok, error}`
+  and no `else` allowed, so `MZ0930` and `MZ0931` come from one place; each `Arm` gains the
+  name its case binds. C9's `EnumDecl`, which has columns, replaces this one's, and the
+  lowering of both is one fieldless Rust `enum`. Until one of the two pull requests rebases
+  on the other, the two `match`es and the two `enum` declarations coexist only across
+  branches, never in one tree.
 
 ## 19. What this RFC does not claim
 

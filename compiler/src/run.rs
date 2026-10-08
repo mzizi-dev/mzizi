@@ -29,7 +29,9 @@ use std::process::Command;
 
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, canonical, fold};
 use crate::numbers::FLOAT_TEXT_RUNTIME;
-use crate::program::{FnDecl, Program, Stmt, StmtKind};
+use crate::program::{EnumDecl, FnDecl, Program, Stmt, StmtKind};
+
+mod control;
 
 /// The generated package, as `(relative path, contents)` pairs.
 #[derive(Debug, PartialEq)]
@@ -227,10 +229,16 @@ pub fn lower(p: &Program, source: &str) -> Package {
     }
     let mut lw = Lower {
         fns: &fns,
+        enums: &p.enums,
+        rust_enums: control::rust_enum_names(&p.enums),
         types: BTreeMap::new(),
         sites: Vec::new(),
+        ret: Ty::Nothing,
     };
     let mut body = String::new();
+    for e in &p.enums {
+        lw.enum_decl(e, &mut body);
+    }
     for f in &p.fns {
         lw.function(f, &mut body);
     }
@@ -340,6 +348,20 @@ const RUST_KEYWORDS: &[&str] = &[
     "safe",
 ];
 
+/// A comparison, `and` or `or` as Rust writes it (RFC-0013 §14.2).
+fn rust_cmp_op(op: BinOp) -> &'static str {
+    match op {
+        BinOp::Is => "==",
+        BinOp::IsNot => "!=",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Gt => ">",
+        BinOp::Ge => ">=",
+        BinOp::And => "&&",
+        _ => "||",
+    }
+}
+
 /// A Mzizi name as a Rust identifier.
 fn ident(name: &str) -> String {
     match name {
@@ -358,39 +380,51 @@ fn fn_ident(name: &str) -> String {
     }
 }
 
-fn rust_type(t: Ty) -> &'static str {
-    match t {
-        Ty::Int => "i64",
-        Ty::Float => "f64",
-        Ty::Bool => "bool",
-        Ty::Text => "String",
-        Ty::Nothing | Ty::Error => "()",
-    }
-}
-
 struct Lower<'a> {
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
+    /// The program's enums, which a bare variant name resolves against.
+    enums: &'a [EnumDecl],
+    /// Each enum's Rust name, and each of its variants' (RFC-0013 §14.2).
+    rust_enums: BTreeMap<String, (String, BTreeMap<String, String>)>,
     /// The type of every binding in the function being lowered. A name is bound at most
     /// once in a function (RFC-0013 §5.3), so one map per function is exact.
     types: BTreeMap<String, Ty>,
     /// Trap sites: line, column, and the expression's canonical text.
     sites: Vec<(u32, u32, String)>,
+    /// The return type of the function being lowered.
+    ret: Ty,
 }
 
 impl Lower<'_> {
+    /// A Mzizi type as Rust.
+    fn rust_type(&self, t: Ty) -> String {
+        match t {
+            Ty::Int => "i64".to_string(),
+            Ty::Float => "f64".to_string(),
+            Ty::Bool => "bool".to_string(),
+            Ty::Text => "String".to_string(),
+            Ty::Enum(e) => self
+                .rust_enums
+                .get(e)
+                .map_or_else(|| "()".to_string(), |(n, _)| n.clone()),
+            Ty::Nothing | Ty::Error => "()".to_string(),
+        }
+    }
+
     fn function(&mut self, f: &FnDecl, out: &mut String) {
         self.types.clear();
+        self.ret = f.ret.map_or(Ty::Nothing, |r| r.ty);
         let params: Vec<String> = f
             .params
             .iter()
             .map(|p| {
                 self.types.insert(p.name.clone(), p.ty.ty);
-                format!("{}: {}", ident(&p.name), rust_type(p.ty.ty))
+                format!("{}: {}", ident(&p.name), self.rust_type(p.ty.ty))
             })
             .collect();
         let ret = f
             .ret
-            .map(|r| format!(" -> {}", rust_type(r.ty)))
+            .map(|r| format!(" -> {}", self.rust_type(r.ty)))
             .unwrap_or_default();
         let _ = writeln!(
             out,
@@ -421,31 +455,42 @@ impl Lower<'_> {
             } => {
                 let t = ty.map_or_else(|| self.ty(value), |t| t.ty);
                 self.types.insert(name.clone(), t);
+                let rust = self.rust_type(t);
+                let value = self.expr_want(value, t);
                 let _ = writeln!(
                     out,
-                    "{pad}let {}{}: {} = {};",
+                    "{pad}let {}{}: {rust} = {value};",
                     if *mutable { "mut " } else { "" },
                     ident(name),
-                    rust_type(t),
-                    self.expr(value)
                 );
             }
             StmtKind::Assign { name, value, .. } => {
-                let _ = writeln!(out, "{pad}{} = {};", ident(name), self.expr(value));
+                let want = self.types.get(name).copied().unwrap_or(Ty::Error);
+                let _ = writeln!(
+                    out,
+                    "{pad}{} = {};",
+                    ident(name),
+                    self.expr_want(value, want)
+                );
             }
             StmtKind::Return(None) => {
                 let _ = writeln!(out, "{pad}return;");
             }
             StmtKind::Return(Some(v)) => {
-                let _ = writeln!(out, "{pad}return {};", self.expr(v));
+                let _ = writeln!(out, "{pad}return {};", self.expr_want(v, self.ret));
             }
             StmtKind::When {
                 cond,
                 then,
+                else_whens,
                 otherwise,
             } => {
                 let _ = writeln!(out, "{pad}if {} {{", self.expr(cond));
                 self.block(then, depth + 1, out);
+                for w in else_whens {
+                    let _ = writeln!(out, "{pad}}} else if {} {{", self.expr(&w.cond));
+                    self.block(&w.body, depth + 1, out);
+                }
                 if let Some(o) = otherwise {
                     let _ = writeln!(out, "{pad}}} else {{");
                     self.block(o, depth + 1, out);
@@ -455,6 +500,11 @@ impl Lower<'_> {
             StmtKind::Expr(e) => {
                 let _ = writeln!(out, "{pad}{};", self.expr(e));
             }
+            StmtKind::Match { .. }
+            | StmtKind::For { .. }
+            | StmtKind::While { .. }
+            | StmtKind::Break
+            | StmtKind::Continue => self.control(s, depth, out),
         }
     }
 
@@ -465,7 +515,19 @@ impl Lower<'_> {
             ExprKind::Float(_) => Ty::Float,
             ExprKind::Bool(_) => Ty::Bool,
             ExprKind::Text(_) => Ty::Text,
-            ExprKind::Name(n) => self.types.get(n).copied().unwrap_or(Ty::Error),
+            ExprKind::Name(n) => match self.types.get(n) {
+                Some(t) => *t,
+                None => self.variant_type(n, None),
+            },
+            ExprKind::Variant { enum_name, .. } => self.variant_type("", Some(enum_name)),
+            ExprKind::When { arms, .. } => arms.first().map_or(Ty::Error, |(_, v)| self.ty(v)),
+            ExprKind::Match {
+                arms, otherwise, ..
+            } => match (arms.first(), otherwise) {
+                (Some(a), _) => self.ty(&a.body),
+                (None, Some(o)) => self.ty(&o.body),
+                (None, None) => Ty::Error,
+            },
             ExprKind::Call { name, .. } => self
                 .fns
                 .get(name.as_str())
@@ -509,19 +571,30 @@ impl Lower<'_> {
             ExprKind::Float(v) => format!("{v:?}f64"),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Text(parts) => self.text(parts),
-            ExprKind::Name(n) => {
-                if self.types.get(n) == Some(&Ty::Text) {
-                    format!("{}.clone()", ident(n))
-                } else {
-                    ident(n)
-                }
-            }
+            ExprKind::Name(n) => match self.types.get(n) {
+                Some(Ty::Text) => format!("{}.clone()", ident(n)),
+                Some(_) => ident(n),
+                None => self.variant_path(n, None),
+            },
+            ExprKind::Variant {
+                enum_name, name, ..
+            } => self.variant_path(name, Some(enum_name)),
+            ExprKind::When { .. } | ExprKind::Match { .. } => self.block_value(e, Ty::Error),
             ExprKind::Call { name, args, .. } => {
                 if name == "print" {
                     let arg = args.first().map(|a| self.atom(a)).unwrap_or_default();
                     return format!("mz_print(&{arg})");
                 }
-                let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+                let params: Vec<Ty> = self
+                    .fns
+                    .get(name.as_str())
+                    .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
+                    .unwrap_or_default();
+                let args: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
+                    .collect();
                 format!("{}({})", fn_ident(name), args.join(", "))
             }
             ExprKind::Method {
@@ -565,16 +638,12 @@ impl Lower<'_> {
                     let at = self.site(e);
                     return format!("{helper}({l}, {r}, {at})");
                 }
-                let rust_op = match op {
-                    BinOp::Is => "==",
-                    BinOp::IsNot => "!=",
-                    BinOp::Lt => "<",
-                    BinOp::Le => "<=",
-                    BinOp::Gt => ">",
-                    BinOp::Ge => ">=",
-                    BinOp::And => "&&",
-                    _ => "||",
-                };
+                if op.is_comparison()
+                    && let Some(cmp) = self.variant_comparison(*op, lhs, rhs)
+                {
+                    return cmp;
+                }
+                let rust_op = rust_cmp_op(*op);
                 format!("{} {rust_op} {}", self.atom(lhs), self.atom(rhs))
             }
             ExprKind::Error => "()".to_string(),

@@ -7,7 +7,7 @@ feedback loop are designed for **machine authorship**, and specifically for the 
 need the help most: small open-weight models with limited parameters, context and long-range
 attention. Rust is its platform, the way JavaScript is TypeScript's: Mzizi is designed to lower
 to Rust, with no borrows, lifetimes or ownership at the surface ([RFC-0001](./design/RFC-0001-syntax.md)
-§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice and its numbers (`int`, `float`, `bool` and `text`, functions, `let` / `var`, `when`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target.
+§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers and its control flow (`int`, `float`, `bool` and `text`, enums, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target.
 "Makes Rust better" is what Phase 0 exists to test. The language harness is the spine of the language,
 where every feature is registered and what an agent reads ([RFC-0012](./design/RFC-0012-harness.md), a draft), and Mzizi Roots is its
 component model, the way React is JavaScript's.
@@ -19,7 +19,7 @@ component model, the way React is JavaScript's.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 534 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 583 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 **What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
 
@@ -76,7 +76,7 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (534 tests in 22 suites, gated in CI; 403 of them in the compiler crate):**
+**Built and tested (583 tests in 23 suites, gated in CI; 452 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
@@ -84,9 +84,12 @@ a backend `service` declaration (RFC-0011: parsed, checked, run in process by `m
 lowered to a Rust + axum package by `mz build`), the foundation slice of the core language
 (RFC-0013 Wave 0: a `program` with `fn main`, functions, `let` / `var`, `when`, integer and
 boolean expressions and `print`, checked by `mz check` and run by `mz run`, which lowers it to
-a dependency-free Rust package and builds it with Cargo), and the Phase 0 benchmark harness,
+a dependency-free Rust package and builds it with Cargo), its numbers (RFC-0013 §3–§4, C1 and
+C5: `float` and the numeric methods), its control flow (RFC-0013 §7, C4:
+enums, `else when`, exhaustive `match`, `when` and `match` as values, `for each` over
+`range(a, to = b)`, `while`, `break` and `continue`), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is about 17,900 lines.
+task, B1. `compiler/src` is about 22,600 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
@@ -118,7 +121,8 @@ not exist yet.
 components to Rust, rendering, a deployment target, a release, a published binary. A `service`
 does lower, to a local Rust + axum package (`mz build`, RFC-0011 §8), which CI compiles, tests
 and asks one request over a socket. A `program` lowers too, in RFC-0013's foundation slice
-only: no loops, `match`, floats, collections, records or results yet. That is the whole of the
+with its numbers and its control flow only: no collections, records or results yet, and `for each`
+iterates `range(a, to = b)` only. That is the whole of the
 lowering today.
 
 **The number that decides everything:** the Phase 0 benchmark — an LLM agent authoring
@@ -139,7 +143,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 403 tests; the compiler crate has zero dependencies
+cargo test                                                           # 452 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check

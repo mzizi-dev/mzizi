@@ -5,10 +5,14 @@
 //! expressions later without taking a program's statements with them (RFC-0013 §18.1).
 //! The parser for this tree is [`crate::parse`]'s, because it shares the token cursor.
 //!
-//! What is here is RFC-0013's Wave 0 subset and Wave 1's numbers (C1 and C5): `int`,
-//! `float`, `bool` and `text` values, the arithmetic operators, comparison, `and` / `or` /
-//! `not`, calls, the numeric methods of §4.4 and interpolation. Collections, other methods
-//! and results are later waves'.
+//! What is here is RFC-0013's Wave 0 subset, Wave 1's numbers (C1 and C5) and C4's
+//! additions (§7): `int`, `float`, `bool` and `text` values, the arithmetic operators,
+//! comparison, `and` / `or` / `not`, calls, the numeric methods of §4.4, interpolation,
+//! enum values, and `when` and `match` used as values. Collections, other methods and
+//! results are later waves'.
+
+use std::collections::BTreeSet;
+use std::sync::{Mutex, OnceLock};
 
 use crate::diagnostic::Span;
 
@@ -35,32 +39,76 @@ macro_rules! listed_enum {
     };
 }
 
-listed_enum! {
-    /// A type an expression in a program can have.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum Ty {
-        /// A signed 64-bit integer (RFC-0013 §4.1).
-        Int,
-        /// An IEEE 754 binary64 number (RFC-0013 §4.2).
-        Float,
-        /// `true` or `false`.
-        Bool,
-        /// UTF-8 text.
-        Text,
-        /// The "value" of a call to a function that returns nothing.
-        Nothing,
-        /// A sub-expression that already failed. It is reported once and silent from then on
-        /// (RFC-0013 §16: one diagnostic per true error).
-        Error,
+/// `name` as a `&'static str`, so a [`Ty::Enum`] can carry its enum's name and stay `Copy`.
+/// Each distinct name is stored once for the life of the process, so the memory this holds
+/// is bounded by the number of distinct enum names `mz` has read, not by how often.
+pub fn intern(name: &str) -> &'static str {
+    static NAMES: OnceLock<Mutex<BTreeSet<&'static str>>> = OnceLock::new();
+    let mut names = NAMES
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(n) = names.get(name) {
+        return n;
     }
+    let stored: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.insert(stored);
+    stored
+}
+
+/// A type an expression in a program can have.
+///
+/// Not declared with `listed_enum!`, because [`Ty::Enum`] carries a name: [`Ty::ALL`]
+/// lists every other variant by hand, and [`Ty::listed`]'s exhaustive `match` stops a new
+/// variant from compiling until it is listed there too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Ty {
+    /// A signed 64-bit integer (RFC-0013 §4.1).
+    Int,
+    /// An IEEE 754 binary64 number (RFC-0013 §4.2).
+    Float,
+    /// `true` or `false`.
+    Bool,
+    /// UTF-8 text.
+    Text,
+    /// The "value" of a call to a function that returns nothing.
+    Nothing,
+    /// An enum declared in the program, by name (RFC-0013 §7.2). The program's own type,
+    /// not a built-in one: the language harness registers it as the `enum` feature.
+    Enum(&'static str),
+    /// A sub-expression that already failed. It is reported once and silent from then on
+    /// (RFC-0013 §16: one diagnostic per true error).
+    Error,
 }
 
 impl Ty {
-    /// Whether an author writes this type. `Nothing` and `Error` are the checker's own;
-    /// every other variant, including one added later, is a surface type, which the
-    /// language harness must register (its tests fail otherwise).
+    /// Every built-in variant, in declaration order: all but [`Ty::Enum`], whose types the
+    /// program declares.
+    pub const ALL: &'static [Ty] = &[
+        Ty::Int,
+        Ty::Float,
+        Ty::Bool,
+        Ty::Text,
+        Ty::Nothing,
+        Ty::Error,
+    ];
+
+    /// Whether `self` is in [`Ty::ALL`]. The `match` has no wildcard, so a variant added
+    /// later does not compile until it is listed here, and then in `ALL` (a unit test
+    /// checks the two agree).
+    pub fn listed(self) -> bool {
+        match self {
+            Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Nothing | Ty::Error => true,
+            Ty::Enum(_) => false,
+        }
+    }
+
+    /// Whether an author writes this type by a built-in name. `Nothing` and `Error` are the
+    /// checker's own, and an enum is the program's; every other variant, including one
+    /// added later, is a surface type, which the language harness must register (its
+    /// tests fail otherwise).
     pub fn is_surface(self) -> bool {
-        !matches!(self, Ty::Nothing | Ty::Error)
+        !matches!(self, Ty::Nothing | Ty::Error | Ty::Enum(_))
     }
 
     /// The surface types, in declaration order.
@@ -82,6 +130,7 @@ impl Ty {
             Ty::Bool => "bool",
             Ty::Text => "text",
             Ty::Nothing => "nothing",
+            Ty::Enum(name) => name,
             Ty::Error => "unknown",
         }
     }
@@ -236,8 +285,62 @@ pub enum ExprKind {
         /// The right operand.
         rhs: Box<Expr>,
     },
+    /// `<enum>.<variant>`, a variant named with its enum. A bare variant is a
+    /// [`ExprKind::Name`] that the checker resolves (RFC-0008 §5).
+    Variant {
+        /// The enum's name.
+        enum_name: String,
+        /// The variant's name.
+        name: String,
+        /// Where the variant's name is.
+        name_span: Span,
+    },
+    /// `when c` … `else when c2` … `else` … `end` used as a value (RFC-0013 §7.4): each
+    /// branch is one line, an expression.
+    When {
+        /// `(condition, value)` for the `when` and each `else when`, in order.
+        arms: Vec<(Expr, Expr)>,
+        /// The `else` branch's value. `None` was reported as `MZ0932` by the parser.
+        otherwise: Option<Box<Expr>>,
+    },
+    /// `match s` … `case v` … `else` … `end` used as a value (RFC-0013 §7.4).
+    Match {
+        /// The value matched.
+        scrutinee: Box<Expr>,
+        /// Each `case` and its one-line value.
+        arms: Vec<Arm<Expr>>,
+        /// The `else` and its value, if written.
+        otherwise: Option<Box<ElseArm<Expr>>>,
+    },
     /// Something the parser could not read. Already reported.
     Error,
+}
+
+/// One `case` of a `match` (RFC-0013 §7.2): its values, and a body that is statements in a
+/// `match` statement and one expression in a `match` used as a value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Arm<B> {
+    /// The values the case lists, in order: literals or variants.
+    pub values: Vec<Expr>,
+    /// The `case` line, from `case` to its last value.
+    pub span: Span,
+    /// What runs, or what the case is worth.
+    pub body: B,
+    /// The case's last line, for a fix that deletes it whole.
+    pub last_line: u32,
+    /// Whether the case was written after the `else`, where it can never be reached.
+    pub after_else: bool,
+}
+
+/// A `match`'s `else` (RFC-0013 §7.2).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ElseArm<B> {
+    /// The `else` line.
+    pub span: Span,
+    /// What runs, or what the `else` is worth.
+    pub body: B,
+    /// The `else` branch's last line, for a fix that deletes it whole.
+    pub last_line: u32,
 }
 
 /// An expression with its source span.
@@ -277,7 +380,26 @@ impl Expr {
             }
             ExprKind::Unary { operand, .. } => operand.has_error(),
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_error() || rhs.has_error(),
-            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Name(_) => false,
+            ExprKind::When { arms, otherwise } => {
+                arms.iter().any(|(c, v)| c.has_error() || v.has_error())
+                    || otherwise.as_ref().is_some_and(|o| o.has_error())
+            }
+            ExprKind::Match {
+                scrutinee,
+                arms,
+                otherwise,
+            } => {
+                scrutinee.has_error()
+                    || arms
+                        .iter()
+                        .any(|a| a.body.has_error() || a.values.iter().any(Expr::has_error))
+                    || otherwise.as_ref().is_some_and(|o| o.body.has_error())
+            }
+            ExprKind::Int(_)
+            | ExprKind::Float(_)
+            | ExprKind::Bool(_)
+            | ExprKind::Name(_)
+            | ExprKind::Variant { .. } => false,
         }
     }
 
@@ -306,6 +428,7 @@ impl Expr {
             }
             ExprKind::Unary { operand, .. } => operand.has_text_literal(),
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_text_literal() || rhs.has_text_literal(),
+            ExprKind::When { .. } | ExprKind::Match { .. } => true,
             _ => false,
         }
     }
@@ -321,6 +444,14 @@ pub fn canonical(e: &Expr) -> String {
         ExprKind::Bool(b) => b.to_string(),
         ExprKind::Text(parts) => canonical_text(parts),
         ExprKind::Name(n) => n.clone(),
+        // `range`'s second parameter is labelled `to` (RFC-0013 §6.5, §7.3).
+        ExprKind::Call { name, args, .. } if name == "range" && args.len() == 2 => {
+            format!(
+                "range({}, to = {})",
+                canonical(&args[0]),
+                canonical(&args[1])
+            )
+        }
         ExprKind::Call { name, args, .. } => {
             let args: Vec<String> = args.iter().map(canonical).collect();
             format!("{name}({})", args.join(", "))
@@ -380,6 +511,15 @@ pub fn canonical(e: &Expr) -> String {
                 wrap(right, right_parens)
             )
         }
+        ExprKind::Variant {
+            enum_name, name, ..
+        } => format!("{enum_name}.{name}"),
+        // A block used as a value spans lines; a one-line quote names its first.
+        ExprKind::When { arms, .. } => match arms.first() {
+            Some((cond, _)) => format!("when {} …", canonical(cond)),
+            None => "when …".to_string(),
+        },
+        ExprKind::Match { scrutinee, .. } => format!("match {} …", canonical(scrutinee)),
         ExprKind::Error => "…".to_string(),
     }
 }
@@ -491,7 +631,10 @@ pub fn int_op(op: BinOp, a: i64, b: i64) -> Result<i64, Fault> {
 /// Whether a value of this type has a text form (RFC-0013 §3.8), so it can be printed or
 /// interpolated.
 pub fn has_text_form(t: Ty) -> bool {
-    matches!(t, Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Error)
+    matches!(
+        t,
+        Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Enum(_) | Ty::Error
+    )
 }
 
 /// The type a binary operator gives two operand types, or the reason it does not apply.
@@ -547,13 +690,13 @@ pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
             }
         }
         _ => {
-            // Ordering: int, float and text (by Unicode scalar value), with one type on
-            // both sides.
-            if l == r && matches!(l, Ty::Int | Ty::Float | Ty::Text) {
+            // Ordering: int, float, text (by Unicode scalar value) and an enum (in
+            // declaration order), with one type on both sides.
+            if l == r && matches!(l, Ty::Int | Ty::Float | Ty::Text | Ty::Enum(_)) {
                 Ok(Ty::Bool)
             } else {
                 Err(format!(
-                    "`{}` orders two ints, two floats or two texts, and this is {} {} {}",
+                    "`{}` orders two ints, two floats, two texts or two values of one enum, and this is {} {} {}",
                     op.text(),
                     l.name(),
                     op.text(),
@@ -567,6 +710,14 @@ pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ty_all_lists_every_built_in_variant_and_no_enum() {
+        assert!(Ty::ALL.iter().all(|t| t.listed()));
+        assert!(!Ty::Enum("shape").listed());
+        assert!(!Ty::Enum("shape").is_surface());
+        assert_eq!(Ty::from_name("shape"), None);
+    }
 
     fn at() -> Span {
         Span::single(1, 1, 1)
