@@ -17,6 +17,8 @@ carry no pull request number.
 
 ## [Unreleased]
 
+## 2026-10-08
+
 ### Added — `result`, `error` and `try`: errors in a program, RFC-0013 §12, C9 (2026-10-08)
 
 - **Errors in a `program`** (RFC-0013 §12, tracker row C9; Refs #69; on `staging` after C4, #89, and the language harness, #88). A function that can fail returns `result(T, E)`, or `result(none, E)`, and fails with `return error(e)`; `return v` returns success, and `return r` passes a result of the function's own type through. A caller handles a result with C4's `match` and `case ok <name>` / `case error <name>`, as a statement or as a value, or propagates its error with a prefix `try` (`return try check_age(a) + try check_age(b)`). `fn main` may return `result(none, E)`; when it returns an error, the program writes `mz: error MZ0992: main returned an error: <the error's text form>` to standard error and `mz run` exits 1. An enum's variants may carry literal columns, as a component's do (`negative say "is below zero"`), read with a dot (`problem.say`). New modules: `compiler/src/program/errors.rs`, `compiler/src/parse/program/errors.rs`, `compiler/src/run/errors.rs` and `compiler/src/intern.rs`.
@@ -146,6 +148,8 @@ carry no pull request number.
 
 - **`design/LANGUAGE-SURVEY.md`** surveys Python, JavaScript, TypeScript, Java, C#, Go, C, C++, Rust and Swift, checked against the TIOBE Index (September 2026) and the Stack Overflow Developer Survey (2025), and names the languages they rank that it does not cover (SQL, PHP, R, Visual Basic, Kotlin). It lists 63 deduplicated features (9 adopt, 38 improve, 3 already-has, 13 reject), each with a one-line Mzizi design, a one-line Rust lowering and its tracker row; says what RFC-0013 (Tier 1) and the future Tier 2 and Tier 3 RFCs must decide; maps each "do better" goal to an RFC-0009 task family or a proposed new task; and lists the agent failure modes reported for each language with the design choice aimed at each. Refs #69. **Design only:** nothing in it is implemented, and it measures nothing. Linked from `design/ROADMAP.md`.
 
+## 2026-10-07
+
 ### Security — deep nesting no longer crashes `mz`, and a file name can no longer write into `mz build`'s output (2026-10-07)
 
 - **Nesting is capped at 64 blocks, with the new error `MZ0411`.** The parser and every pass after it recurse once per nested block. 5,000 nested view elements or handler `when`/`if` blocks aborted `mz check`, `contract`, `outline`, `ir` and `build` with a stack overflow, which SECURITY.md lists as a vulnerability. The first block past that depth now gets `MZ0411`, once per file, and every such block is skipped by counting block openers against `end`s, without recursion. The skip classifies lines with the same rules the parser uses (`view_line_kind`, `handler_line_kind`), so it stops where the parser would: at the matching `end`, a declaration word, `end component`/`end service`, or the next `route`. Blocks it skipped that are still open when it stops go back on the parser's block stack, so the `MZ0204` that follows names every one and its fix inserts exactly the missing `end`s. Measured with the release binary: 100,000 nested rows gave one `MZ0411` in 211 ms, where 5,000 had aborted. The repo's deepest file nests 9 levels. RFC-0001 §4.7 gains item 8.
@@ -201,6 +205,8 @@ carry no pull request number.
 ### Added — `AGENTS.md` loads the Mzizi dev skills (2026-10-06)
 
 - **`AGENTS.md` gains "Dev skills, progress reports and the merge gate"**, the canonical rule block from nyuchi/.github#87, after "Track big work in GitHub issues": load the Mzizi dev skills (`digital-hygiene` and `progress-report`), clone only into a directory unique to the agent, run dev work on a 10-minute progress-report loop whose ticks never publish, release, merge or deploy without the owner's approval, and merge only through the merge gate. Docs only: no behaviour changes, and CI is unchanged.
+
+## 2026-10-05
 
 ### Added — each release to `main` is tagged as the next minor (2026-10-06)
 
