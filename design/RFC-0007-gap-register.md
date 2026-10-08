@@ -10,6 +10,13 @@
 
 > **Every claim about the code below was checked against `main` at `af7d025`**, by the command or file named beside it. The claims were first checked at `cd36430`, the commit this branch started from. `git diff cd36430 af7d025 -- compiler primitives benchmarks/prompts` is empty, so the compiler, primitive and guide claims are unchanged. `benchmarks/harness` and `benchmarks/tasks` did change (PR #17's rename pairing); G0.10 was re-checked against them and rewritten to match. Where the draft of this RFC and the code disagreed, the code won and the text was corrected (RFC-0003 §7.1's rule). The 2026-09-27 pilot's figures are read from its record on `main` (`benchmarks/results/2026-09-27-pilot/`), not re-run.
 
+<!-- A third note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes an answer to D1's open question** (a draft for review; nothing in it is
+> implemented): one `enum` construct holds both static columns and per-value payloads, a variant
+> declaring its payload fields in parentheses after its name (RFC-0013 §11.5, §20 Q24). D1 stays
+> open until the owner accepts it.
+
 ---
 
 ## 0. Why this RFC exists now

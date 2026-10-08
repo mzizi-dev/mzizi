@@ -1,0 +1,47 @@
+## Performance suite (benchmarks/perf): Collatz step counts for 1 to 300,000. The slice has
+## no loops, so the range is split in halves recursively (about 19 levels deep) and each
+## step count is a recursive call. Checked `*`, `+`, `/` and `%` on every step. The last
+## line is the checksum the runner compares.
+program collatz
+
+  fn main
+    let limit = 300000
+    let sum = total(1, limit)
+    let most = longest(1, limit)
+    print("total steps for 1 to {limit}: {sum}")
+    print("most steps for 1 to {limit}: {most}")
+    print("checksum {sum % 1000003 + most}")
+  end fn main
+
+  fn steps(n: int): int
+    when n is 1
+      return 0
+    end
+    when n % 2 is 0
+      return 1 + steps(n / 2)
+    end
+    return 1 + steps(3 * n + 1)
+  end fn steps
+
+  fn total(lo: int, hi: int): int
+    when lo is hi
+      return steps(lo)
+    end
+    let mid = (lo + hi) / 2
+    return total(lo, mid) + total(mid + 1, hi)
+  end fn total
+
+  fn longest(lo: int, hi: int): int
+    when lo is hi
+      return steps(lo)
+    end
+    let mid = (lo + hi) / 2
+    let left = longest(lo, mid)
+    let right = longest(mid + 1, hi)
+    when left > right
+      return left
+    end
+    return right
+  end fn longest
+
+end program collatz

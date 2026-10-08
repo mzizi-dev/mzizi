@@ -15,6 +15,18 @@ cross-file checking (G2.3), local state, and lowering are **not** settled here.
 > "No `else`". This RFC adds no new conditional or iteration form; it makes the two
 > RFC-0001 already promised real, and gives them the checking they need.
 
+<!-- A second note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes to amend §1, §2 and §5** (a draft for review; nothing in it is
+> implemented). §1's closed type set gains `float`, `map(K, V)`, `set(K)` and `result(T, E)`,
+> and tuples are decided against (RFC-0013 §2). §2's record body, which holds only `field` lines
+> (anything else `MZ0308`), may hold `fn` methods after its fields in a program (RFC-0013 §11.2).
+> §5's rule that `{…}` holds only a scalar name or path is widened, in a program only, to any
+> expression with a text form that has no string literal or braces inside it (RFC-0013 §3.6), and
+> an un-narrowed option there is still `MZ0710`. Views keep §5's rule. RFC-0013 also reuses
+> `MZ0713` for shadowing in function bodies (§5.3 there). These sections stand until the owner
+> accepts RFC-0013.
+
 ---
 
 ## 0. Method: the failure modes the pilot measured

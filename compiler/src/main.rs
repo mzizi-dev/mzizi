@@ -8,11 +8,22 @@
 //! mz outline <file.mz>          the interface only, as valid Mzizi (RFC-0003 §4)
 //! mz hash <file.mz>             the root hash and the stored node count
 //! mz ir <file.mz>               every node with its hash and structural path
-//! mz build <file.mz> --out <dir> lower a service to an axum package (RFC-0011 §8)
+//! mz build <file.mz> --out <dir> lower a service to an axum package (RFC-0011 §8), or a
+//!                               program to a dependency-free Rust package (RFC-0013 §14)
+//! mz run [--release] <file.mz>  check, lower, build and run a program (RFC-0013 §13)
+//! mz harness version            the protocol and language versions (RFC-0012 §5)
+//! mz harness definition [--agent]  every language-harness entry, as JSON
+//! mz harness entry <name>       one entry, as JSON
 //! ```
+//!
+//! The commands that take a file are the ones registered in the language harness
+//! ([`mzizi_lang_compiler::harness::COMMANDS`]): `mz` dispatches on that table.
 //!
 //! Exit status is 0 when there are no errors (warnings do not fail), 1 when there are, and
 //! 2 for a usage or I/O problem — so the loop can branch on status without parsing output.
+//! `mz run` is the exception, because 1 belongs to the program it runs (RFC-0013 §13.1): it
+//! exits with the program's own status (0, or 101 for a trap, or 141 for a closed standard
+//! output), 2 for a usage problem, and 3 when the program did not compile.
 //! `mz contract` keeps that contract: a failed assertion exits 1, exactly as a compile
 //! error does, which is what lets a benchmark harness branch on status alone.
 //!
@@ -25,10 +36,12 @@
 
 #![forbid(unsafe_code)]
 
+use std::io::Write;
 use std::process::ExitCode;
 use std::time::Instant;
 
 use mzizi_lang_compiler::diagnostic::Severity;
+use mzizi_lang_compiler::harness;
 use mzizi_lang_compiler::ir::{Store, lower, paths};
 use mzizi_lang_compiler::outline::outline;
 use mzizi_lang_compiler::parse::Program;
@@ -38,7 +51,11 @@ use mzizi_lang_compiler::{
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("harness") {
+        return harness(&args[1..]);
+    }
     let agent = args.iter().any(|a| a == "--agent");
+    let release = args.iter().any(|a| a == "--release");
     // `--out <dir>` is `mz build`'s only option with a value.
     let out = match args.iter().position(|a| a == "--out") {
         Some(i) if i + 1 < args.len() => {
@@ -55,24 +72,15 @@ fn main() -> ExitCode {
     let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
 
     let (command, path) = match positional.as_slice() {
-        [cmd, path]
-            if matches!(
-                cmd.as_str(),
-                "check" | "fix" | "contract" | "outline" | "hash" | "ir" | "build"
-            ) =>
-        {
-            (cmd.as_str(), *path)
-        }
+        [cmd, path] if harness::takes_file(cmd) => (cmd.as_str(), *path),
         [path] => ("check", *path),
         _ => {
-            eprintln!(
-                "usage: mz <check|fix|contract|outline|hash|ir> [--agent] <file.mz>\n       mz build <service.mz> --out <dir>"
-            );
+            usage();
             return ExitCode::from(2);
         }
     };
     if command == "build" && out.is_none() {
-        eprintln!("usage: mz build <service.mz> --out <dir>");
+        eprintln!("usage: mz build <file.mz> --out <dir>");
         return ExitCode::from(2);
     }
 
@@ -126,6 +134,10 @@ fn main() -> ExitCode {
         };
     }
 
+    if command == "run" {
+        return run(&src, path, agent, release);
+    }
+
     // `mz build`: check, then lower a service to an axum package (RFC-0011 §8). Only a
     // file with no errors is lowered, so the generated code never guesses at a tree.
     if command == "build" {
@@ -139,11 +151,28 @@ fn main() -> ExitCode {
             );
             return ExitCode::from(1);
         }
+        let dir = std::path::PathBuf::from(out.unwrap_or_default());
+        if let Some(Program::Program(p)) = &program {
+            let package = mzizi_lang_compiler::run::lower(p, &file_name(path));
+            if let Err(e) = mzizi_lang_compiler::run::write(&package, &dir) {
+                eprintln!("mz: {e}");
+                return ExitCode::from(2);
+            }
+            println!(
+                "mz: built `program {}` into {} ({} functions); run it with `cargo run --manifest-path {}`",
+                p.name,
+                dir.display(),
+                p.fns.len(),
+                dir.join("Cargo.toml").display()
+            );
+            return ExitCode::SUCCESS;
+        }
         let Some(Program::Service(service)) = program else {
-            eprintln!("mz: `build` lowers a service; components do not lower yet (RFC-0007 G2.1)");
+            eprintln!(
+                "mz: `build` lowers a service or a program; components do not lower yet (RFC-0007 G2.1)"
+            );
             return ExitCode::from(2);
         };
-        let dir = std::path::PathBuf::from(out.unwrap_or_default());
         let package = mzizi_lang_compiler::lower::lower(&service, &file_name(path));
         let from = std::path::Path::new(path)
             .parent()
@@ -219,15 +248,21 @@ fn main() -> ExitCode {
     // The IR-backed commands all need the tree, so they share one parse.
     if command != "check" {
         let (component, report) = check_with_ast(&src, path);
-        if component.is_none()
-            && let (Some(Program::Service(_)), _) = check_program(&src, path)
-        {
-            // Services have no IR yet (RFC-0011 §13), so these commands have nothing to
-            // print. Saying so is a usage error, not a silent success.
-            eprintln!(
-                "mz: `{command}` does not cover services yet; `check`, `fix` and `contract` do"
-            );
-            return ExitCode::from(2);
+        if component.is_none() {
+            // Services and programs have no IR yet (RFC-0011 §13, RFC-0013), so these
+            // commands have nothing to print. Saying so is a usage error, not a silent
+            // success.
+            let kind = match check_program(&src, path) {
+                (Some(Program::Service(_)), _) => Some("services"),
+                (Some(Program::Program(_)), _) => Some("programs"),
+                _ => None,
+            };
+            if let Some(kind) = kind {
+                eprintln!(
+                    "mz: `{command}` does not cover {kind} yet; `check`, `fix` and `contract` do"
+                );
+                return ExitCode::from(2);
+            }
         }
         let Some(component) = component else {
             eprintln!("mz: {path} does not parse; run `mz check` for diagnostics");
@@ -284,6 +319,116 @@ fn main() -> ExitCode {
     }
 }
 
+/// Every registered command's usage line, from the language harness.
+fn usage() {
+    for (i, c) in harness::COMMANDS.iter().enumerate() {
+        let lead = if i == 0 { "usage:" } else { "      " };
+        eprintln!("{lead} {}", c.usage);
+    }
+}
+
+/// `mz harness` (RFC-0012 §5): read the language harness. Exits 0, or 2 for a usage problem
+/// or an unknown entry name.
+fn harness(args: &[String]) -> ExitCode {
+    let agent = args.iter().any(|a| a == "--agent");
+    let words: Vec<&str> = args
+        .iter()
+        .filter(|a| *a != "--agent")
+        .map(String::as_str)
+        .collect();
+    match words.as_slice() {
+        ["version"] => print!("{}", harness::version()),
+        ["definition"] => print!("{}", harness::definition(!agent)),
+        ["entry", name @ ..] if !name.is_empty() => {
+            let name = name.join(" ");
+            match harness::entry_text(&name, !agent) {
+                Some(text) => print!("{text}"),
+                None => {
+                    eprintln!(
+                        "mz: the language harness has no entry `{name}`; `mz harness definition` lists every entry"
+                    );
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        _ => {
+            eprintln!("usage: mz harness version | definition [--agent] | entry <name> [--agent]");
+            return ExitCode::from(2);
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+/// `mz run` (RFC-0013 §13.1): check, lower into the build cache, `cargo build --offline`,
+/// then run the binary with this process's standard input, output and error, and exit
+/// with its status. `mz`'s own messages go to standard error, which leaves standard output
+/// to the program.
+fn run(src: &str, path: &str, agent: bool, release: bool) -> ExitCode {
+    use mzizi_lang_compiler::run::{RunError, build, cache_dir, lower, write};
+    if agent {
+        eprintln!(
+            "mz: `run --agent` is designed (RFC-0013 §13.1) but not built yet; run `mz check --agent` for NDJSON diagnostics"
+        );
+        return ExitCode::from(2);
+    }
+    let (program, report) = check_program(src, path);
+    // Warnings too: a run that succeeds still says what `mz check` would.
+    print_human_to(&report, &mut std::io::stderr().lock());
+    if report.error_count() > 0 {
+        eprintln!(
+            "mz: {} errors ({} exact-fixable); nothing ran",
+            report.error_count(),
+            report.exact_fixable()
+        );
+        return ExitCode::from(3);
+    }
+    let Some(Program::Program(p)) = program else {
+        eprintln!("mz: `run` runs a program (`program <name>` … `end program <name>`)");
+        return ExitCode::from(2);
+    };
+    let package = lower(&p, &file_name(path));
+    let binary = match cache_dir(&package, std::path::Path::new(path))
+        .and_then(|dir| write(&package, &dir).map(|()| dir))
+        .and_then(|dir| build(&package, &dir, release))
+    {
+        Ok(b) => b,
+        Err(e @ RunError::Build(_)) => {
+            // Lowered code that rustc rejects is a compiler bug, by construction (P5).
+            eprintln!(
+                "{path}:{}:{}: error [MZ0990] the Rust lowered from `program {}` did not compile — a bug in mz, not in the program: {e}",
+                p.name_span.start_line, p.name_span.start_col, p.name,
+            );
+            return ExitCode::from(3);
+        }
+        Err(e) => {
+            eprintln!("mz: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    match std::process::Command::new(&binary).status() {
+        Ok(status) => ExitCode::from(exit_byte(status)),
+        Err(e) => {
+            eprintln!("mz: cannot run {}: {e}", binary.display());
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// A child's exit status as one byte: its code, or 128 plus the signal that ended it.
+fn exit_byte(status: std::process::ExitStatus) -> u8 {
+    if let Some(code) = status.code() {
+        return u8::try_from(code & 0xff).unwrap_or(1);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt as _;
+        if let Some(sig) = status.signal() {
+            return u8::try_from((128 + sig) & 0xff).unwrap_or(1);
+        }
+    }
+    1
+}
+
 /// The file name alone, for the generated package's header.
 fn file_name(path: &str) -> String {
     std::path::Path::new(path)
@@ -293,17 +438,23 @@ fn file_name(path: &str) -> String {
 
 /// One line per diagnostic, in the same shape for every subcommand.
 fn print_human(report: &mzizi_lang_compiler::diagnostic::CheckReport) {
+    print_human_to(report, &mut std::io::stdout().lock());
+}
+
+/// [`print_human`], to any stream: `mz run` writes it to standard error.
+fn print_human_to(report: &mzizi_lang_compiler::diagnostic::CheckReport, out: &mut dyn Write) {
     for d in &report.diagnostics {
         let level = match d.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
         };
-        println!(
+        let _ = writeln!(
+            out,
             "{}:{}:{}: {} [{}] {}",
             d.file, d.span.start_line, d.span.start_col, level, d.code, d.say
         );
         if let Some(fix) = &d.fix {
-            println!("    fix ({:?}): {:?}", fix.confidence, fix.replace);
+            let _ = writeln!(out, "    fix ({:?}): {:?}", fix.confidence, fix.replace);
         }
     }
 }

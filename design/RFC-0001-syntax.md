@@ -46,6 +46,26 @@ the type system's internals, and the compiler architecture are later RFCs.
 > declaration, at `warn` or `required` per package (RFC-0010 §8). The warning had never been
 > implemented. §5's `contract` row is specified in RFC-0010 §5.
 
+<!-- A sixth amendment note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes to amend §1.2 and §1.5** (a draft for review; nothing in it is
+> implemented). In §1.2, for function bodies in a `program`: it adds `while` as the one
+> conditional loop, `else when` as part of a `when` block, `match` with exhaustive cases, and
+> `when` / `match` used as the value of a `let`, `var`, assignment or `return`. It keeps
+> `map` / `filter` / `fold` beside `for each`, which is the iterator-chain vs loop duality §1.2
+> excludes, and asks the owner about it (RFC-0013 §9.3, §20 Q19). An `else when` chain over one
+> enum's variants, §1.2's `if`-chain over variants, is its `MZ0936`, with a `guess` fix to
+> `match` (RFC-0013 §7.1). In §1.5, interpolation stays the only string-building mechanism, and
+> in a program `{…}` may hold any expression with a text form that has no string literal or
+> braces inside it (RFC-0013 §3.6). Views are unchanged. §1.2 and §1.5 stand until the owner
+> accepts RFC-0013.
+
+<!-- A seventh amendment note; the separator keeps it distinct. -->
+
+> **RFC-0013's survey amendment touches §4.7.** In a program, `MZ0106` (a spread) gains the
+> `exact` fix to RFC-0013's copy-and-update form, `p with (x = 3.0)` (RFC-0013 §11.1). Components
+> keep §4.7's rule. Design only; nothing in it is implemented.
+
 ---
 
 ## 0. Method: design against named failure modes

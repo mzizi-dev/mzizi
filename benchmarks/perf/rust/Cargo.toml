@@ -1,0 +1,21 @@
+# benchmarks/perf: the hand-written Rust references, one binary per program in src/bin/.
+# Each is built twice from the same source (see ../README.md):
+#   unchecked: `cargo build --release`, Rust's release defaults, so integer overflow wraps;
+#   checked:   `cargo build --profile release-checked`, the one difference being that
+#              integer overflow panics (exit 101), as it traps (exit 101) in the Rust that
+#              `mz` lowers a program to.
+[package]
+name = "mz-perf-rust"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Its own workspace root, like a program `mz` lowers, so it never joins the repository's.
+[workspace]
+
+# None, by design: std only, so it builds offline.
+[dependencies]
+
+[profile.release-checked]
+inherits = "release"
+overflow-checks = true
