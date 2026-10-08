@@ -1563,7 +1563,7 @@ fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
     Some(match name {
         "length" => (
             "s.length()",
-            "How many Unicode scalar values `s` holds, not bytes: `\"héllo\".length()` is `5`. `len(s)`, `s.len()`, `s.size()` and `s.length` get the exact fix `s.length()`. Emptiness is `s is \"\"`, never `s.length() is 0` or `s.is_empty()`, whose exact fixes write it.",
+            "How many Unicode scalar values `s` holds, not bytes: `\"héllo\".length()` is `5`. `len(s)` gets the exact fix `s.length()`; `s.len()`, `s.size()` and `s.length` get it as a guess, since Rust's `len` counts bytes and JavaScript's `length` UTF-16 units. Emptiness is `s is \"\"`, never `s.length() is 0` or `s.is_empty()`, whose exact fixes write it.",
         ),
         "contains" => (
             "s.contains(t)",
@@ -1579,7 +1579,7 @@ fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
         ),
         "trim" => (
             "s.trim()",
-            "`s` without Unicode whitespace at either end. Python's `strip()` gets the exact fix; there is no one-sided trim.",
+            "`s` without Unicode whitespace at either end. Python's `strip()` gets the fix as a guess, since it also strips U+001C to U+001F; there is no one-sided trim.",
         ),
         "to_upper" => (
             "s.to_upper()",
