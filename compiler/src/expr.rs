@@ -297,6 +297,18 @@ listed_enum! {
     }
 }
 
+impl UnOp {
+    /// RFC-0013 §3.5's level: prefix `-` and `try` at 3, `not` at 8, looser than
+    /// comparison (7), so `not a is 3` is `not (a is 3)`. The one source for the checker
+    /// and the language harness.
+    pub fn level(self) -> u8 {
+        match self {
+            UnOp::Neg | UnOp::Try => 3,
+            UnOp::Not => 8,
+        }
+    }
+}
+
 impl BinOp {
     /// The operator as Mzizi writes it.
     pub fn text(self) -> &'static str {
@@ -520,11 +532,7 @@ impl Expr {
     pub fn level(&self) -> u8 {
         match &self.kind {
             ExprKind::Binary { op, .. } => op.level(),
-            ExprKind::Unary {
-                op: UnOp::Neg | UnOp::Try,
-                ..
-            } => 3,
-            ExprKind::Unary { op: UnOp::Not, .. } => 8,
+            ExprKind::Unary { op, .. } => op.level(),
             ExprKind::Method { .. } | ExprKind::Field { .. } | ExprKind::Index { .. } => 2,
             _ => 1,
         }
