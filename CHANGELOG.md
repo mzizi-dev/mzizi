@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — C8 is records and methods; generics and interfaces are a new row, P12 (2026-10-08)
+
+- **`LANGUAGE-TRACKER.md` splits C8**, by the owner's decision of 2026-10-08 on RFC-0013 §20 Q21 (#69). C8 becomes "User types: records and methods", done when a record is built by field name and copied with `with`, a record has a method, and a broken `always` invariant is reported, each with its language-harness entries; it stays 🟡, and is part of M1. The new row **P12, "Generics and interfaces"** (❌), carries the deferred clauses ("a generic function works for two types; an interface is satisfied") and comes after M1. RFC-0013 §11 and §20 Q21 record the decision. Nothing is built by this change.
+
 ## 2026-10-08
 
 ### Changed
