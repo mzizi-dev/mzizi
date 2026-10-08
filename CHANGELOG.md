@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — stale prose in the tracker and README after v0.7.0 (2026-10-08)
+
+- **`LANGUAGE-TRACKER.md`** said "the five example programs" run in CI; eight do (`examples/*.expected` on `main` since v0.7.0). Its public-suites row said collections "do not exist yet"; C7 and C8 are ✅ on `main` since v0.7.0, and what still blocks those suites is text slicing, search, split and parsing (C6) and a standard library (P2). **`README.md`** and the tracker said `compiler/src` is about 31,300 lines; it is 33,138 at `4d0cdc3` (`find compiler/src -name '*.rs' | xargs cat | wc -l`). Found by the docs update for v0.7.0 (mzizi-docs#55). No row's mark changes.
+
 ## 2026-10-08
 
 ### Changed — the third release of 2026-10-08: C7 and C8 are ✅ on `main` (2026-10-08)
