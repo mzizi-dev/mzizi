@@ -2514,9 +2514,37 @@ nothing measured.
   C6's methods that return an option or a list (`s[i]`, `slice`, `find`, `parse_int`,
   `parse_float`, `split`, `chars`) still report `MZ0919` (`text::WAITING`): C7 builds the
   options and lists they need, and a follow-up builds them.
+- **Fixed after an independent review of #99.**
+  - `sorted(xs, key = f)` is `exact` only when the label is `key` and `f` is a function of
+    the program. Another label (`reverse = true`) is `MZ0905`, and the sort gets no fix. A
+    key that is not a function gets a `guess`. A call now records whether its labelled
+    argument was written with its label.
+  - Another language's length compared with 0 now goes straight to `c is none` (or
+    `is not none`), so one `mz fix` pass converges. This covers `len(xs)`, `.len()`,
+    `.size()`, `.count()` and `.length` with `is 0`, `is not 0`, `> 0`, `==` and `!=`.
+    Before, it went to `c.length() is 0` and needed a second pass. A test runs `mz fix`
+    once on the shipped binary, then `mz check`, and expects a clean result.
+  - `xs.is_empty()` beside another comparison is fixed to `(xs is none)`, not the chain
+    `xs is none is true`, which did not check.
+  - `range(a, to = b)` as a list computes its length with checked arithmetic and reserves
+    it with `try_reserve_exact`. A list too long for memory is `MZ0991` (exit 101), not a
+    capacity-overflow panic or the allocator's abort (exit 134). `xs.map(f)` reserves its
+    result the same way. The reservation is only as good as the host's: on Linux with
+    overcommit, a reservation that succeeds can still be killed for memory later. Other
+    growth is not checked: a loop of `push`, `filter`, `sort_by` and `group_by` copies,
+    each bounded by a collection the program already holds.
+  - `.find(f)` gets a `guess` `first`, not `exact`: `first` returns an option, which the
+    program may then need to read with `otherwise` (`MZ0710`).
+- **Found in that review and not changed here:**
+  - A map literal whose keys are equal only at run time keeps the last value:
+    `[a: 1, "k": 2]` with `a` bound to `"k"` is `["k": 2]`. A key written twice as a literal
+    is `MZ0961`.
+  - `range(1, 3)` and `xs.slice(0, 2)` are accepted without their `to` label. §6.5's
+    labels are read only where they are written.
+  - `xs[0].push(1)` is `MZ0710`, whose say suggests `otherwise` on a receiver that is being
+    changed. No default makes that a change to `xs`.
 - **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and C6's
-  methods that return an option or a list (above); `p in "a" "b"` as `MZ0910` (§3.3); `xs[i] += 1` as `MZ0918` (it is
-  `MZ0917`); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
+  methods that return an option or a list (above); `p in "a" "b"` as `MZ0910` (§3.3); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
 
 ## 19. What this RFC does not claim
 

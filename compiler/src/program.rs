@@ -1285,7 +1285,8 @@ impl<'a> FnCheck<'a> {
                 name,
                 name_span,
                 args,
-            } => self.call(name, *name_span, args, e.span),
+                labelled,
+            } => self.call(name, *name_span, args, *labelled, e.span),
             ExprKind::Method {
                 recv,
                 name,
@@ -1609,12 +1610,12 @@ impl<'a> FnCheck<'a> {
         Ty::Error
     }
 
-    fn call(&mut self, name: &str, name_span: Span, args: &[Expr], at: Span) -> Ty {
+    fn call(&mut self, name: &str, name_span: Span, args: &[Expr], labelled: bool, at: Span) -> Ty {
         if !self.fns.contains_key(name) && self.visible(name).is_none() {
             if name == "range" {
                 return self.range_value(at, args);
             }
-            if let Some(t) = self.free_collection(name, args, at) {
+            if let Some(t) = self.free_collection(name, args, labelled, at) {
                 return t;
             }
         }

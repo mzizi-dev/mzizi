@@ -454,18 +454,34 @@ impl<'a> FnCheck<'a> {
                     self.binary(e, op, lhs, rhs, lt, r);
                     return Some(Ty::Bool);
                 }
-                let fixed = format!("{} {word} none", operand_text(recv));
-                self.err_fix(
-                    "MZ0962",
-                    e.span,
-                    format!("a collection's emptiness is asked with `none`: `{fixed}`"),
-                    e.span,
-                    fixed,
-                    path_confidence(recv),
-                );
+                let parens = self.tight.contains(&e.span);
+                self.collection_empty_fix(recv, op == BinOp::IsNot, e.span, parens);
                 Some(Ty::Bool)
             }
             _ => None,
+        }
+    }
+
+    /// One `MZ0962` at `whole`, a collection's length compared with 0, whose fix replaces it
+    /// with `c is none` (or `is not none`), in parentheses where it stands inside another
+    /// comparison.
+    pub(super) fn collection_empty_fix(
+        &mut self,
+        recv: &Expr,
+        negated: bool,
+        whole: Span,
+        parens: bool,
+    ) {
+        let word = if negated { "is not" } else { "is" };
+        let mut fixed = format!("{} {word} none", operand_text(recv));
+        if parens {
+            fixed = format!("({fixed})");
+        }
+        let say = format!("a collection's emptiness is asked with `none`: `{fixed}`");
+        if recv.has_error() {
+            self.err("MZ0962", whole, say);
+        } else {
+            self.err_fix("MZ0962", whole, say, whole, fixed, path_confidence(recv));
         }
     }
 
@@ -1206,7 +1222,12 @@ impl<'a> FnCheck<'a> {
                 })
             }
             "is_empty" if called && args.is_empty() => {
-                let fixed = format!("{} is none", operand_text(recv));
+                let mut fixed = format!("{} is none", operand_text(recv));
+                // Beside another comparison, `c is none` needs parentheses the call did not:
+                // `(xs is none) is true`, not the chain `xs is none is true`.
+                if self.tight.contains(&e.span) {
+                    fixed = format!("({fixed})");
+                }
                 say_fix(
                     self,
                     format!("a collection's emptiness is asked with `none`: `{fixed}`"),
@@ -1228,14 +1249,20 @@ impl<'a> FnCheck<'a> {
                 let t = self.collection_method(e, recv, rt, to, name_span, args, called);
                 // At the name, where the lexer's `MZ0101` for `sortedBy` stands: the two are
                 // one mistake, and `mz check` keeps this one (`lib.rs`).
-                self.err_fix(
-                    "MZ0962",
-                    name_span,
-                    format!("`.{name}` is another language's — Mzizi's is `.{to}`"),
-                    name_span,
-                    to,
-                    Confidence::Exact,
-                );
+                // `.first` returns an option where JavaScript's `.find` returns the element
+                // or `undefined`, so the program around it may still need a default: a guess.
+                let (say, conf) = if name == "find" {
+                    (
+                        "`.find` is another language's — Mzizi's is `.first`, which returns an option read with `otherwise`".to_string(),
+                        Confidence::Guess,
+                    )
+                } else {
+                    (
+                        format!("`.{name}` is another language's — Mzizi's is `.{to}`"),
+                        Confidence::Exact,
+                    )
+                };
+                self.err_fix("MZ0962", name_span, say, name_span, to, conf);
                 Some(t)
             }
             "reduce" if list && called && args.len() == 2 => {
@@ -1259,7 +1286,13 @@ impl<'a> FnCheck<'a> {
 
     /// Python's `len(x)` and `sorted(xs, key = f)`, free functions where Mzizi has methods
     /// (`MZ0962`). `None` when `name` is not one of them.
-    pub(super) fn free_collection(&mut self, name: &str, args: &[Expr], at: Span) -> Option<Ty> {
+    pub(super) fn free_collection(
+        &mut self,
+        name: &str,
+        args: &[Expr],
+        labelled: bool,
+        at: Span,
+    ) -> Option<Ty> {
         match (name, args) {
             ("len", [x]) => {
                 let t = self.expr(x);
@@ -1310,21 +1343,31 @@ impl<'a> FnCheck<'a> {
                     return Some(Ty::Error);
                 }
                 match args.get(1) {
-                    Some(key) if args.len() == 2 && !xs.has_error() => {
+                    // Only `key = f` is Python's sort key: another label (`reverse = true`)
+                    // has been reported as a named argument (`MZ0905`), and has no fix here.
+                    Some(key) if args.len() == 2 && labelled && !xs.has_error() => {
                         let fixed = format!("{}.sort_by({})", receiver_text(xs), canonical(key));
+                        // Exact when the key is a function of the program; anything else
+                        // `sort_by` would refuse (`MZ0909`), so the rewrite is a guess.
+                        let conf = match &key.kind {
+                            ExprKind::Name(n) if self.fns.contains_key(n.as_str()) => {
+                                Confidence::Exact
+                            }
+                            _ => Confidence::Guess,
+                        };
                         self.err_fix(
                             "MZ0962",
                             at,
                             format!("`sorted(xs, key = f)` is Python's — Mzizi's is `{fixed}`"),
                             at,
                             fixed,
-                            Confidence::Exact,
+                            conf,
                         );
                     }
                     _ => self.err(
                         "MZ0962",
                         at,
-                        "`sorted(xs)` is Python's — Mzizi sorts with a key, `xs.sort_by(f)`, and a sort with no key is not in M1 (RFC-0013 §9.4, §20 Q26)",
+                        "`sorted(…)` is Python's — Mzizi sorts a list by a key function, `xs.sort_by(f)`, and a sort with no key is not in M1 (RFC-0013 §9.4, §20 Q26)",
                     ),
                 }
                 Some(t)

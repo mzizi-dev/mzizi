@@ -361,6 +361,7 @@ impl P {
                     name: "error".to_string(),
                     name_span: at,
                     args: vec![value],
+                    labelled: false,
                 },
             }
         } else {
@@ -439,6 +440,7 @@ impl P {
                     name: "error".to_string(),
                     name_span: at,
                     args: vec![value],
+                    labelled: false,
                 },
             };
             (fixed, tree)

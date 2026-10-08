@@ -697,7 +697,8 @@ impl Lower<'_> {
             {
                 let a = self.expr(&args[0]);
                 let b = self.expr(&args[1]);
-                format!("mz_range({a}, {b})")
+                let at = self.site(e);
+                format!("mz_range({a}, {b}, {at})")
             }
             ExprKind::Call { name, args, .. } => {
                 if name == "print" {
