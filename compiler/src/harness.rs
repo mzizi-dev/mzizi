@@ -17,13 +17,16 @@
 //! - **Single source, read by the compiler:** `mz` dispatches on [`COMMANDS`], so a command
 //!   with no entry cannot run, and the program parser accepts exactly the surface types'
 //!   names (`Ty::from_name`).
-//! - **Parallel copies, checked by tests:** each code's severity, `say` text and fix kinds,
-//!   and each feature's grammar, teaching text and examples. The checker emits its own
-//!   diagnostics; the tests fail when the two disagree: a code the source can emit with no
-//!   entry, a trigger that does not report its code at its severity with a declared fix
-//!   kind, an example that does not check or run as stated. In a debug build (every
-//!   `cargo test`), [`debug_assert_registered`] also checks every report against
-//!   [`CODES`] and [`PENDING_CODES`], including each diagnostic's fix kind.
+//! - **Parallel copies, checked by tests:** each code's severity and fix kinds, and each
+//!   feature's examples. The checker emits its own diagnostics; the tests fail when the two
+//!   disagree: a code the source can emit with no entry, a trigger that does not report its
+//!   code at its severity with a declared fix kind, an example that does not check or run as
+//!   stated. In a debug build (every `cargo test`), [`debug_assert_registered`] also checks
+//!   every report against [`CODES`] and [`PENDING_CODES`], including each diagnostic's fix
+//!   kind, as raised (before an overlapping `exact` fix is demoted to a `guess`).
+//! - **Written by hand, not compared with the checker:** each code's `say` text and each
+//!   feature's grammar and teaching text. Only a length cap on `say` is tested; a `say` or a
+//!   `teach` can omit a case the checker reports, and no test notices.
 //! - **Exhaustive matches** make a new statement, expression, operator or type fail to
 //!   compile until it names its entry ([`statement_entry`], [`expression_entry`],
 //!   `binop_teach`, `unop_entry`, `type_teach`).
@@ -165,7 +168,9 @@ pub struct Code {
     pub tool: &'static str,
     /// What it means, for an agent with no file open.
     pub say: &'static str,
-    /// The fix kinds its occurrences carry.
+    /// The fix kinds its occurrences carry, as raised. `mz check` demotes an `exact` fix that
+    /// overlaps another to a `guess` (RFC-0008 §6), so an agent can receive a `guess` on a code
+    /// whose list has only `exact`.
     pub fixes: &'static [FixKind],
     /// The declaration kinds it is reported in.
     pub kinds: &'static [&'static str],
@@ -958,7 +963,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.7, §3.8, §4.4, §16",
         ALL_FIXES,
         PROGRAM,
-        "an operation spelt another way: `str(x)` or `x.to_string()` (exact `\"{x}\"`), or Python's free numeric functions, such as `abs(x)` (exact `x.abs()`) and `round(x)` or `pow(a, b)` (a guess, since the methods differ)",
+        "an operation spelt another way: `str(x)` or `x.to_string()` (exact `\"{x}\"`), a free numeric function such as `abs(x)` (exact `x.abs()`; a guess for `round` and `pow`, which differ), or a method without parentheses, `f.round` (exact `()` when it takes no arguments)",
         "program t\n  fn main\n    let n = 2\n    print(str(n))\n  end fn main\nend program t\n",
     ),
     code(

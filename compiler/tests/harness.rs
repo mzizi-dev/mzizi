@@ -239,6 +239,10 @@ fn walk_expr(e: &Expr, out: &mut BTreeSet<&'static str>) {
             }
         }
         ExprKind::Call { args, .. } => args.iter().for_each(|a| walk_expr(a, out)),
+        ExprKind::Method { recv, args, .. } => {
+            walk_expr(recv, out);
+            args.iter().for_each(|a| walk_expr(a, out));
+        }
         ExprKind::Unary { operand, .. } => walk_expr(operand, out),
         ExprKind::Binary { lhs, rhs, .. } => {
             walk_expr(lhs, out);
@@ -321,6 +325,8 @@ fn every_example_checks_clean_and_uses_only_registered_constructs() {
         "prefix -",
         "not",
         "names",
+        "int",
+        "bool",
         "float",
         "text literal",
         "fn",
@@ -699,4 +705,88 @@ fn the_pending_list_is_sorted_and_only_shrinks() {
         "codes added to PENDING_CODES; register them in CODES instead: {grown:?}"
     );
     assert!(PENDING_CODES.iter().all(|c| !c.starts_with("MZ09")));
+}
+
+#[test]
+fn every_literal_names_its_own_types_entry() {
+    // Literals, names and the methods each name the entry that teaches them, not merely some
+    // entry that exists: a literal mapped to another type's entry fails here.
+    let mut seen = BTreeSet::new();
+    for source in examples().keys() {
+        if let (Some(Program::Program(p)), _) = parse_program(source, "example.mz") {
+            for f in &p.fns {
+                let mut exprs = Vec::new();
+                collect(&f.body, &mut exprs);
+                for e in exprs {
+                    let want = match &e.kind {
+                        ExprKind::Int(_) => Some("int"),
+                        ExprKind::Float(_) => Some("float"),
+                        ExprKind::Bool(_) => Some("bool"),
+                        ExprKind::Text(_) => Some("text literal"),
+                        ExprKind::Name(_) => Some("names"),
+                        ExprKind::Method { name, .. } => Some(name.as_str()),
+                        _ => None,
+                    };
+                    if let Some(want) = want {
+                        let got = harness::expression_entry(&e.kind);
+                        assert_eq!(got, want, "{e:?}");
+                        let entry = harness::entry(got).expect("registered");
+                        if matches!(
+                            e.kind,
+                            ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_)
+                        ) {
+                            assert_eq!(entry.kind, Kind::Type, "{got}");
+                        }
+                        seen.insert(want.to_string());
+                    }
+                }
+            }
+        }
+    }
+    for name in ["int", "float", "bool", "text literal", "names"] {
+        assert!(seen.contains(name), "no example has a `{name}` expression");
+    }
+}
+
+fn collect<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Expr>) {
+    fn expr<'a>(e: &'a Expr, out: &mut Vec<&'a Expr>) {
+        out.push(e);
+        match &e.kind {
+            ExprKind::Text(parts) => {
+                for p in parts {
+                    if let TextPart::Expr(e) = p {
+                        expr(e, out);
+                    }
+                }
+            }
+            ExprKind::Call { args, .. } => args.iter().for_each(|a| expr(a, out)),
+            ExprKind::Method { recv, args, .. } => {
+                expr(recv, out);
+                args.iter().for_each(|a| expr(a, out));
+            }
+            ExprKind::Unary { operand, .. } => expr(operand, out),
+            ExprKind::Binary { lhs, rhs, .. } => {
+                expr(lhs, out);
+                expr(rhs, out);
+            }
+            _ => {}
+        }
+    }
+    for s in stmts {
+        match &s.kind {
+            StmtKind::Bind { value, .. } | StmtKind::Assign { value, .. } => expr(value, out),
+            StmtKind::Return(v) => v.iter().for_each(|v| expr(v, out)),
+            StmtKind::When {
+                cond,
+                then,
+                otherwise,
+                ..
+            } => {
+                expr(cond, out);
+                collect(then, out);
+                otherwise.iter().for_each(|o| collect(o, out));
+            }
+            StmtKind::Expr(e) => expr(e, out),
+        }
+    }
 }
