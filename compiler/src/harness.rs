@@ -1559,30 +1559,27 @@ fn binop_teach(op: BinOp) -> (&'static str, &'static str) {
     }
 }
 
-/// A prefix operator's name, grammar, teaching text, types and precedence level. Matched on
-/// every variant.
-fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static str, u8) {
+/// A prefix operator's name, grammar, teaching text and types. Matched on every variant. Its
+/// precedence level is [`UnOp::level`], the checker's own.
+fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static str) {
     match op {
         UnOp::Neg => (
             "prefix -",
             "-<number>",
             "Negation of an `int` (negating `int`'s minimum traps) or a `float`.",
             "int → int; float → float",
-            3,
         ),
         UnOp::Not => (
             "not",
             "not <bool>",
             "Logical not. It binds looser than comparison, so `not a is 3` is `not (a is 3)`. `!` is another language's: the exact fix writes `not`.",
             "bool → bool",
-            7,
         ),
         UnOp::Try => (
             "try",
             "try <result>",
             "`try r` is `r`'s success value; when `r` is an error, the enclosing function returns that error at once. The function must return a result with the same error type. It binds tighter than arithmetic and looser than a dot: `try f(a) + 1` is `(try f(a)) + 1`, and a column of the success value is `(try f(a)).say`. `return try r` with `r` of the function's own result type is `return r`.",
             "result(T, E) → T, in a function returning result(_, E)",
-            3,
         ),
     }
 }
@@ -1922,7 +1919,7 @@ pub fn registry() -> Vec<HarnessEntry> {
         });
     }
     for &op in UnOp::ALL {
-        let (name, grammar, teach, types, level) = unop_entry(op);
+        let (name, grammar, teach, types) = unop_entry(op);
         out.push(HarnessEntry {
             name,
             kind: Kind::Operator,
@@ -1931,7 +1928,7 @@ pub fn registry() -> Vec<HarnessEntry> {
             grammar: vec![grammar],
             teach: teach.to_string(),
             types: types.to_string(),
-            precedence: Some(level),
+            precedence: Some(op.level()),
             codes: match op {
                 UnOp::Not => vec!["MZ0912", "MZ0910"],
                 UnOp::Neg => vec!["MZ0912", "MZ0915", "MZ0991"],

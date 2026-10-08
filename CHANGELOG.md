@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — the language harness gave `not` the wrong precedence (2026-10-08)
+
+- **`mz harness definition` listed prefix `not` at level 7**, the level of the comparisons, while the checker, the parser and RFC-0013 §3.5 put it at 8, looser than comparison (`not a is 3` is `not (a is 3)`), as the entry's own teaching text said. Found by the docs freshness update (mzizi-docs#54), whose operator table followed the harness. The level of each prefix operator now has one source, `UnOp::level`, read by both the checker's `Expr::level` and the harness, and `compiler/tests/harness.rs` now holds every prefix operator's entry to it, as it already did for the binary operators. No program checks, fixes or runs differently.
+
 ### Added
 
 - **Text methods in a `program`, the part of C6 that needs no option or list** (RFC-0013 §10, tracker row C6, now 🟡; Refs #69). `s.length()`, counted in Unicode scalar values as §10 chooses (`"héllo".length()` is `5`, `"日本語".length()` is `3`), `s.contains(t)`, `s.starts_with(t)`, `s.ends_with(t)`, `s.trim()`, `s.to_upper()`, `s.to_lower()` (Unicode's full case mappings: `"straße".to_upper()` is `"STRASSE"`), `s.replace(old, by = new)` and `s.repeat(n)`. They lower to Rust through `chars().count()` and `str`'s own methods, none of which cuts a character, and the generated code holds no `unwrap`, `expect`, `panic!` or `unsafe`. New modules: `compiler/src/text.rs` (the method table), `compiler/src/text/ops.rs` (the helpers, emitted verbatim into every lowered program) and `compiler/src/program/text.rs` (the checker).
