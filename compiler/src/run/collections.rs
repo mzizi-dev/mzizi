@@ -46,13 +46,37 @@ fn mz_slice<T: Clone>(xs: &[T], a: i64, b: i64) -> Option<Vec<T>> {
     xs.get(a..b).map(|s| s.to_vec())
 }
 
-/// `range(a, to = b)` as a list.
-fn mz_range(a: i64, b: i64) -> Vec<i64> {
-    (a..b).collect()
+/// A list with room for `n` elements, or a trap (§4.3) when that much cannot be held: the
+/// allocation is asked for up front, so a list too long for memory is `MZ0991`, never the
+/// allocator's abort or a capacity-overflow panic.
+fn mz_vec_with<T>(n: usize, at: &MzAt) -> Vec<T> {
+    let mut v = Vec::new();
+    if v.try_reserve_exact(n).is_err() {
+        mz_trap(at, "a list too long to hold in memory");
+    }
+    v
 }
 
-fn mz_map<T: Clone, U>(xs: &[T], f: impl Fn(T) -> U) -> Vec<U> {
-    xs.iter().cloned().map(f).collect()
+/// `range(a, to = b)` as a list: its length computed with checked arithmetic, and the
+/// whole list reserved before it is filled.
+fn mz_range(a: i64, b: i64, at: &MzAt) -> Vec<i64> {
+    if b <= a {
+        return Vec::new();
+    }
+    let n = match b.checked_sub(a).and_then(|n| usize::try_from(n).ok()) {
+        Some(n) => n,
+        None => mz_trap(at, "a list too long to hold in memory"),
+    };
+    let mut v = mz_vec_with(n, at);
+    v.extend(a..b);
+    v
+}
+
+/// `xs.map(f)`: as long as `xs`, its elements possibly larger, so reserved up front too.
+fn mz_map<T: Clone, U>(xs: &[T], f: impl Fn(T) -> U, at: &MzAt) -> Vec<U> {
+    let mut v = mz_vec_with(xs.len(), at);
+    v.extend(xs.iter().cloned().map(f));
+    v
 }
 
 fn mz_filter<T: Clone>(xs: &[T], f: impl Fn(T) -> bool) -> Vec<T> {
@@ -462,7 +486,11 @@ impl Lower<'_> {
                 let init = self.expr_want(&args[0], acc);
                 format!("mz_fold(&{r}, {init}, {})", f(1))
             }
-            "map" | "filter" | "count" | "any" | "all" | "first" | "sort_by" | "group_by" => {
+            "map" => {
+                let at = self.site(e);
+                format!("mz_map(&{r}, {}, {at})", f(0))
+            }
+            "filter" | "count" | "any" | "all" | "first" | "sort_by" | "group_by" => {
                 format!("mz_{name}(&{r}, {})", f(0))
             }
             _ => "()".to_string(),

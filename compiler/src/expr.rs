@@ -378,6 +378,9 @@ pub enum ExprKind {
         name_span: Span,
         /// The arguments, in order.
         args: Vec<Expr>,
+        /// Whether the one argument that takes a label (`range`'s and `slice`'s `to`,
+        /// `fold`'s `step`, `sorted`'s `key`, RFC-0013 §6.5) was written with that label.
+        labelled: bool,
     },
     /// `recv.name(args)`, a method (RFC-0013 §3.7), or `recv.name` with no parentheses,
     /// which a program reads only to report it.

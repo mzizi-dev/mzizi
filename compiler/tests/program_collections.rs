@@ -338,18 +338,26 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
         ("let xs = [1]\nprint(xs is [])", "print(xs is none)"),
         ("let xs = [1]\nprint(xs is not [])", "print(xs is not none)"),
         ("let xs = [1]\nprint(xs.length() is 0)", "print(xs is none)"),
+        // Another language's length compared with 0 goes straight to `none`, so `mz fix`
+        // converges in one pass (as C6's text forms do).
+        ("let xs = [1]\nprint(len(xs) is 0)", "print(xs is none)"),
+        ("let xs = [1]\nprint(xs.count() is 0)", "print(xs is none)"),
+        (
+            "let xs = [1]\nprint(xs.size() > 0)",
+            "print(xs is not none)",
+        ),
         (
             "let xs = [1]\nprint(xs.length() is not 0)",
             "print(xs is not none)",
         ),
         ("let xs = [1]\nprint(xs.is_empty())", "print(xs is none)"),
         (
-            "let xs = [1]\nprint(not xs.is_empty())",
-            "print(xs is not none)",
+            "let xs = [1]\nprint(xs.is_empty() is true)",
+            "print((xs is none) is true)",
         ),
         (
-            "let xs = [1]\nprint(xs.find(is_even) otherwise 0)",
-            "print(xs.first(is_even) otherwise 0)",
+            "let xs = [1]\nprint(not xs.is_empty())",
+            "print(xs is not none)",
         ),
         (
             "let xs = [1]\nprint(xs.some(is_even))",
@@ -369,6 +377,29 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
         ),
     ] {
         fixed_by(&wrap(body), "MZ0962", want);
+    }
+    // With `==` or `!=` written too, that operator's `MZ0910` is still reported, its fix
+    // covered by the whole comparison's: one `mz fix` pass still ends clean.
+    for (body, want) in [
+        ("let xs = [1]\nprint(len(xs) == 0)", "print(xs is none)"),
+        (
+            "let xs = [1]\nprint(xs.len() != 0)",
+            "print(xs is not none)",
+        ),
+        (
+            "let xs = [1]\nprint((len(xs) == 0) is false)",
+            "print((xs is none) is false)",
+        ),
+        (
+            "let xs = [1]\nwhen len(xs) == 0\n  print(0)\nend",
+            "when xs is none",
+        ),
+    ] {
+        let src = wrap(body);
+        let after = apply_exact_fixes(&src, &check(&src, "t.mz"));
+        let again = check(&after, "t.mz");
+        assert_eq!(again.error_count(), 0, "{after}\n{:#?}", again.diagnostics);
+        assert!(after.contains(want), "expected `{want}` in:\n{after}");
     }
     // JavaScript's `reduce(f, init)` is a guess: without `init` it has no equivalent.
     guessed(
@@ -394,6 +425,65 @@ fn mz0962_a_collections_operations_spelt_another_way_get_exact_fixes() {
             .fix
             .is_none()
     );
+    // Only `key = f` is a sort key: `reverse = true` is a named argument (`MZ0905`), and
+    // the sort gets no fix, nor a rewrite that quotes `key`.
+    let all = errors(&wrap("let xs = [1]\nprint(sorted(xs, reverse = true))"));
+    assert!(all.iter().any(|d| d.code == "MZ0905"), "{all:#?}");
+    let sorted = all.iter().find(|d| d.code == "MZ0962").expect("MZ0962");
+    assert!(
+        sorted.fix.is_none() && !sorted.say.contains("key ="),
+        "{sorted:#?}"
+    );
+    // A key that is not a function of the program is a guess: `sort_by` would refuse it.
+    guessed(
+        &wrap("let xs = [1]\nprint(sorted(xs, key = 3))"),
+        "MZ0962",
+        "xs.sort_by(3)",
+    );
+    // `.first` returns an option where `.find` may not have been read as one: a guess.
+    guessed(
+        &wrap("let xs = [1]\nprint(xs.find(is_even) otherwise 0)"),
+        "MZ0962",
+        "first",
+    );
+}
+
+/// `mz fix` once, then `mz check`, on the shipped binary: every exact fix for another
+/// language's emptiness lands in one pass, and the result checks clean.
+#[test]
+fn mz_fix_converges_in_one_pass_on_another_languages_emptiness() {
+    let src = wrap(
+        "let xs = [1]\nwhen len(xs) == 0\n  print(0)\nend\nprint(xs.count() is 0)\nprint(len(xs) == 0)\nprint(xs.size() > 0)\nprint(sorted(xs, key = double))",
+    );
+    let dir = std::env::temp_dir().join(format!("mz-collections-fix-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let path = dir.join("t.mz");
+    std::fs::write(&path, &src).expect("write");
+    let mz = |cmd: &str| {
+        Command::new(env!("CARGO_BIN_EXE_mz"))
+            .args([cmd, path.to_str().expect("utf-8")])
+            .output()
+            .expect("mz runs")
+    };
+    let fixed = mz("fix");
+    let after = std::fs::read_to_string(&path).expect("read");
+    let checked = mz("check");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(fixed.status.code(), Some(0), "{fixed:?}");
+    assert_eq!(
+        checked.status.code(),
+        Some(0),
+        "one `mz fix` must leave a program that checks:\n{after}\n{}",
+        String::from_utf8_lossy(&checked.stdout)
+    );
+    for want in [
+        "when xs is none",
+        "print(xs is none)",
+        "print(xs is not none)",
+        "print(xs.sort_by(double))",
+    ] {
+        assert!(after.contains(want), "expected `{want}` in:\n{after}");
+    }
 }
 
 // ------------------------------------------------------------------- MZ0963, MZ0964
@@ -566,10 +656,10 @@ fn the_lowering_of_collections_is_plain_rust_with_no_panics() {
         "match mz_index(&primes, 0i64) { Some(mz_v) => mz_v, None => 0i64 }",
         "    let mut ages: ::std::collections::BTreeMap<String, i64> = ::std::collections::BTreeMap::from([(String::from(\"ada\"), 36i64), (String::from(\"alan\"), 41i64)]);",
         "    let mut seen: ::std::collections::BTreeSet<i64> = ::std::collections::BTreeSet::from([3i64, 1i64, 3i64, 2i64]);",
-        "mz_fold(&(mz_map(&(mz_filter(&xs, is_even)), square)), 0i64, add)",
+        "mz_fold(&(mz_map(&(mz_filter(&xs, is_even)), square, &MZ_AT_",
         "mz_set_index(&mut hands, mz_i, mz_v, &MZ_AT_",
         "    for p in primes.clone() {",
-        "mz_range(1i64, 11i64)",
+        "mz_range(1i64, 11i64, &MZ_AT_",
         "hands.contains(&Suit::Spades)",
         "ages.get(&String::from(\"grace\")).cloned()",
         "mz_sum_int(&",
@@ -684,7 +774,7 @@ fn otherwise_evaluates_its_default_only_on_none() {
 }
 
 #[test]
-fn an_index_assignment_out_of_range_and_an_int_sum_overflow_trap_with_101() {
+fn an_index_out_of_range_an_int_sum_overflow_and_a_range_too_long_trap_with_101() {
     for (name, body, want) in [
         (
             "assign",
@@ -695,6 +785,18 @@ fn an_index_assignment_out_of_range_and_an_int_sum_overflow_trap_with_101() {
             "sum",
             "let xs = [9223372036854775807, 1]\nprint(xs.sum())",
             "integer overflow in `xs.sum()`",
+        ),
+        // A range as a list reserves its length first: one too long for `usize` or for
+        // memory is `MZ0991`, not a capacity-overflow panic or the allocator's abort.
+        (
+            "range_max",
+            "print(range(0, to = 9223372036854775807).length())",
+            "a list too long to hold in memory in `range(0, to = 9223372036854775807)`",
+        ),
+        (
+            "range_huge",
+            "print(range(0, to = 100000000000).length())",
+            "a list too long to hold in memory in `range(0, to = 100000000000)`",
         ),
     ] {
         let src = wrap(body);
