@@ -851,7 +851,7 @@ pub const CODES: &[Code] = &[
         "RFC-0001 §1.3, RFC-0013 §7.2, §18.6",
         NONE,
         ALL_KINDS,
-        "an `enum` line with no name, or a line in an enum that is not a variant name",
+        "a line in an enum that is not a variant name, or, in a program, an `enum` line with no name",
         "program t\n  enum e\n    a\n    1\n  end\n  fn main\n    print(a)\n  end fn main\nend program t\n",
     ),
     code(
@@ -867,7 +867,7 @@ pub const CODES: &[Code] = &[
         "RFC-0001 §1.3, RFC-0013 §16, §18.6",
         NONE,
         ALL_KINDS,
-        "a variant missing a column another variant of its enum has: every variant has every column",
+        "a variant missing a column another variant of its enum has (in a component or service, one its first variant has): every variant has every column",
         "program t\n  enum e\n    a say \"x\"\n    b\n  end\n  fn main\n    print(a.say)\n  end fn main\nend program t\n",
     ),
     code(
