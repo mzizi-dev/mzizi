@@ -25,8 +25,10 @@
 //!   every report against [`CODES`] and [`PENDING_CODES`], including each diagnostic's fix
 //!   kind, as raised (before an overlapping `exact` fix is demoted to a `guess`).
 //! - **Written by hand, not compared with the checker:** each code's `say` text and each
-//!   feature's grammar and teaching text. Only a length cap on `say` is tested; a `say` or a
-//!   `teach` can omit a case the checker reports, and no test notices.
+//!   feature's grammar and teaching text. Only a length cap on `say` is tested, and one list:
+//!   each form `MZ0919`'s `say` names as not built must still report `MZ0919`. Otherwise a
+//!   `say` or a `teach` can omit a case the checker reports, or describe a form a later wave
+//!   changed, and no test notices.
 //! - **Exhaustive matches** make a new statement, expression, operator or type fail to
 //!   compile until it names its entry ([`statement_entry`], [`expression_entry`],
 //!   `binop_teach`, `unop_entry`, `type_teach`).
@@ -308,8 +310,11 @@ pub const FEATURES: &[Feature] = &[
         kind: Kind::Declaration,
         depth: Depth::Full,
         rfc: "RFC-0013 §1, §13, §18.6",
-        grammar: &["program <name>\n  fn main\n    …\n  end fn main\nend program <name>"],
-        teach: "A program is a file that runs. Its first line is `program <name>` and its last is `end program <name>`, with snake_case names; it holds `fn`s and nothing else, so every statement lives inside a `fn`. Exactly one `fn main`, with no parameters and no return type, is the entry point, and a program's output is what it prints. One program per file. `mz run` checks it, lowers it to Rust and runs it; `mz build` writes the Rust package.",
+        grammar: &[
+            "program <name>\n  fn main\n    …\n  end fn main\nend program <name>",
+            "program <name>\n  enum <name>\n    …\n  end\n  fn main\n    …\n  end fn main\n  fn <name>(…): <type>\n    …\n  end fn <name>\nend program <name>",
+        ],
+        teach: "A program is a file that runs. Its first line is `program <name>` and its last is `end program <name>`, with snake_case names; it holds `fn`s and `enum`s, and every statement lives inside a `fn`. Exactly one `fn main`, with no parameters, is the entry point; it returns nothing, or `result(none, E)` so it can use `try` (its own entry, `main returning a result`). A program's output is what it prints. One program per file. `mz run` checks it, lowers it to Rust and runs it; `mz build` writes the Rust package.",
         types: "",
         codes: &[
             "MZ0901", "MZ0902", "MZ0204", "MZ0205", "MZ0207", "MZ0208", "MZ0310", "MZ0411",
@@ -435,7 +440,7 @@ pub const FEATURES: &[Feature] = &[
         rfc: "RFC-0013 §1, §3.8",
         grammar: &["print(<value>)"],
         teach: "`print(value)` writes one value's text form and a newline to standard output. It takes exactly one value; to print several, interpolate them into one text: `print(\"{a} and {b}\")`. `console.log`, `println!`, `fmt.Println`, `puts` and `print x` are other languages', with exact fixes where one exists.",
-        types: "The value is an `int`, a `float`, a `bool` or a `text`: every surface type has a text form (RFC-0013 §3.8). `print` returns nothing.",
+        types: "The value is an `int`, a `float`, a `bool`, a `text` or an enum's variant, which prints as its name: each has a text form (RFC-0013 §3.8). A result has none: match it or `try` it first. `print` returns nothing.",
         codes: &["MZ0980", "MZ0905"],
         examples: &[run(HELLO, HELLO_OUT)],
     },
@@ -446,7 +451,7 @@ pub const FEATURES: &[Feature] = &[
         rfc: "RFC-0013 §3.1, §3.6",
         grammar: &["\"…\"", "\"… {<expr>} …\""],
         teach: "Text is written in double quotes on one line. `{expr}` interpolates a value's text form, and interpolation is the one way to build text: `+` on text is an error with a fix to interpolation. An interpolation holds one value and no string literal. The escapes are `\\n`, `\\t`, `\\\"`, `\\\\`, `\\{` and `\\}`.",
-        types: "A literal is `text`. An interpolated value is an `int`, a `float`, a `bool` or a `text`.",
+        types: "A literal is `text`. An interpolated value is an `int`, a `float`, a `bool`, a `text` or an enum's variant; a result is not.",
         codes: &["MZ0102", "MZ0714", "MZ0917", "MZ0912"],
         examples: &[run(TEXT, "hello, Mzizi: 2 {braces} and \"quotes\"\n")],
     },
@@ -467,7 +472,7 @@ pub const FEATURES: &[Feature] = &[
         depth: Depth::Full,
         rfc: "RFC-0001 §2, RFC-0013 §5.2, §5.3",
         grammar: &["<name>", "snake_case"],
-        teach: "A name reads the binding or parameter it names, from the line after its binding to the end of its block. Every name is snake_case; a camelCase name is an error whose exact fix writes its snake_case form. A binding cannot reuse a function's name, a built-in name (`int`, `bool`, `text`, `list`, `option`, `print`, `range`), a word of the language, or any name starting with `mz_`.",
+        teach: "A name reads the binding or parameter it names, from the line after its binding to the end of its block. Every name is snake_case; a camelCase name is an error whose exact fix writes its snake_case form. A binding cannot reuse a function's name, an enum's or a variant's name, a built-in name (`int`, `bool`, `text`, `list`, `option`, `print`, `range`), a word of the language, or any name starting with `mz_`.",
         types: "",
         codes: &["MZ0101", "MZ0104", "MZ0921", "MZ0707", "MZ0920"],
         examples: &[run(BINDINGS, "area 42\n")],
@@ -489,7 +494,7 @@ pub const FEATURES: &[Feature] = &[
         depth: Depth::Full,
         rfc: "RFC-0013 §7.2",
         grammar: &["match <value>\n  case <value> …\n    …\n  else\n    …\nend"],
-        teach: "`match` tests one value against `case` lines, each listing one or more literals or variants separated by spaces (`case 6 7`), each followed by its block; `else`, last, takes the rest, and one `end` closes it. It takes an enum, an `int`, a `text` or a `bool`. On an enum it covers every variant or ends with `else`; on an `int` or a `text` it ends with `else`. A case that can never run is an error whose exact fix deletes it. There are no guards. `switch`, `default:`, `case _` and `_ =>` are other languages': exact fixes write `match` and `else`. A `match` over a `float` is an error: compare with `when`.",
+        teach: "`match` tests one value against `case` lines, each listing one or more literals or variants separated by spaces (`case 6 7`), each followed by its block; `else`, last, takes the rest, and one `end` closes it. It takes an enum, an `int`, a `text`, a `bool` or a result (its own entry, `match on a result`). On an enum it covers every variant or ends with `else`; on an `int` or a `text` it ends with `else`. A case that can never run is an error whose exact fix deletes it. There are no guards. `switch`, `default:`, `case _` and `_ =>` are other languages': exact fixes write `match` and `else`. A `match` over a `float` is an error: compare with `when`.",
         types: "Each case value has the matched value's type; a bare variant is read against the matched enum.",
         codes: &[
             "MZ0930", "MZ0931", "MZ0933", "MZ0937", "MZ0711", "MZ0912", "MZ0708", "MZ0917",
@@ -570,7 +575,10 @@ pub const FEATURES: &[Feature] = &[
         ],
         teach: "A program declares an enum with one snake_case variant name per line, closed by a bare `end`. A variant may carry columns, each a name and a literal (`negative say \"is below zero\"`); every variant has the same columns, each of one type, and `p.say` reads one, with no parentheses. A variant is written bare (`circle`) where the type expected settles its enum (a comparison's other side, a `case`, an annotated binding, an assignment, a `return`, an argument), and as `<enum>.<variant>` where two enums share it. Variants compare with `is` and order by declaration, and print as their names.",
         types: "Each enum is its own type; its variants are its values. A column has its literals' type.",
-        codes: &["MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0711"],
+        codes: &[
+            "MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0711", "MZ0704", "MZ0301", "MZ0302",
+            "MZ0303",
+        ],
         examples: &[
             run(MATCH, MATCH_OUT),
             run(VALUES, VALUES_OUT),
@@ -839,6 +847,30 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    print(1)\n  end\nend program t\n",
     ),
     code(
+        "MZ0301",
+        "RFC-0001 §1.3, RFC-0013 §7.2, §18.6",
+        NONE,
+        ALL_KINDS,
+        "a line in an enum that is not a variant name, or, in a program, an `enum` line with no name",
+        "program t\n  enum e\n    a\n    1\n  end\n  fn main\n    print(a)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0302",
+        "RFC-0001 §1.3, RFC-0013 §16, §18.6",
+        NONE,
+        ALL_KINDS,
+        "a variant's column with no value; in a program a column's value is a literal: a text with no `{…}`, an `int` or a `bool`",
+        "program t\n  enum e\n    a say x\n    b say \"y\"\n  end\n  fn main\n    print(a.say)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0303",
+        "RFC-0001 §1.3, RFC-0013 §16, §18.6",
+        NONE,
+        ALL_KINDS,
+        "a variant missing a column another variant of its enum has (in a component or service, one its first variant has): every variant has every column",
+        "program t\n  enum e\n    a say \"x\"\n    b\n  end\n  fn main\n    print(a.say)\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0306",
         "RFC-0001 §4",
         NONE,
@@ -879,6 +911,14 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n  end fn main\n  fn f(n: integer): int\n    return 1\n  end fn f\nend program t\n",
     ),
     code(
+        "MZ0704",
+        "RFC-0008 §6, RFC-0013 §16, §18.6",
+        NONE_EXACT,
+        ALL_KINDS,
+        "a name declared twice: in a program, an enum, a variant of one enum (the exact fix deletes its line) or a column of one variant; in a component or service, a type, a `prop` or a record field, or a type named like a built-in",
+        "program t\n  enum e\n    a\n    a\n  end\n  fn main\n    print(a)\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0707",
         "RFC-0008 §5.2, §6",
         ALL_FIXES,
@@ -891,7 +931,7 @@ pub const CODES: &[Code] = &[
         "RFC-0008 §6, RFC-0013 §16",
         ALL_FIXES,
         ALL_KINDS,
-        "no such field, variant or method: in a program, a method a number does not have (`f.sqrt2()`); in a component or service, a field, variant or column; the fix names the nearest (`exact` or a guess, as the checker judges)",
+        "no such field, variant or method: in a program, a number's method (`f.sqrt2()`), an enum's variant or column, or a bare variant two enums share; in a component or service, a field, variant or column; the fix names the nearest, or the enum (`exact` or a guess, as the checker judges)",
         "program t\n  fn main\n    let f = 2.0\n    print(f.sqrt2())\n  end fn main\nend program t\n",
     ),
     code(
@@ -899,7 +939,7 @@ pub const CODES: &[Code] = &[
         "RFC-0008 §6",
         NONE_GUESS,
         ALL_KINDS,
-        "a value of the wrong kind: a binding's declared type, an assignment, a call to a binding, an interpolation with no text form, a `match` over a `float`, or `for each` over an `int` (guess `range(0, to = n)`)",
+        "a value of the wrong kind: a binding's declared type, an assignment, a call to a binding, an interpolation with no text form, a column whose type differs between variants, a `match` over a `float`, or `for each` over an `int` (guess `range(0, to = n)`)",
         "program t\n  fn main\n    let n: int = \"one\"\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -931,7 +971,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §1, §13, §16",
         NONE,
         PROGRAM,
-        "no `fn main`, a second one, or `main` with parameters or a return type",
+        "no `fn main`, a second one, or `main` with parameters or with a return type other than `result(none, E)`",
         "program t\n  fn helper\n    print(1)\n  end fn helper\nend program t\n",
     ),
     code(
@@ -947,7 +987,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.1, §16",
         NONE,
         PROGRAM,
-        "two `fn`s with one name, a `fn` named like a built-in function, or a parameter named twice",
+        "two `fn`s with one name, a `fn` and an `enum` with one name, a `fn` named like a built-in function, or a parameter named twice",
         "program t\n  fn main\n    print(1)\n  end fn main\n  fn f\n    print(1)\n  end fn f\n  fn f\n    print(2)\n  end fn f\nend program t\n",
     ),
     code(
@@ -1067,7 +1107,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "a form RFC-0013 designs that this compiler does not build yet (collections and options, `range` off a `for each` line, an enum variant with columns, methods on `text`, a program's `contract`, …), named and reported once",
+        "a form RFC-0013 designs that this compiler does not build yet, named and reported once: lists, maps, sets and options (`none` among them); `range` off a `for each` line; methods on `text`; a `record`; a `use` line; a `test` block; a `contract` block in a program or on a `fn`",
         "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1083,7 +1123,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §5.3, §16",
         NONE_GUESS,
         PROGRAM,
-        "a name a program reserves: a word of the language, a built-in or function name, a name starting with `mz_`, or a name already bound in the function (no shadowing)",
+        "a name a program reserves: a word of the language, a built-in name, a name starting with `mz_`, a binding named like a function, an enum or a variant, a `fn` named like a variant, or a name already bound in the function (no shadowing)",
         "program t\n  fn main\n    let print = 1\n  end fn main\nend program t\n",
     ),
     code(
@@ -1091,7 +1131,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §5.1, §16",
         NONE_EXACT,
         PROGRAM,
-        "assignment to a `let` (exact fix `var`) or to a parameter",
+        "assignment to a `let` (exact fix `var`), to a parameter, or to a `for each` binding",
         "program t\n  fn main\n    let n = 1\n    n = 2\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1296,13 +1336,12 @@ pub const CODES: &[Code] = &[
 /// [`CODES`], and the drift test fails on any code that is on neither list. Kept sorted, and
 /// frozen: `compiler/tests/harness.rs` holds a snapshot it may only shrink from.
 pub const PENDING_CODES: &[&str] = &[
-    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0301", "MZ0302", "MZ0303", "MZ0304", "MZ0305",
-    "MZ0307", "MZ0308", "MZ0309", "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404",
-    "MZ0405", "MZ0406", "MZ0408", "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602",
-    "MZ0603", "MZ0605", "MZ0606", "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0704",
-    "MZ0705", "MZ0706", "MZ0709", "MZ0710", "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802",
-    "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811",
-    "MZ0812",
+    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0304", "MZ0305", "MZ0307", "MZ0308", "MZ0309",
+    "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404", "MZ0405", "MZ0406", "MZ0408",
+    "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
+    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
+    "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
+    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 /// The registered code, if any.
