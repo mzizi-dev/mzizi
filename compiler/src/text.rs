@@ -136,6 +136,7 @@ mod tests {
         assert_eq!(mz_text_repeat("", i64::MAX), Ok(String::new()));
         assert_eq!(mz_text_repeat("ab", -1), Err("negative repeat count"));
         assert_eq!(mz_text_repeat("ab", i64::MAX), Err("text too long"));
+        assert_eq!(mz_text_repeat("", -1), Err("negative repeat count"));
     }
 
     #[test]

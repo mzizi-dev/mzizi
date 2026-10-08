@@ -2370,7 +2370,9 @@ its own branch). Built and tested in `compiler/tests/program_text.rs` and
   `toUpperCase()`, `toLowerCase()`, `startswith`, `endswith` and `includes` (`exact`, the
   name alone); `replace_all(a, b)` and `replaceAll(a, b)` (`exact` `replace(a, by = b)`);
   and §3.3's emptiness, `s.is_empty()`, `s.length() is 0`, `is not 0`, `> 0` and
-  `not s.is_empty()` (`exact` `s is ""` or `s is not ""`). No code is claimed.
+  `not s.is_empty()`, with `len(s)`, `s.len()`, `s.size()`, `s.count()` or `s.length` in
+  place of `s.length()` (`exact` `s is ""` or `s is not ""`, in one pass). No code is
+  claimed.
 - **Retired from `MZ0919`:** methods on text, except the six below.
 - **Where the code departs from this text, the code is the fact.**
   - _`s.repeat(n)` traps_ on a negative `n` (`negative repeat count`) and on a result longer
@@ -2383,10 +2385,12 @@ its own branch). Built and tested in `compiler/tests/program_text.rs` and
     §16's row does not name.
   - _`replace`'s second argument is labelled `by`_ (§10's `s.replace(old, by = new)`), and
     `s.replace(a, b)` without the label is `MZ0927`, §16's "a positional argument after the
-    first", with the `exact` fix inserting the `by =` label; `by: b` gets the `exact` `by = b`. §6.5's
-    labels are not built for any other call, so `range` and `replace` are the two whose
-    label the parser reads (and `slice`'s `to`, read so that its one diagnostic is
-    `MZ0919`). An empty `old` inserts `new` before every scalar value and at the end, as
+    first", with the `exact` fix inserting the `by =` label; `by: b` and another name in
+    its place (`with = b`, §16's "an unknown label") get the `exact` `by = b`. The checker
+    reports it, not the parser, so `3.replace(1, 2)` is `MZ0708` alone. §6.5's labels are
+    not built for any other call, so `range` and `replace` are the two whose label the
+    parser reads (and `slice`'s `to`, read so that its one diagnostic is `MZ0919`, labelled
+    or not); `range(0, stop = 3)` is still C4's `MZ0905`. An empty `old` inserts `new` before every scalar value and at the end, as
     Python's `replace` does; §10 does not say.
   - _`to_upper` and `to_lower` are Rust's full Unicode case mappings_, so a character may
     become two (`"straße".to_upper()` is `"STRASSE"`) and a final sigma lowers to `ς`.
