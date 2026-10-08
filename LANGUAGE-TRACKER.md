@@ -52,8 +52,8 @@ What exists is the front end of a language whose first domain is UI components, 
   `mz outline`, `mz build` for a service or a program, `mz run` for a program, and
   `mz harness`; a recovering parser (blocks nest at most 64 deep, past which one `MZ0411`;
   RFC-0001 §4.7 item 8), a resolver, a content-addressed IR
-  ([RFC-0003](./design/RFC-0003-ir.md)). About 31,200 lines in `compiler/src`, 692 tests in
-  26 suites today (`cargo test --workspace`, 561 of them in the compiler crate; 437 when this
+  ([RFC-0003](./design/RFC-0003-ir.md)). About 31,300 lines in `compiler/src`, 693 tests in
+  26 suites today (`cargo test --workspace`, 562 of them in the compiler crate; 437 when this
   section was first written).
 - **Written in Mzizi:** nine primitives (`primitives/`), two component examples, one
   service, `examples/registry.mz`, and six programs, `examples/hello.mz`, `fib.mz`,

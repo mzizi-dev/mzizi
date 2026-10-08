@@ -74,22 +74,37 @@ impl FnCheck<'_> {
     /// these on a receiver visibly typed `text`, so it is checked as any other expression
     /// (a bare `s.is_empty()` is [`Self::text_method`]'s).
     pub(super) fn text_emptiness(&mut self, e: &Expr) -> Option<Ty> {
-        let (recv, negated, at) = match &e.kind {
+        let (recv, negated, at, by_is_empty) = match &e.kind {
             ExprKind::Unary {
                 op: UnOp::Not,
                 operand,
             } => match (is_empty_call(operand), length_compared(operand)) {
-                (Some(r), _) => (r, true, e.span),
-                (None, Some((r, not_empty))) => (r, !not_empty, e.span),
+                (Some(r), _) => (r, true, e.span, true),
+                (None, Some((r, not_empty))) => (r, !not_empty, e.span, false),
                 _ => return None,
             },
             ExprKind::Binary { .. } => {
                 let (r, not_empty) = length_compared(e)?;
-                (r, not_empty, e.span)
+                (r, not_empty, e.span, false)
             }
             _ => return None,
         };
-        if self.shallow_ty(recv) != Ty::Text || self.fns.contains_key("len") {
+        if self.fns.contains_key("len") {
+            return None;
+        }
+        let shallow = self.shallow_ty(recv);
+        // A collection's length compared with 0, in any of these spellings, is one
+        // `MZ0962` whose fix writes `c is none` in one pass (`not c.is_empty()` is
+        // [`Self::not_is_empty`]'s).
+        if shallow.is_collection() && !by_is_empty {
+            let t = self.expr(recv);
+            if t.is_collection() {
+                let parens = self.tight.contains(&e.span);
+                self.collection_empty_fix(recv, negated, e.span, parens);
+            }
+            return Some(Ty::Bool);
+        }
+        if shallow != Ty::Text {
             return None;
         }
         let t = self.expr(recv);

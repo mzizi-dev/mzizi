@@ -2364,7 +2364,7 @@ impl P {
         }
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
-        let (args, close, _) = self.args_labelled(P::call_label(&name), false);
+        let (args, close, labelled) = self.args_labelled(P::call_label(&name), false);
         let span = join(at, close);
         if name == "print" || name == "puts" {
             return self.print_call(at, &name, args, span);
@@ -2374,6 +2374,7 @@ impl P {
                 name,
                 name_span: at,
                 args,
+                labelled,
             },
             span,
         }
@@ -2508,6 +2509,7 @@ impl P {
                     name: "print".to_string(),
                     name_span: name_at,
                     args,
+                    labelled: false,
                 },
                 span,
             };
@@ -2567,6 +2569,7 @@ impl P {
                 name: "print".to_string(),
                 name_span: name_at,
                 args: vec![arg],
+                labelled: false,
             },
             span,
         }
