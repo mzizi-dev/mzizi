@@ -280,6 +280,12 @@ impl Lower<'_> {
                 let key = self.expr_want(index, k);
                 format!("{b}.get(&{key}).cloned()")
             }
+            // `s[i]` (§3.7): one character, by scalar value, `none` out of range (§10).
+            Ty::Text => {
+                let s = self.text_str(base);
+                let i = self.expr(index);
+                format!("mz_text_index({s}, {i})")
+            }
             _ => {
                 let b = self.place(base);
                 let i = self.expr(index);
