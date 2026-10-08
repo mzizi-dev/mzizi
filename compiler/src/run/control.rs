@@ -92,7 +92,8 @@ pub(super) fn rust_enum_names(
         used.push(name.clone());
         let mut variants = BTreeMap::new();
         let mut taken: Vec<String> = Vec::new();
-        for (j, (v, _)) in e.variants.iter().enumerate() {
+        for (j, v) in e.variants.iter().enumerate() {
+            let v = &v.name;
             let mut rust = pascal(v);
             if rust.is_empty() || rust == "Self" || taken.contains(&rust) {
                 rust = format!("MzUser{}{rust}", j + 1);
@@ -116,22 +117,27 @@ impl Lower<'_> {
             "\n// enum {}\n#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]\nenum {rust} {{",
             e.name
         );
-        for (v, _) in &e.variants {
+        for v in &e.variants {
             let _ = writeln!(
                 out,
                 "    {},",
-                variants.get(v).map_or(v.as_str(), String::as_str)
+                variants
+                    .get(&v.name)
+                    .map_or(v.name.as_str(), String::as_str)
             );
         }
         let _ = writeln!(
             out,
             "}}\n\nimpl MzText for {rust} {{\n    fn mz_text(&self) -> String {{\n        match *self {{"
         );
-        for (v, _) in &e.variants {
+        for v in &e.variants {
             let _ = writeln!(
                 out,
-                "            {rust}::{} => String::from({v:?}),",
-                variants.get(v).map_or(v.as_str(), String::as_str)
+                "            {rust}::{} => String::from({:?}),",
+                variants
+                    .get(&v.name)
+                    .map_or(v.name.as_str(), String::as_str),
+                v.name
             );
         }
         out.push_str("        }\n    }\n}\n");
@@ -310,7 +316,12 @@ impl Lower<'_> {
                 let (head, t) = self.match_head(scrutinee);
                 let _ = writeln!(out, "{pad}match {head} {{");
                 for a in arms.iter().filter(|a| !a.after_else) {
-                    let _ = writeln!(out, "{pad}    {} => {{", self.patterns(&a.values, t));
+                    let pattern = if t.as_result().is_some() {
+                        self.result_pattern(a, t)
+                    } else {
+                        self.patterns(&a.values, t)
+                    };
+                    let _ = writeln!(out, "{pad}    {pattern} => {{");
                     self.block(&a.body, depth + 2, out);
                     let _ = writeln!(out, "{pad}    }}");
                 }
@@ -384,8 +395,13 @@ impl Lower<'_> {
                 let (head, t) = self.match_head(scrutinee);
                 let mut branches = Vec::new();
                 for a in arms.iter().filter(|a| !a.after_else) {
+                    let pattern = if t.as_result().is_some() {
+                        self.result_pattern(a, t)
+                    } else {
+                        self.patterns(&a.values, t)
+                    };
                     let v = self.expr_want(&a.body, want);
-                    branches.push(format!("{} => {v}", self.patterns(&a.values, t)));
+                    branches.push(format!("{pattern} => {v}"));
                 }
                 if let Some(o) = otherwise {
                     let v = self.expr_want(&o.body, want);

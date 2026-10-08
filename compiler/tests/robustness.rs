@@ -705,3 +705,51 @@ fn deep_control_flow_is_one_mz0411_and_a_long_chain_is_flat() {
     assert_eq!(check(&src, "case.mz").error_count(), 0);
     run("an `else when` chain of 10,000 links", src);
 }
+
+/// RFC-0013 §12's forms under the same cap: 100,000 prefix `try`s, `.name`s and postfix
+/// `?`s on one line, and 5,000 nested `match`es on results, each give exactly one
+/// diagnostic, `MZ0411`, and every pass after the parser stays within the 1 MiB stack.
+#[test]
+fn deep_errors_are_one_mz0411() {
+    let n = 100_000;
+    let program = |body: &str| {
+        format!(
+            "program deep\n\n  fn main: result(none, text)\n{body}  end fn main\n\n  fn check(n: int): result(int, text)\n    return n\n  end fn check\n\nend program deep\n"
+        )
+    };
+    let cases = [
+        (
+            "100,000 prefix `try`s",
+            format!("{}check(1)", "try ".repeat(n)),
+        ),
+        ("100,000 `.name`s", format!("(1){}", ".a".repeat(n))),
+        ("100,000 postfix `?`s", format!("check(1){}", "?".repeat(n))),
+    ];
+    for (label, value) in cases {
+        let src = program(&format!("    let x = {value}\n    print(\"{{x}}\")\n"));
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "{label}");
+        run(label, src);
+    }
+    let depth = 5_000;
+    let mut body = String::new();
+    for i in 0..depth {
+        body.push_str(&format!("    match check({i})\n    case ok v{i}\n"));
+    }
+    body.push_str("    print(\"in\")\n");
+    for i in (0..depth).rev() {
+        body.push_str(&format!("    case error e{i}\n    print(e{i})\n    end\n"));
+    }
+    let src = program(&body);
+    let codes: Vec<_> = check(&src, "case.mz")
+        .diagnostics
+        .iter()
+        .map(|d| d.code)
+        .collect();
+    assert_eq!(codes, ["MZ0411"], "5,000 nested `match`es");
+    run("5,000 nested `match`es", src);
+}

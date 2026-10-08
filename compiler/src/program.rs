@@ -21,7 +21,10 @@ use crate::numbers;
 use crate::resolve::nearest;
 
 mod control;
+mod errors;
+
 pub use control::{canonical_stmts, variant_owner};
+pub use errors::{Column, EnumDecl, Variant};
 
 /// `program <name>` … `end program <name>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -34,29 +37,11 @@ pub struct Program {
     pub docs: Vec<String>,
     /// Every `fn`, in source order.
     pub fns: Vec<FnDecl>,
-    /// Every `enum`, in source order (RFC-0013 §1, §7.2).
+    /// Every `enum`, in source order (RFC-0013 §1, §7.2, §12.1).
     pub enums: Vec<EnumDecl>,
     /// Whether statements stood outside every `fn` (reported as `MZ0901`, whose message
     /// names `fn main`, so a missing `fn main` is not reported a second time).
     pub stray_statements: bool,
-}
-
-/// `enum <name>` … `end`: a fieldless enum, one variant per line (RFC-0013 §7.2).
-#[derive(Clone, Debug, PartialEq)]
-pub struct EnumDecl {
-    /// The enum's name.
-    pub name: String,
-    /// Where the name is.
-    pub name_span: Span,
-    /// Its variants, in declaration order, each with where it is written.
-    pub variants: Vec<(String, Span)>,
-}
-
-impl EnumDecl {
-    /// Whether `name` is one of the enum's variants.
-    pub fn has(&self, name: &str) -> bool {
-        self.variants.iter().any(|(v, _)| v == name)
-    }
 }
 
 /// A type as written in a signature or an annotation.
@@ -173,8 +158,9 @@ pub enum StmtKind {
         /// The `else` branch, if written.
         otherwise: Option<Vec<Stmt>>,
     },
-    /// `match <expr>` … `case …` … [`else` …] `end` (RFC-0013 §7.2). C9's `match` on a
-    /// result (#87) is meant to be this statement too, over a result-typed scrutinee.
+    /// `match <expr>` … `case …` … [`else` …] `end` (RFC-0013 §7.2), and over a result
+    /// (§12.2), whose `case ok <name>` and `case error <name>` carry [`Arm::binding`] and
+    /// take no `else`.
     Match {
         /// The value matched.
         scrutinee: Expr,
@@ -317,13 +303,16 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
                     "`fn main` takes no parameters — command-line arguments are not in the language yet",
                 ));
             }
-            if let Some(ret) = first.ret {
+            if let Some(ret) = first.ret
+                && ret.ty != Ty::Error
+                && !errors::returns_none_result(ret.ty)
+            {
                 diags.push(Diagnostic::error(
                     "MZ0902",
                     file,
                     ret.span,
                     format!(
-                        "`fn main` returns nothing, and this one declares `: {}` — a program's output is what it prints",
+                        "`fn main` returns nothing or `result(none, E)`, and this one declares `: {}` — a program's output is what it prints",
                         ret.ty.name()
                     ),
                 ));
@@ -331,6 +320,9 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
         }
     }
     diags.extend(control::check_enums(&p.enums, &fns, file));
+    for e in &p.enums {
+        errors::check_columns(e, file, &mut diags);
+    }
     for f in &p.fns {
         let mut cx = FnCheck::new(f, &fns, &p.enums, file);
         cx.run();
@@ -369,6 +361,8 @@ struct Binding {
     kw_span: Option<Span>,
     /// Whether a `var` was ever assigned (`MZ0924` otherwise).
     assigned: bool,
+    /// Whether it was ever read: a `let` holding a result must be (`MZ0950`, §12.3).
+    read: bool,
 }
 
 /// A binding anywhere in the function, collected before checking, so that a use the scope
@@ -402,6 +396,9 @@ struct FnCheck<'a> {
     whens: Vec<(u32, u32)>,
     /// Lines of every assignment in the function, by name, for `MZ0923`'s `let` or `var`.
     assigns: BTreeMap<String, Vec<u32>>,
+    /// Each `let` that holds a result: its binding, its name and its value, so one never
+    /// read before its block ends is `MZ0950` (§12.3).
+    results: Vec<(usize, Span, Span)>,
 }
 
 impl<'a> FnCheck<'a> {
@@ -424,6 +421,7 @@ impl<'a> FnCheck<'a> {
             sites: Vec::new(),
             whens: Vec::new(),
             assigns: BTreeMap::new(),
+            results: Vec::new(),
         };
         cx.collect(&f.body, &mut Vec::new());
         cx
@@ -473,6 +471,15 @@ impl<'a> FnCheck<'a> {
                 } => {
                     whens.push((s.span.start_line, s.span.start_col));
                     for a in arms {
+                        if let Some((name, span)) = &a.binding {
+                            self.sites.push(Site {
+                                name: name.clone(),
+                                line: span.start_line,
+                                ty: Ty::Error,
+                                whens: whens.clone(),
+                                loop_binding: false,
+                            });
+                        }
                         self.collect(&a.body, whens);
                     }
                     if let Some(o) = otherwise {
@@ -552,13 +559,29 @@ impl<'a> FnCheck<'a> {
                     ),
                 );
             }
-            self.bind(&p.name, Kind::Param, p.ty.ty, None);
+            let mut ty = p.ty.ty;
+            if ty.as_result().is_some() {
+                // §2: a result is a return type, never a parameter's.
+                self.err(
+                    "MZ0950",
+                    p.ty.span,
+                    format!(
+                        "parameter `{}` is a {} — a result is matched or propagated where it is made, and its value passed on",
+                        p.name,
+                        ty.name()
+                    ),
+                );
+                ty = Ty::Error;
+            }
+            self.bind(&p.name, Kind::Param, ty, None);
         }
+        // `result(none, E)` returns success by reaching `end fn` (§12.1).
+        let must_return = f.ret.is_some_and(|r| !errors::returns_none_result(r.ty));
         // The Rust habit: a body whose last line is a value of the return type, with no
         // `return`. That is `MZ0906` with an `exact` fix, and the line is not also `MZ0916`.
-        let tail_value = match (f.ret, f.body.last()) {
+        let tail_value = match (must_return, f.body.last()) {
             (
-                Some(_),
+                true,
                 Some(Stmt {
                     kind: StmtKind::Expr(e),
                     ..
@@ -568,7 +591,13 @@ impl<'a> FnCheck<'a> {
         };
         self.block(&f.body, tail_value);
         self.reachability(&f.body);
+        let top = self.scopes.first().cloned().unwrap_or_default();
+        self.unmatched_results(&top);
+        // A return type already reported as unknown says nothing more: there is no type to
+        // return, and no `return` to insert.
         if let Some(ret) = f.ret
+            && must_return
+            && ret.ty != Ty::Error
             && !terminates(&f.body)
         {
             let say = format!(
@@ -581,7 +610,7 @@ impl<'a> FnCheck<'a> {
                 Some(Stmt {
                     kind: StmtKind::Expr(e),
                     ..
-                }) if self.shallow_ty(e) == ret.ty => Some(e.span),
+                }) if fits_return(self.shallow_ty(e), ret.ty) => Some(e.span),
                 _ => None,
             };
             match fix {
@@ -658,6 +687,7 @@ impl<'a> FnCheck<'a> {
             ty,
             kw_span,
             assigned: false,
+            read: false,
         });
         let i = self.bindings.len() - 1;
         self.scopes
@@ -684,7 +714,7 @@ impl<'a> FnCheck<'a> {
     fn scoped(&mut self, stmts: &[Stmt]) {
         self.scopes.push(Vec::new());
         self.block(stmts, None);
-        self.scopes.pop();
+        self.end_scope();
     }
 
     /// Whether a new binding may take `name`; reports `MZ0921` when it may not.
@@ -707,9 +737,9 @@ impl<'a> FnCheck<'a> {
         }
         if BUILT_IN_NAMES.contains(&name) || self.fns.contains_key(name) {
             let what = if self.fns.contains_key(name) {
-                "a function of this program"
+                "a function of this program".to_string()
             } else {
-                "a built-in"
+                "a built-in".to_string()
             };
             self.err(
                 "MZ0921",
@@ -764,7 +794,26 @@ impl<'a> FnCheck<'a> {
                     Some(t) => self.expr_want(value, t.ty),
                     None => self.expr(value),
                 };
-                let bound = self.binding_type(name, ty.as_ref(), vt, value.span);
+                let mut bound = self.binding_type(name, ty.as_ref(), vt, value.span);
+                // A `var` already reported for holding a result is not also `MZ0924`: the
+                // one fix, `let`, answers both.
+                let mut kw = Some(*kw_span);
+                if *mutable && bound.as_result().is_some() {
+                    // §12.3: a `let` may hold a result until it is matched; a `var` may not.
+                    self.err_fix(
+                        "MZ0950",
+                        *kw_span,
+                        format!(
+                            "`var {name}` would hold a {} — a result is held by a `let` until it is matched or propagated",
+                            bound.name()
+                        ),
+                        *kw_span,
+                        "let",
+                        Confidence::Guess,
+                    );
+                    bound = Ty::Error;
+                    kw = None;
+                }
                 // The checked type replaces the shape's guess, so a later `MZ0920` fix that
                 // hoists this binding declares it with the right zero (`0.0` for `a * b` on
                 // floats, which the shape alone cannot tell from ints).
@@ -778,7 +827,11 @@ impl<'a> FnCheck<'a> {
                 }
                 if self.may_bind(name, *name_span) {
                     let kind = if *mutable { Kind::Var } else { Kind::Let };
-                    self.bind(name, kind, bound, Some(*kw_span));
+                    self.bind(name, kind, bound, kw);
+                    if bound.as_result().is_some() {
+                        let i = self.bindings.len() - 1;
+                        self.results.push((i, *name_span, value.span));
+                    }
                 } else if let Some(i) = self.visible(name) {
                     // Reported once; later reads see the newer type, and are silent.
                     self.bindings[i].ty = bound;
@@ -797,6 +850,12 @@ impl<'a> FnCheck<'a> {
                     .visible(name)
                     .map_or(Ty::Error, |i| self.bindings[i].ty);
                 let vt = self.expr_want(value, want);
+                let vt =
+                    if self.unhandled(value, vt, || "an assignment stores it unexamined".into()) {
+                        Ty::Error
+                    } else {
+                        vt
+                    };
                 match self.visible(name) {
                     Some(i) => {
                         // Python's annotated assignment to a name already bound: the type
@@ -929,6 +988,10 @@ impl<'a> FnCheck<'a> {
                             );
                         }
                     }
+                    (None, Some(r)) if errors::returns_none_result(r.ty) => {}
+                    (Some(v), Some(r)) if r.ty.as_result().is_some() => {
+                        self.return_result(v, r.ty);
+                    }
                     (None, Some(r)) => self.err(
                         "MZ0908",
                         s.span,
@@ -940,7 +1003,10 @@ impl<'a> FnCheck<'a> {
                     ),
                     (Some(v), Some(r)) => {
                         let t = self.expr_want(v, r.ty);
-                        if t != Ty::Error && r.ty != Ty::Error && t != r.ty {
+                        let how = || format!("`{}` returns {}", f.signature(), r.ty.name());
+                        if self.unhandled(v, t, how) {
+                            // Reported: a result returned where its type does not fit.
+                        } else if t != Ty::Error && r.ty != Ty::Error && t != r.ty {
                             self.err(
                                 "MZ0908",
                                 v.span,
@@ -987,7 +1053,11 @@ impl<'a> FnCheck<'a> {
             StmtKind::Expr(e) => {
                 let t = self.expr(e);
                 let is_tail = tail_value == Some(e.span);
-                if !matches!(t, Ty::Nothing | Ty::Error) && !is_tail {
+                // A tail value is `MZ0906`'s, whose fix inserts `return`; a result there is
+                // not also `MZ0950`.
+                if !is_tail && self.unhandled(e, t, || "nothing reads it".into()) {
+                    // Reported: a discarded result is `MZ0950`, not `MZ0916`.
+                } else if !matches!(t, Ty::Nothing | Ty::Error) && !is_tail {
                     self.err(
                         "MZ0916",
                         e.span,
@@ -1006,6 +1076,10 @@ impl<'a> FnCheck<'a> {
     /// names the question to ask.
     fn condition(&mut self, cond: &Expr, t: Ty, word: &str) {
         if t == Ty::Bool || t == Ty::Error {
+            return;
+        }
+        // A result is not a condition (§12.3): `MZ0950`, with `try` where it propagates.
+        if self.unhandled(cond, t, || format!("`{word}` needs a bool")) {
             return;
         }
         let question = match t {
@@ -1134,7 +1208,9 @@ impl<'a> FnCheck<'a> {
                 for part in parts {
                     if let TextPart::Expr(inner) = part {
                         let t = self.expr(inner);
-                        if !has_text_form(t) {
+                        if self.unhandled(inner, t, || "a result has no text form".into()) {
+                            // Reported.
+                        } else if !has_text_form(t) {
                             self.err(
                                 "MZ0711",
                                 inner.span,
@@ -1162,17 +1238,31 @@ impl<'a> FnCheck<'a> {
                 args,
                 called,
             } => self.method(e, recv, name, *name_span, args, *called),
+            ExprKind::Unary {
+                op: UnOp::Try,
+                operand,
+            } => self.try_expr(e, operand),
+            ExprKind::Field {
+                base,
+                name,
+                name_span,
+            } => self.field(e, base, name, *name_span),
             ExprKind::Unary { op, operand } => {
                 let t = self.expr(operand);
+                // `try` is typed by `try_expr`, in the arm above.
                 let want = match op {
                     UnOp::Neg if t == Ty::Float => Ty::Float,
                     UnOp::Neg => Ty::Int,
-                    UnOp::Not => Ty::Bool,
+                    UnOp::Not | UnOp::Try => Ty::Bool,
                 };
+                let how = || format!("`{}` needs its success value", canonical(e));
+                if self.unhandled(operand, t, how) {
+                    return Ty::Error;
+                }
                 if t != want && t != Ty::Error {
                     let (word, kind) = match op {
                         UnOp::Neg => ("-", "an int or a float"),
-                        UnOp::Not => ("not", "a bool"),
+                        UnOp::Not | UnOp::Try => ("not", "a bool"),
                     };
                     self.err(
                         "MZ0912",
@@ -1225,6 +1315,14 @@ impl<'a> FnCheck<'a> {
 
     /// The type of a binary expression whose operands are typed, with its diagnostics.
     fn binary(&mut self, e: &Expr, op: BinOp, lhs: &Expr, rhs: &Expr, l: Ty, r: Ty) -> Ty {
+        let how = || format!("`{}` needs its success value", op.text());
+        if self.unhandled(lhs, l, how) | self.unhandled(rhs, r, how) {
+            return if op.is_arithmetic() {
+                Ty::Error
+            } else {
+                Ty::Bool
+            };
+        }
         match binary_type(op, l, r) {
             Ok(t) => {
                 if t == Ty::Int {
@@ -1297,7 +1395,12 @@ impl<'a> FnCheck<'a> {
     fn add_chain(&mut self, e: &Expr) -> Ty {
         let mut leaves = Vec::new();
         flatten_add(e, &mut leaves);
-        let types: Vec<Ty> = leaves.iter().map(|l| self.expr(l)).collect();
+        let mut types: Vec<Ty> = leaves.iter().map(|l| self.expr(l)).collect();
+        for (leaf, t) in leaves.iter().zip(types.iter_mut()) {
+            if self.unhandled(leaf, *t, || "`+` needs its success value".into()) {
+                *t = Ty::Error;
+            }
+        }
         if types.contains(&Ty::Text) && types.iter().all(|t| has_text_form(*t)) {
             let mut parts = Vec::new();
             let mut fixable = true;
@@ -1356,9 +1459,11 @@ impl<'a> FnCheck<'a> {
 
     fn read(&mut self, name: &str, at: Span) -> Ty {
         if let Some(i) = self.visible(name) {
+            self.bindings[i].read = true;
             return self.bindings[i].ty;
         }
         if let Some(t) = self.bare_variant(name, at) {
+            self.bare_ok_error(name, at, t);
             return t;
         }
         if let Some(f) = self.fns.get(name).copied() {
@@ -1410,16 +1515,32 @@ impl<'a> FnCheck<'a> {
     }
 
     fn call(&mut self, name: &str, name_span: Span, args: &[Expr], at: Span) -> Ty {
-        let params: Vec<Ty> = self
-            .fns
-            .get(name)
-            .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
-            .unwrap_or_default();
-        let types: Vec<Ty> = args
+        // `error(e)`'s one argument is read against the function's error type (§12.1), so a
+        // bare variant of the error enum resolves there.
+        let params: Vec<Ty> = if name == "error" {
+            self.ret_result()
+                .map(|(_, err)| vec![err])
+                .unwrap_or_default()
+        } else {
+            self.fns
+                .get(name)
+                .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
+                .unwrap_or_default()
+        };
+        let mut types: Vec<Ty> = args
             .iter()
             .enumerate()
             .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
             .collect();
+        if name == "error" {
+            return self.fail_value(args, &types, at);
+        }
+        // A result is matched or propagated, never passed on (§12.3).
+        for (a, t) in args.iter().zip(types.iter_mut()) {
+            if self.unhandled(a, *t, || format!("`{name}` takes the value, not a result")) {
+                *t = Ty::Error;
+            }
+        }
         if name == "print" {
             // The parser repairs every other arity (`MZ0980`), so one argument is left.
             if let (Some(a), Some(t)) = (args.first(), types.first())
@@ -1629,6 +1750,23 @@ impl<'a> FnCheck<'a> {
         called: bool,
     ) -> Ty {
         let rt = self.expr(recv);
+        self.method_on(e, recv, rt, name, name_span, args, called)
+    }
+
+    /// [`Self::method`], on a receiver already typed `rt`: also `recv.name` with no
+    /// parentheses, which the parser reads as a dotted path (`errors::field`) and hands here
+    /// when `recv` is a number.
+    #[allow(clippy::too_many_arguments)]
+    fn method_on(
+        &mut self,
+        e: &Expr,
+        recv: &Expr,
+        rt: Ty,
+        name: &str,
+        name_span: Span,
+        args: &[Expr],
+        called: bool,
+    ) -> Ty {
         let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
         // `x.to_string()`: a value's text is interpolation (RFC-0013 §3.6), on any value
         // with a text form; on a `text` it is the value itself.
@@ -1664,7 +1802,21 @@ impl<'a> FnCheck<'a> {
                 );
                 return Ty::Error;
             }
-            Ty::Bool | Ty::Nothing | Ty::Enum(_) => {
+            Ty::Enum(_) => {
+                self.err(
+                    "MZ0708",
+                    name_span,
+                    format!(
+                        "`{}` is {}, which has no method `{name}` — an enum's columns are read without parentheses, `{}.<column>`",
+                        canonical(recv),
+                        rt.name(),
+                        canonical(recv)
+                    ),
+                );
+                return Ty::Error;
+            }
+            Ty::Result(_) => return self.method_on_result(e, recv, rt, name, args, called),
+            Ty::Bool | Ty::Nothing => {
                 self.err(
                     "MZ0708",
                     name_span,
@@ -1940,6 +2092,16 @@ fn shallow_type(e: &Expr) -> Ty {
         }
         _ => Ty::Error,
     }
+}
+
+/// Whether `return v`, with `v` of type `t`, fits a function returning `ret`: `t` is `ret`
+/// itself, or `ret` is `result(T, E)` and `t` is its success type `T` (§12.1). Used only
+/// with a known `ret`.
+fn fits_return(t: Ty, ret: Ty) -> bool {
+    t == ret
+        || ret
+            .as_result()
+            .is_some_and(|(ok, _)| ok != Ty::Nothing && ok == t)
 }
 
 /// The type of arithmetic on operands of shallow types `a` and `b`: a float when either

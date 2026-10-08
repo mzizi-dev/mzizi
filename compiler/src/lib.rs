@@ -34,6 +34,7 @@ pub mod diagnostic;
 pub mod expr;
 pub mod harness;
 pub mod hash;
+pub mod intern;
 pub mod ir;
 pub mod lex;
 pub mod lower;

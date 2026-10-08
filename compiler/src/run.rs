@@ -32,6 +32,7 @@ use crate::numbers::FLOAT_TEXT_RUNTIME;
 use crate::program::{EnumDecl, FnDecl, Program, Stmt, StmtKind};
 
 mod control;
+mod errors;
 
 /// The generated package, as `(relative path, contents)` pairs.
 #[derive(Debug, PartialEq)]
@@ -238,6 +239,7 @@ pub fn lower(p: &Program, source: &str) -> Package {
     let mut body = String::new();
     for e in &p.enums {
         lw.enum_decl(e, &mut body);
+        lw.enum_columns(e, &mut body);
     }
     for f in &p.fns {
         lw.function(f, &mut body);
@@ -407,6 +409,9 @@ impl Lower<'_> {
                 .rust_enums
                 .get(e)
                 .map_or_else(|| "()".to_string(), |(n, _)| n.clone()),
+            Ty::Result(&(ok, err)) => {
+                format!("Result<{}, {}>", self.rust_type(ok), self.rust_type(err))
+            }
             Ty::Nothing | Ty::Error => "()".to_string(),
         }
     }
@@ -426,15 +431,26 @@ impl Lower<'_> {
             .ret
             .map(|r| format!(" -> {}", self.rust_type(r.ty)))
             .unwrap_or_default();
+        let result_main = errors::is_result_main(f);
         let _ = writeln!(
             out,
             "\n// {}\nfn {}({}){ret} {{",
             f.signature(),
-            fn_ident(&f.name),
+            if result_main {
+                "mz_main_result".to_string()
+            } else {
+                fn_ident(&f.name)
+            },
             params.join(", ")
         );
         self.block(&f.body, 1, out);
+        if let Some(tail) = errors::none_result_tail(f) {
+            out.push_str(tail);
+        }
         out.push_str("}\n");
+        if result_main {
+            out.push_str(errors::RESULT_MAIN);
+        }
     }
 
     fn block(&mut self, stmts: &[Stmt], depth: usize, out: &mut String) {
@@ -445,6 +461,14 @@ impl Lower<'_> {
 
     fn stmt(&mut self, s: &Stmt, depth: usize, out: &mut String) {
         let pad = "    ".repeat(depth);
+        // A `match` on a result used as a value: its cases' names are typed before the value
+        // is, since a branch is typed by what it reads (`case ok v` then `v`).
+        if let StmtKind::Bind { value, .. }
+        | StmtKind::Assign { value, .. }
+        | StmtKind::Return(Some(value)) = &s.kind
+        {
+            self.case_names(value);
+        }
         match &s.kind {
             StmtKind::Bind {
                 mutable,
@@ -474,10 +498,10 @@ impl Lower<'_> {
                 );
             }
             StmtKind::Return(None) => {
-                let _ = writeln!(out, "{pad}return;");
+                let _ = writeln!(out, "{pad}{}", self.bare_return());
             }
             StmtKind::Return(Some(v)) => {
-                let _ = writeln!(out, "{pad}return {};", self.expr_want(v, self.ret));
+                let _ = writeln!(out, "{pad}return {};", self.returned(v));
             }
             StmtKind::When {
                 cond,
@@ -528,6 +552,7 @@ impl Lower<'_> {
                 (None, Some(o)) => self.ty(&o.body),
                 (None, None) => Ty::Error,
             },
+            ExprKind::Call { name, .. } if name == "error" => self.ret,
             ExprKind::Call { name, .. } => self
                 .fns
                 .get(name.as_str())
@@ -540,6 +565,11 @@ impl Lower<'_> {
                 operand,
             } => self.ty(operand),
             ExprKind::Unary { op: UnOp::Not, .. } => Ty::Bool,
+            ExprKind::Unary {
+                op: UnOp::Try,
+                operand,
+            } => self.ty(operand).as_result().map_or(Ty::Error, |(ok, _)| ok),
+            ExprKind::Field { base, name, .. } => self.field_ty(base, name),
             ExprKind::Binary { op, lhs, .. } if op.is_arithmetic() => self.ty(lhs),
             ExprKind::Binary { .. } => Ty::Bool,
             ExprKind::Error => Ty::Error,
@@ -572,7 +602,9 @@ impl Lower<'_> {
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Text(parts) => self.text(parts),
             ExprKind::Name(n) => match self.types.get(n) {
-                Some(Ty::Text) => format!("{}.clone()", ident(n)),
+                Some(t) if *t == Ty::Text || t.as_result().is_some() => {
+                    format!("{}.clone()", ident(n))
+                }
                 Some(_) => ident(n),
                 None => self.variant_path(n, None),
             },
@@ -585,6 +617,14 @@ impl Lower<'_> {
                     let arg = args.first().map(|a| self.atom(a)).unwrap_or_default();
                     return format!("mz_print(&{arg})");
                 }
+                if name == "error" {
+                    let err = self.ret.as_result().map_or(Ty::Error, |(_, err)| err);
+                    let arg = args
+                        .first()
+                        .map(|a| self.expr_want(a, err))
+                        .unwrap_or_default();
+                    return format!("Err({arg})");
+                }
                 let params: Vec<Ty> = self
                     .fns
                     .get(name.as_str())
@@ -595,7 +635,11 @@ impl Lower<'_> {
                     .enumerate()
                     .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
                     .collect();
-                format!("{}({})", fn_ident(name), args.join(", "))
+                let callee = match self.fns.get(name.as_str()) {
+                    Some(f) if errors::is_result_main(f) => "mz_main_result".to_string(),
+                    _ => fn_ident(name),
+                };
+                format!("{callee}({})", args.join(", "))
             }
             ExprKind::Method {
                 recv, name, args, ..
@@ -604,6 +648,11 @@ impl Lower<'_> {
                 op: UnOp::Neg,
                 operand,
             } if self.ty(operand) == Ty::Float => format!("(-{})", self.atom(operand)),
+            ExprKind::Unary {
+                op: UnOp::Try,
+                operand,
+            } => self.try_expr(operand),
+            ExprKind::Field { base, name, .. } => self.field(base, name),
             ExprKind::Unary {
                 op: UnOp::Neg,
                 operand,

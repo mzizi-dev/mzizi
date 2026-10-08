@@ -128,7 +128,7 @@ fn the_control_example_parses_and_checks_clean() {
     let variants: Vec<&str> = p.enums[0]
         .variants
         .iter()
-        .map(|(v, _)| v.as_str())
+        .map(|v| v.name.as_str())
         .collect();
     assert_eq!(variants, ["circle", "square", "triangle"]);
     let kinds: Vec<&str> = p
@@ -614,10 +614,13 @@ fn enum_declarations_are_checked() {
     one(&decl("enum shape\n    mz_a\n  end"), "MZ0921");
     // `ok` and `error` may name a variant (RFC-0013 §1).
     clean(&decl("enum status\n    ok\n    error\n  end"));
-    // A column on a variant is a later wave's.
+    // A variant's columns are built (RFC-0013 §12.1, C9): every variant has each one.
+    clean(&decl(
+        "enum shape\n    circle label \"round\"\n    square label \"four sides\"\n  end",
+    ));
     one(
-        &decl("enum shape\n    circle label \"round\"\n  end"),
-        "MZ0919",
+        &decl("enum shape\n    circle label \"round\"\n    square\n  end"),
+        "MZ0303",
     );
     // A binding cannot take an enum's or a variant's name.
     one(&wrap("let circle = 1\nprint(circle)"), "MZ0921");

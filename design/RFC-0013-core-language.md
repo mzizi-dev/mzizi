@@ -1,6 +1,6 @@
 # RFC-0013 — The core language: expressions, bindings, functions, control flow, errors and a program entry point
 
-**Status:** draft for review. Wave 0, the foundation slice of §18.1, and C4 of Wave 1 (§18.2) are implemented, and §18.6 records what landed and what it changed here; the rest is design. It measures nothing. Later pull requests implement the other waves of §18, and each one updates §18.6 with what landed.
+**Status:** draft for review. Wave 0, the foundation slice of §18.1, and C4 and C9 of Wave 1 (§18.2) are implemented, and §18.6 records what landed and what it changed here; the rest is design. It measures nothing. Later pull requests implement the other waves of §18, and each one updates §18.6 with what landed.
 **Amended** on 2026-10-07 from `design/LANGUAGE-SURVEY.md` (PR #75, not merged yet), a survey of
 ten widely used languages: named arguments (§6.5), records built and copied by field name with
 invariants (§11), enum payloads (§11.5), `otherwise` (§8), indexing that returns an option and a
@@ -2140,7 +2140,8 @@ against `examples/control.expected`; nothing measured.
   `loop` (now `MZ0934`) and a program's `enum`.
 - **Where the code departs from this text, the code is the fact.**
   - _A program's `enum` lists one variant name per line and closes with a bare `end`_, as a
-    component's does; a variant with columns (§14.2's accessor table) is `MZ0919`. Rust's
+    component's does; a variant with columns (§14.2's accessor table) is `MZ0919` (C9, below,
+    builds columns). Rust's
     `end enum x` echo is `MZ0206`, `exact` to `end`. A variant may be named `ok`, `error`,
     `float`, `map`, `set` or `result` (§1); the other contextual words, the built-in names and
     an `mz_` prefix are `MZ0921`, and a variant listed twice is `MZ0704`, `exact` deleting
@@ -2220,13 +2221,14 @@ against `examples/control.expected`; nothing measured.
   entry with a trigger. `Ty` is not a `listed_enum!`, since `Ty::Enum` carries a name:
   `Ty::ALL` lists the built-in types by hand, and an enum is not a surface type there; the
   `enum` entry registers it.
-- **Not built:** `for each` over a list or a map, `x in [variants]`, a `match` on a result,
-  block braces, enum columns in a program, §18.2's "C4 options" follow-up (§8 whole:
+- **Not built:** `for each` over a list or a map, `x in [variants]`, a `match` on a result
+  and enum columns in a program (both since built by C9, below), block braces, §18.2's
+  "C4 options" follow-up (§8 whole:
   `option(T)` in function bodies, `when x is not none`, guards, `otherwise`, `MZ0938`,
   `MZ0939`), and the guide change of §18.5.
-- **One `match` for C9 to extend (#87).** C9's pull request builds its own `match` on a
+- **One `match` for C9 to extend (#87).** C9's pull request built its own `match` on a
   result (`ResultMatch`, in `program/errors.rs`) and its own program `enum` with columns.
-  This one is meant to absorb both on whichever rebases second: a result `match` is a
+  This one was meant to absorb both on whichever rebased second, and C9 did so (below): a result `match` is a
   `StmtKind::Match` whose scrutinee has a result type, whose cases are two more keys
   (`ok`, `error`) in `program/control.rs`'s coverage check, with the universe `{ok, error}`
   and no `else` allowed, so `MZ0930` and `MZ0931` come from one place; each `Arm` gains the
@@ -2234,6 +2236,103 @@ against `examples/control.expected`; nothing measured.
   lowering of both is one fieldless Rust `enum`. Until one of the two pull requests rebases
   on the other, the two `match`es and the two `enum` declarations coexist only across
   branches, never in one tree.
+
+**Wave 1, C9: errors (§12)** (Refs #69; PR #87, on `staging` after C4, #89, and the language
+harness, #88). Built and tested in `compiler/tests/program_errors.rs`, with
+`examples/errors.mz` run through `mz run` against `examples/errors.expected`; nothing
+measured.
+
+- **One `match` and one `enum`** (owner direction: the language has one of each). A
+  `match` on a result is C4's `StmtKind::Match` (and `ExprKind::Match` used as a value) over
+  a result-typed value: each `Arm` carries the name its case binds (`Arm::binding`), and
+  `program/control.rs`'s coverage check gains the keys `ok` and `error`, with `{ok, error}`
+  as the universe, so `MZ0930` and `MZ0931` come from one place, with C4's messages naming
+  `case ok` and `case error`. C9's `EnumDecl`, which has columns, replaced C4's; the enum is
+  still C4's one fieldless Rust `enum`, with C4's Rust names, and C9 adds an accessor per
+  column. The "non-result `match` is not built" path (`MZ0919`, `MZ0711`) is gone.
+- **Modules.** `program/errors.rs` (the checker's half of §12, and the enum's tree types),
+  `parse/program/errors.rs` (columns, `result(…)`, prefix `try`, an enum value's column and
+  `MZ0952`), `run/errors.rs` (columns, `Result`, `?` and `mz_main_result`) and `intern.rs`
+  (a result's two types, interned so `Ty` stays `Copy`; an enum's name is C4's
+  `expr::intern`).
+- **Built:** a variant's literal columns (`say "…"`, an `int` or a `bool`), every variant
+  with the same ones, read with a dot (`problem.say`); `result(T, E)` and `result(none, E)`
+  as a return type or a `let`'s; `return error(e)`; `return r` passing a result of the
+  function's own type through; prefix `try` (§3.5 level 3); a `match` on a result with
+  `case ok <name>` and `case error <name>`, both required, as a statement or as a value;
+  `main` returning `result(none, E)`. The lowering of §14.2's rows for them:
+  `Result<T, E>`, `Ok(v)`, `Err(e)`, `?`, `Ok(v)` and `Err(e)` patterns in C4's Rust
+  `match`, one accessor method per column, and no `unwrap`, `expect`, `panic!` or `unsafe`.
+- **Codes emitted:** `MZ0950` (discarded, used as its success value, compared, printed,
+  interpolated, passed, assigned, a condition, returned where the type differs, a result
+  parameter, a result in a result, a result in a `var`, and a `let` whose result nothing
+  reads before its block ends; the `guess` fix `try` where the function returns the same
+  error type), `MZ0951`, `MZ0952` (`Ok(v)` and `ok(v)`, `Err(e)` and `err(e)`, postfix `?`,
+  `throw e` and `raise e`, all with their fixes; a `try` block, `.unwrap()` and `.expect(…)`
+  with none), `MZ0953`, `MZ0954`, and `MZ0992`; `MZ0930`, `MZ0931` and `MZ0917` for a
+  `match` on a result. Existing codes in their RFC-0001 meaning for columns: `MZ0302`,
+  `MZ0303`, `MZ0704`, `MZ0711`. No code is claimed, and none clashes with the codes the
+  survey amendment took (`MZ0927`, `MZ0928`, `MZ0938`, `MZ0939`, `MZ0955`,
+  `MZ0973`–`MZ0976`).
+- **The language harness** (RFC-0012 §1.2): `compiler/src/harness.rs` gains a feature
+  entry for `result`, `error`, `match on a result`, `main returning a result` and
+  `postfix ?` (the lexed spelling, whose entry is the `exact` fix target), the prefix
+  operator `try` (derived from `UnOp`), the `enum` entry's columns, and a code entry for
+  each of `MZ0950`–`MZ0954` (each with a trigger) and `MZ0992` (none: `mz check` cannot
+  report it, so `compiler/tests/harness.rs`'s list of untriggered codes grows to
+  `MZ0990`, `MZ0991`, `MZ0992`). `examples/errors.mz` and two more programs are its
+  runnable examples, run with their output compared.
+- **Where the code departs from this text, the code is the fact.**
+  - _In a `match` on a result, `else` is not allowed_ (§12): any `else` is `MZ0931`, whose
+    `exact` fix deletes it, and a `case error` written after it still counts, so
+    `case ok x` / `else` / `case error e` loses only its `else`. A missing case is still
+    `MZ0930`, at the matched value as for every `match`. Everywhere else C4's rule holds: a
+    case after `else` is unreachable.
+  - _A case line is `case ok <name>` or `case error <name>`_. The parser reads the second
+    word as the binding only when no enum of the program has it as a variant, since no
+    binding may take a variant's name (`MZ0921`): with `enum status { ok, error, … }`,
+    `case ok error` still lists two variants. Any other case line in a `match` on a result
+    is one `MZ0917`, and the names it lists are quiet in its arm; a binding in a `match`
+    that is not on a result is one `MZ0917` too. `case ok` binds no name when the success
+    is `none`, and with no name on a success that is a value it is `MZ0917`.
+  - §12.5's line reads `mz: error MZ0992: main returned an error: <text form>`, not
+    `error: <text form>`, so it names its code as a trap's line does (`mz: trap MZ0991 …`).
+    The generated `mz_main` writes it and exits 1 itself, around the program's `main`
+    (lowered as `mz_main_result`), so the generated `main` of §13.1 is unchanged rather than
+    matching `Ok(Err(e))` from `join()`.
+  - A bare variant resolves as C4 resolves it, against the type expected where it stands;
+    `error(e)`'s argument is read against the function's error type. A bare `ok` or `error`
+    variant in a function that returns a result is `MZ0953`, with the `exact` fix naming its
+    enum.
+  - `throw e` and `raise e` get an `exact` fix only when the parser can see that `e` has the
+    function's error type: a variant of its error enum, bare or qualified, or a literal of
+    its error type. Otherwise the fix is a `guess`. `throw Error(e)` is fixed to
+    `return error(e)`, not `error(error(e))`, and `throw new Error("bad")`, which is not one
+    expression, is one `MZ0952` with no fix.
+  - `var r = f()` holding a result is `MZ0950`, with the `guess` fix `let`, and not also
+    `MZ0924`: §12.3 lets a `let` hold a result, and a `var` that can be reassigned before the
+    `match` would hide which result was matched.
+  - `error(e)` is a value of the function's own result type, so it may be bound (`let r =
+error(e)`) as well as returned.
+  - A `try` block is recognised by `try` ending its line (after a `:` or a `{`, which is not
+    a token); the lines indented past it, and `catch`, `except` and `finally` lines, are
+    skipped as part of the one `MZ0952`.
+  - In a program, `?` is lexed as an operator, so the parser can repair a postfix `?`, whose
+    `exact` fix writes `(try f(x)).y` before a dot, since a dot binds tighter than `try`.
+    After a type (`int?`) it is still `MZ0104`, with the component's text. A chain of
+    postfix `?`s and `.name`s is capped at 64 links, with `MZ0411` past it.
+  - A dot without parentheses after a value is an enum's column; `<enum>.<variant>` is C4's
+    `ExprKind::Variant`. On a number it is a method written without its `()`, `MZ0962` as
+    Wave 1's numbers have it. A method called on an enum is `MZ0708`, and on a result
+    `MZ0950`, with the `guess` `(try r).name(…)`.
+  - A result-typed last line of a function that must return is `MZ0906` only, not also
+    `MZ0950`, and `MZ0906`'s `exact` fix `return` also applies when the line's type is the
+    function's success type. An unknown return type is `MZ0701` alone, not also `MZ0906`.
+  - A bare `result` with no types is `MZ0306`, naming the two types, not `MZ0919`.
+- **Not built:** converting one error type to another on `try` (`via`, `MZ0955`), `MZ0950`'s
+  `match`-stub fix where `try` does not fit (§12.3; `MZ0950` has no fix there), both the
+  "C9 via" follow-up of §18.2; `mz run --agent`'s NDJSON line for `MZ0992`; and the guide
+  change of §18.5.
 
 ## 19. What this RFC does not claim
 

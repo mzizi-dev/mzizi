@@ -1,0 +1,5 @@
+age 42 is fine
+-3 is rejected: negative is below zero
+200 is rejected: too_old is above 150
+20 and 22 make 42
+20 and 151 were rejected: too_old is above 150
