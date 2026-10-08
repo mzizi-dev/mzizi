@@ -178,6 +178,15 @@ fn mz_repeat(s: &str, n: i64, at: &MzAt) -> String {
     }
 }
 
+/// `s.split(sep)` (RFC-0013 §10): traps on an empty separator, which a literal one is
+/// `MZ0915` for, so only a separator that is empty at run time gets here.
+fn mz_split(s: &str, sep: &str, at: &MzAt) -> Vec<String> {
+    match mz_text_split(s, sep) {
+        Ok(v) => v,
+        Err(what) => mz_trap(at, what),
+    }
+}
+
 /// A value's text form (RFC-0013 §3.8), and its form inside a collection, where text is
 /// quoted.
 trait MzText {
@@ -626,6 +635,7 @@ impl Lower<'_> {
             ExprKind::Index { base, .. } => match self.ty(base) {
                 Ty::List(t) => Ty::option(*t),
                 Ty::Map(&(_, v)) => Ty::option(v),
+                Ty::Text => Ty::option(Ty::Text),
                 _ => Ty::Error,
             },
             ExprKind::None => Ty::Error,
@@ -882,6 +892,15 @@ impl Lower<'_> {
                 let at = self.site(e);
                 format!("mz_repeat({r}, {}, {at})", arg(0))
             }
+            "find" => format!("mz_text_find({r}, {})", arg(0)),
+            "slice" => format!("mz_text_slice({r}, {}, {})", arg(0), arg(1)),
+            "split" => {
+                let at = self.site(e);
+                format!("mz_split({r}, {}, {at})", arg(0))
+            }
+            "chars" => format!("mz_text_chars({r})"),
+            "parse_int" => format!("mz_text_parse_int({r})"),
+            "parse_float" => format!("mz_text_parse_float({r})"),
             // The checker admits no other name on text, and a test lowers every name in
             // `text::METHODS`; a method added there without an arm here fails to build
             // (`MZ0990`) with this message, rather than lowering to the wrong call.
