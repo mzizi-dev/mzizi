@@ -93,7 +93,6 @@ pub(super) fn parse(
         fn_names,
         enum_names,
         record_names,
-        in_method: false,
         match_open: 0,
         block_value: None,
         pending_skip: false,
@@ -197,9 +196,6 @@ struct P {
     enum_names: Rc<[String]>,
     /// Every `record` name in the file, for the same reason, and for a record literal.
     record_names: Rc<[String]>,
-    /// Whether the `fn` being read is a record's method, whose receiver is `self` and
-    /// never a parameter (RFC-0013 §11.2).
-    in_method: bool,
     /// How many `match` blocks are open, so a `case` line ends the block it is in only
     /// when a `match` is there to take it.
     match_open: usize,
@@ -486,7 +482,7 @@ impl P {
                     }
                 }
                 Tok::Keyword("fn") => {
-                    if let Some(f) = self.function() {
+                    if let Some(f) = self.function(false) {
                         program.fns.push(f);
                     }
                 }
@@ -503,7 +499,7 @@ impl P {
                         "fn",
                         Confidence::Exact,
                     );
-                    if let Some(f) = self.function() {
+                    if let Some(f) = self.function(false) {
                         program.fns.push(f);
                     }
                 }
@@ -681,7 +677,7 @@ impl P {
 
     /// `fn name(a: int): int` … `end fn name`. The cursor is on `fn` (or the `def` it
     /// stands for).
-    fn function(&mut self) -> Option<FnDecl> {
+    fn function(&mut self, is_method: bool) -> Option<FnDecl> {
         let fn_at = self.bump().span;
         self.keyword_names.truncate(self.keyword_fns);
         let (name, name_span) = match self.peek().clone() {
@@ -714,8 +710,8 @@ impl P {
             }
         };
         let deep_before = self.too_deep;
-        let params = self.params(&name);
-        if self.in_method && self.is_word("changes") {
+        let params = self.params(&name, is_method);
+        if is_method && self.is_word("changes") {
             // RFC-0013 §11.2: a method that changes its receiver is designed, not built.
             let at = self.span();
             self.err(
@@ -723,8 +719,18 @@ impl P {
                 join(at, self.line_end_span()),
                 "a method that changes `self` (`fn … changes self`) is designed (RFC-0013 §11.2) but not built yet — a method returns a changed copy, with `with`, and its body is skipped",
             );
+            // Kept with its signature and no body, flagged as skipped, so a call to it is
+            // checked against the signature and reports nothing more.
             self.skip_fn_body();
-            return None;
+            return Some(FnDecl {
+                name,
+                name_span,
+                params,
+                ret: None,
+                body: Vec::new(),
+                end_span: name_span,
+                skipped: true,
+            });
         }
         let mut ret = self.return_type(&name);
         // A type past the nesting cap (`MZ0411`) cut the signature short: what it returns
@@ -785,10 +791,7 @@ impl P {
 
     /// A record's `fn`: read as any `fn` is, with `self` as its receiver.
     fn method(&mut self) -> Option<FnDecl> {
-        self.in_method = true;
-        let m = self.function();
-        self.in_method = false;
-        m
+        self.function(true)
     }
 
     fn skip_fn_body(&mut self) {
@@ -806,7 +809,7 @@ impl P {
         self.skipped.push((first, self.span().start_line));
     }
 
-    fn params(&mut self, fn_name: &str) -> Vec<Param> {
+    fn params(&mut self, fn_name: &str, is_method: bool) -> Vec<Param> {
         let mut params = Vec::new();
         if !matches!(self.peek(), Tok::LParen) {
             return params;
@@ -862,7 +865,7 @@ impl P {
             };
             // A method's receiver is written `self`, never declared (RFC-0013 §11.2): a
             // `self` parameter is `MZ0970`, and the parameter is not kept.
-            let receiver = self.in_method && name == "self";
+            let receiver = is_method && name == "self";
             let ty = if receiver {
                 self.err(
                     "MZ0970",
@@ -2770,7 +2773,6 @@ impl P {
             fn_names: Rc::clone(&self.fn_names),
             enum_names: Rc::clone(&self.enum_names),
             record_names: Rc::clone(&self.record_names),
-            in_method: self.in_method,
             match_open: 0,
             block_value: None,
             pending_skip: false,

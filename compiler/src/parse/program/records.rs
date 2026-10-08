@@ -63,7 +63,7 @@ impl P {
                     break;
                 }
                 Tok::Doc(_) => self.recover_line(),
-                Tok::Keyword("end") if word(self.peek_at(1)) != Some("program") => {
+                Tok::Keyword("end") if !matches!(word(self.peek_at(1)), Some("program" | "fn")) => {
                     let end_at = self.bump().span;
                     if !self.at_line_end() {
                         let mut last = end_at;
@@ -82,7 +82,14 @@ impl P {
                     self.recover_line();
                     break;
                 }
+                // `end fn` or `end program` closes nothing here: the record is never closed.
                 Tok::Keyword("end") => {
+                    self.unclosed("record", record_at, at);
+                    break;
+                }
+                // The program's entry point is never a method: a record still open before it
+                // is unclosed.
+                Tok::Keyword("fn") if word(self.peek_at(1)) == Some("main") => {
                     self.unclosed("record", record_at, at);
                     break;
                 }
@@ -178,8 +185,14 @@ impl P {
                     return;
                 }
                 Tok::Doc(_) => self.recover_line(),
-                Tok::Keyword("end") => {
+                Tok::Keyword("end") if !matches!(word(self.peek_at(1)), Some("program" | "fn")) => {
                     self.recover_line();
+                    return;
+                }
+                // An `end fn`, an `end program` or a `fn` is the next declaration's: this
+                // contract is open, and the line is left for the record or program to read.
+                Tok::Keyword("end" | "fn") => {
+                    self.unclosed("contract", contract_at, at);
                     return;
                 }
                 Tok::Ident(w) if w == "always" => {
