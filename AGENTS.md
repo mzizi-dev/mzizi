@@ -11,8 +11,8 @@
 its compiler (`mz`, written in Rust), a research prototype in Phase 0 of the Mzizi research
 charter. Its one goal is building Mzizi as a language that stands against the best existing
 language for each kind of task ([`CHARTER.md`](./CHARTER.md) §1, v0.4). "Compiles to Rust" is
-the design, not the state: `mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
-([RFC-0012](./design/RFC-0012-harness.md), a draft); `benchmarks/harness/` is a different
+the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers, its control flow and its errors (`int`, `float`, `bool` and `text`, enums with columns, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`, `result(T, E)`, `return error(e)`, `try`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
+([RFC-0012](./design/RFC-0012-harness.md), a draft). `benchmarks/harness/` is a different
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
 repo's CI must stay green with no secrets and no other repository checked out. The only
@@ -30,7 +30,7 @@ tied the arms, and the ~7B open-weight model did worse in Mzizi on all three met
 run has not happened; [`benchmarks/READINESS.md`](./benchmarks/READINESS.md) says what it still
 waits on. Report results as they fell. "Designed for" is fine; "faster" or "better" is not.
 Do not write or accept a commit message, PR description, or comment that implies otherwise — "compiles to Rust" (only a
-`service` lowers, to a local axum package; no component does), "the benchmark shows", "production
+`service` and a `program` in the foundation slice, its numbers and its control flow lower; no component does, and most of Tier 1 does not exist), "the benchmark shows", "production
 ready" are all false today and this project treats overclaiming as a defect class, not a
 style nit. State what is tested (`cargo test`, gated in CI) separately from what is designed
 (the RFCs). Where an RFC and the code disagree, **the code is the fact** — see
@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 306 tests (437 in the workspace)
+cargo test                                                              # 512 tests (643 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -60,15 +60,27 @@ cargo run --bin mz -- outline        ../primitives/alert.mz
 cargo run --bin mz -- ir              ../primitives/card.mz
 cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
 cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
+cargo run --bin mz -- run            ../examples/fib.mz                  # lower a program, build it, run it
+cargo run --bin mz -- harness version                                  # protocol 1, the language version, the definition's SHA-256
+cargo run --bin mz -- harness definition --agent                       # every language-harness entry, as one line of JSON
+cargo run --bin mz -- harness entry let                                # one entry
+cd .. && benchmarks/perf/run.sh                                         # perf suite: Mzizi vs hand-written Rust, measured
+benchmarks/perf/run.sh --check-only                                     # what CI runs: build and compare output, no timing
 ```
+
+`benchmarks/perf/` times lowered programs against hand-written Rust on the machine it runs
+on ([`benchmarks/perf/README.md`](./benchmarks/perf/README.md)). Its numbers describe that
+machine only and are never a claim that Mzizi is faster; CI gates its correctness, never its
+timing.
 
 Run before every push. These are the commands in
 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml), job by job. The `mz` loops are copied
 from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` exits 2 (usage).
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
-`mzprobe verify` of the backend task B1 against its Mzizi and axum references; it fetches
-`axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
+`mzprobe verify` of the backend task B1 against its Mzizi and axum references, and `mz run`
+of every example program with its output diffed against `examples/<name>.expected`, and
+`benchmarks/perf/run.sh --check-only`; it fetches `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
 `cargo deny check` against [`deny.toml`](./deny.toml), and zizmor over the workflows), the org's required workflows (Semgrep,
 dependency review, a lockfile audit and a release version check, which run on every pull
 request from outside this repo), and the lint gate (`lint.yml`: actionlint, JSON validity, prettier, markdownlint,
@@ -138,6 +150,7 @@ the offline check a task author runs.
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
   not already used on `main` or claimed by an open PR. Other RFCs may be in flight on branches.
 - A PR that changes what the language can do updates the matching row in `LANGUAGE-TRACKER.md` in the same PR.
+- A PR that adds or changes a language feature adds or updates its harness entry in the same PR (`compiler/src/harness.rs`, [RFC-0012](./design/RFC-0012-harness.md) §1.2). What is enforced, exactly: `mz`'s command dispatch, each operator's spelling, precedence and operand types, the operator and type lists, the numeric methods' signatures and the parser's type names come from one source. Each code's severity and fix kinds, and each feature's examples, are a parallel copy that `compiler/tests/harness.rs` (part of `cargo test` in CI's `compiler` job) holds to the checker: it fails on a code the source can emit with no entry and not on the frozen pending list, on a trigger that does not report its code at its severity with a declared fix kind, on an example that does not check or run as stated, and on a lexed operator with no entry; in a debug build every report is checked against the registry, fix kinds included. Exhaustive matches make a new statement, expression, operator or type fail to compile until it names its entry. Each code's `say` text and each feature's grammar and teaching text are written by hand and not compared with the checker, so keep them true by reading the code.
 
 ## Site and docs freshness (hard rule)
 
@@ -168,8 +181,7 @@ Do not wire a build step, test, or script here that reaches out to `mzizi-regist
 
 _Owner rule, 2026-09-30: changelogs are super important._ [`CHANGELOG.md`](./CHANGELOG.md)
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), in dated sections
-because the compiler has no releases. Every pull request that changes behaviour,
-diagnostics, the language, the charter, an RFC or the benchmarks adds an entry under
+because the compiler has no releases. Every pull request adds an entry under
 `## [Unreleased]`:
 
 - Put it under `### Added`, `### Changed`, `### Fixed`, `### Removed` or `### Security`.
@@ -179,11 +191,37 @@ diagnostics, the language, the charter, an RFC or the benchmarks adds an entry u
   measured result that does not exist.
 - Whoever merges moves the `[Unreleased]` entries into a section dated with the merge day.
 
-The `changelog / entry required` CI job fails a pull request that changes other files
-without touching `CHANGELOG.md`. It lets through a pull request labelled `no-changelog`, and
-one that touches only `.github/**` or lint configuration (`.prettierrc`, `.prettierignore`,
-`.markdownlint.jsonc`, `.yamllint.yaml`). The job is not a required check
-in branch protection.
+_Owner rule, 2026-10-07: "Change log in every PR that we are doing."_ The `changelog / entry
+required` CI job fails every pull request that does not touch `CHANGELOG.md`, CI and lint
+configuration included. Only two are let through: one labelled `no-changelog` (a person's
+explicit call that there is nothing to record) and a Dependabot version bump. The job is not
+a required check in branch protection.
+
+**Release notes come from these entries.** When a release to `main` is tagged
+(`main-release.yml`), its GitHub release notes are every `CHANGELOG.md` entry added since the
+previous `main` release, under its heading (`.github/scripts/release_notes.py`), followed by
+GitHub's list of the merged pull requests. So an entry is written for a reader of the
+release, not only for the next contributor.
+
+The same rule runs locally, before CI sees anything. _Owner rule, 2026-10-07: "We need to
+always have change log updates."_ Run `scripts/install-hooks.sh` once per clone (one run
+covers every worktree of that clone); **an agent runs it before its first commit**. It sets
+`core.hooksPath` to [`.githooks/`](./.githooks/), whose `pre-commit` refuses a commit unless
+`CHANGELOG.md` is staged or already changed on the branch since it left `origin/staging` or
+`origin/main` (whichever is nearer; with neither, the staged changes alone). It trusts those
+local refs: when they are stale, or the branch is stacked on another unmerged branch, other
+people's entries count as the branch's, so fetch first; CI checks the real base. The hook has no path
+exemptions: every change needs an entry. `MZ_NO_CHANGELOG=1 git commit ...` skips it and
+says so; the pull request then needs the `no-changelog` label. When a staged file is Rust
+under `compiler/` or `benchmarks/`, the hook also runs `cargo fmt --all -- --check`. Nothing
+slower runs there, so the block in "Build, test, run" is still for before you push.
+`scripts/test-pre-commit.sh` tests the hook in a throwaway repository, and CI's `compiler`
+job runs it.
+
+The hook runs whatever `.githooks/pre-commit` says in the checked-out branch, so committing on
+someone else's branch (a fork's pull request included) runs their code. Read any change under
+`.githooks/` before committing there, or commit with `--no-verify`. `core.hooksPath` sits in
+the clone's shared config, which is one more reason each agent works in a clone of its own.
 
 ## Naming and ownership
 

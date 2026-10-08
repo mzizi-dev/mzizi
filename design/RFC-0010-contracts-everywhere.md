@@ -24,6 +24,21 @@ out for v0.
 > waits for modules (G2.3). A service's contract is evaluated by running it in process, so
 > `MZ0607` never applies to one (RFC-0011 §7).
 
+<!-- A third note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes the signature syntax §3.1's placeholder waited for:**
+> `fn positive_int(raw: option(text)): option(int)`, closed by `end fn positive_int`, in place of
+> the `take` / `give` lines (RFC-0013 §6, §15.1). It is a draft for review; nothing in it is
+> implemented.
+
+<!-- A fourth note; the separator keeps it distinct. -->
+
+> **RFC-0013 proposes to amend §4.3 for programs:** a record's `always` clauses are checked after
+> every construction, field assignment and `changes self` method in every build, not by
+> `debug_assert!`, and a broken one traps with exit status 101 (RFC-0013 §11.4, §20 Q25).
+> Services keep §4.3's lowering until the owner answers. Design only; nothing in it is
+> implemented.
+
 ---
 
 ## 0. Method: four more failure modes, one of them measured

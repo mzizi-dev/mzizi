@@ -20,9 +20,11 @@ fn sources() -> Vec<(String, String)> {
             if file.extension().and_then(|e| e.to_str()) == Some("mz") {
                 let name = file.file_name().unwrap().to_string_lossy().to_string();
                 let src = std::fs::read_to_string(&file).expect("readable");
-                // Services have no IR yet (RFC-0011 §13); these measurements are of
-                // components.
-                if src.lines().any(|l| l.starts_with("service ")) {
+                // Services and programs have no IR yet (RFC-0011 §13, RFC-0013); these
+                // measurements are of components.
+                if src.lines().any(|l| l.starts_with("service "))
+                    || mzizi_lang_compiler::lex::is_program(&src)
+                {
                     continue;
                 }
                 out.push((name, src));

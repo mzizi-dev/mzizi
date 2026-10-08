@@ -21,6 +21,14 @@ pub enum Tok {
     Str(String),
     /// An integer literal.
     Int(i64),
+    /// A float literal (RFC-0013 §3.1), lexed only in a `program`: digits, `.`, digits.
+    Float(f64),
+    /// A number already reported: an integer literal too large for `int` (`MZ0103`), or in
+    /// a program a malformed one with no exact repair (`MZ0914`: `0x10`, `1e3`). Lexed only
+    /// in a `program`, whose parser reads it as an error value rather than a missing one, so
+    /// the line gets no second diagnostic. A component or a service drops the literal, as
+    /// before.
+    BadInt,
     /// A doc comment's text, `##` stripped.
     Doc(String),
     /// `:`
@@ -35,6 +43,11 @@ pub enum Tok {
     Comma,
     /// `.`
     Dot,
+    /// An operator, lexed only in a `program` file (RFC-0013 §3): `+ - * / % < <= > >=`, and
+    /// the spellings other languages use that a program's parser repairs (`==`, `!=`, `&&`,
+    /// `||`, `!`, `->`, `+=`, Rust's postfix `?`, …). In a component or a service these
+    /// characters are still `MZ0104`, with today's text.
+    Op(&'static str),
     /// End of a logical line.
     Newline,
     /// End of input.
@@ -320,9 +333,260 @@ fn spread_is_whole_line(bytes: &[char], start: usize, end: usize) -> bool {
     r.is_empty() || r.starts_with(':') || word_then("=") || word_then(" is")
 }
 
+/// The operators a `program` lexes, longest first, so `<=` is one token and not `<` `=`.
+pub const OPERATORS: &[&str] = &[
+    "===", "!==", "==", "!=", "<=", ">=", "->", "=>", "&&", "||", "+=", "-=", "*=", "/=", "++",
+    "--", "**", "+", "-", "*", "/", "%", "<", ">", "!", "?",
+];
+
+/// A number in a program (RFC-0013 §3.1), starting at `bytes[i]`: a digit, or a `.` before a
+/// digit. Returns the token and how many characters it covers, reporting `MZ0914` for a
+/// malformed number: `1.` and `.5` (`exact`: append or prepend `0`), `1_000` (`exact`:
+/// `1000`), `0x10` and `1e3` (no fix, read as an error value). Digits, `.` and a letter or
+/// `_` are an `int` and a method call (`2.pow(10)`), so the `.` is left for the parser.
+fn program_number(
+    bytes: &[char],
+    i: usize,
+    line_no: u32,
+    file: &str,
+    diags: &mut Vec<Diagnostic>,
+) -> (Tok, usize) {
+    let next = |k: usize| bytes.get(k).copied();
+    let digit_run = |mut j: usize| {
+        while next(j).is_some_and(|c| {
+            c.is_ascii_digit() || (c == '_' && next(j + 1).is_some_and(|d| d.is_ascii_digit()))
+        }) {
+            j += 1;
+        }
+        j
+    };
+    let leading_point = bytes[i] == '.';
+    let mut j = if leading_point { i } else { digit_run(i) };
+    let mut float = false;
+    let mut no_fix = None;
+    if !leading_point
+        && bytes[i] == '0'
+        && j == i + 1
+        && matches!(next(j), Some('x' | 'X' | 'b' | 'B' | 'o' | 'O'))
+        && next(j + 1).is_some_and(|c| c.is_ascii_alphanumeric())
+    {
+        // `0x10`, `0b1`, `0o7`: not forms in M1.
+        j += 1;
+        while next(j).is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
+            j += 1;
+        }
+        no_fix = Some(
+            "hexadecimal, octal and binary literals are not forms — write the number in decimal",
+        );
+    } else if next(j) == Some('.')
+        && !next(j + 1).is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '.')
+    {
+        // `0..10` is another language's range, not `0.` and `.10`: the `..` is left for
+        // the parser to report as what it is.
+        float = true;
+        j = digit_run(j + 1);
+    }
+    if no_fix.is_none()
+        && matches!(next(j), Some('e' | 'E'))
+        && (next(j + 1).is_some_and(|c| c.is_ascii_digit())
+            || (matches!(next(j + 1), Some('+' | '-'))
+                && next(j + 2).is_some_and(|c| c.is_ascii_digit())))
+    {
+        // `1e3`, `1.5e-7`: no exponent literals in M1.
+        j += 2;
+        while next(j).is_some_and(|c| c.is_ascii_digit()) {
+            j += 1;
+        }
+        no_fix = Some("exponent literals are not forms — write the number in plain decimal");
+    }
+    let written: String = bytes[i..j].iter().collect();
+    let span = Span::single(line_no, (i + 1) as u32, (j - i) as u32);
+    if let Some(why) = no_fix {
+        diags.push(Diagnostic::error(
+            "MZ0914",
+            file,
+            span,
+            format!("`{written}` is not a Mzizi number: {why}"),
+        ));
+        return (Tok::BadInt, j - i);
+    }
+    // The one repair that reads as the number meant: no `_`, and a digit on both sides of
+    // the point.
+    let mut fixed: String = written.chars().filter(|c| *c != '_').collect();
+    if fixed.starts_with('.') {
+        fixed.insert(0, '0');
+    }
+    if fixed.ends_with('.') {
+        fixed.push('0');
+    }
+    if fixed != written {
+        let why = if written.contains('_') {
+            "`_` does not group digits in Mzizi"
+        } else {
+            "a float has a digit on both sides of its point"
+        };
+        diags.push(
+            Diagnostic::error(
+                "MZ0914",
+                file,
+                span,
+                format!("`{written}` is not a Mzizi number: {why} — write `{fixed}`"),
+            )
+            .with_fix(span, fixed.clone(), Confidence::Exact),
+        );
+    }
+    if float || leading_point {
+        match fixed.parse::<f64>() {
+            Ok(v) if v.is_finite() => (Tok::Float(v), j - i),
+            _ => {
+                diags.push(Diagnostic::error(
+                    "MZ0914",
+                    file,
+                    span,
+                    format!("`{}` is too large for a float", short_literal(&written)),
+                ));
+                (Tok::BadInt, j - i)
+            }
+        }
+    } else {
+        match fixed.parse::<i64>() {
+            Ok(v) => (Tok::Int(v), j - i),
+            Err(_) => {
+                diags.push(Diagnostic::error(
+                    "MZ0103",
+                    file,
+                    span,
+                    format!("`{written}` does not fit in an int"),
+                ));
+                (Tok::BadInt, j - i)
+            }
+        }
+    }
+}
+
+/// `MZ0911` for a comment after code on a line of a program (`x = 1 // note`, `# note`,
+/// `/* note */`). Mzizi's comment is `##` on a line of its own, so the fix moves the text to
+/// a line above. It is a `guess`: after code, `//` may also be Python's floor division.
+fn trailing_comment(
+    bytes: &[char],
+    i: usize,
+    line_no: u32,
+    file: &str,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let marker: String = bytes[i..]
+        .iter()
+        .take_while(|c| matches!(c, '/' | '#' | '*' | '!'))
+        .collect();
+    let rest: String = bytes[i + marker.chars().count()..].iter().collect();
+    let text = rest.trim().trim_end_matches("*/").trim().to_string();
+    let indent: String = bytes.iter().take_while(|c| c.is_whitespace()).collect();
+    let code: String = bytes[..i].iter().collect();
+    let code = code.trim().to_string();
+    let at = Span::single(line_no, (i + 1) as u32, (bytes.len() - i) as u32);
+    let whole = Span::single(line_no, 1, bytes.len() as u32);
+    let floor = if marker == "//" {
+        " (if it was Python's floor division, `/` on two ints truncates toward zero)"
+    } else {
+        ""
+    };
+    let comment = format!("## {text}");
+    diags.push(
+        Diagnostic::error(
+            "MZ0911",
+            file,
+            at,
+            format!(
+                "`{marker}` does not start a comment in Mzizi — a comment is `##` on a line of its own{floor}"
+            ),
+        )
+        .with_fix(
+            whole,
+            format!("{indent}{}\n{indent}{code}", comment.trim_end()),
+            Confidence::Guess,
+        ),
+    );
+}
+
+/// `MZ0911` for a `/* … */` that closes on its line with code after it (`/* temp */ let x =
+/// 1`, `a /* note */ + b`). The code around it is still code, so lexing goes on after the
+/// `*/`: returns where. The fix, a `guess`, moves the comment to a line above and joins the
+/// code. `None` when there is no such comment at `i`.
+fn inline_block_comment(
+    bytes: &[char],
+    i: usize,
+    line_no: u32,
+    file: &str,
+    diags: &mut Vec<Diagnostic>,
+) -> Option<usize> {
+    if bytes.get(i) != Some(&'/') || bytes.get(i + 1) != Some(&'*') {
+        return None;
+    }
+    let close =
+        (i + 2..bytes.len().saturating_sub(1)).find(|&k| bytes[k] == '*' && bytes[k + 1] == '/')?;
+    let after: String = bytes[close + 2..].iter().collect();
+    if after.trim().is_empty() {
+        return None;
+    }
+    let inner: String = bytes[i + 2..close].iter().collect();
+    let before: String = bytes[..i].iter().collect();
+    let indent: String = bytes.iter().take_while(|c| c.is_whitespace()).collect();
+    let code = match (before.trim(), after.trim()) {
+        ("", a) => a.to_string(),
+        (b, a) => format!("{b} {a}"),
+    };
+    let at = Span::single(line_no, (i + 1) as u32, (close + 2 - i) as u32);
+    let whole = Span::single(line_no, 1, bytes.len() as u32);
+    let comment = format!("## {}", inner.trim());
+    diags.push(
+        Diagnostic::error(
+            "MZ0911",
+            file,
+            at,
+            "`/* … */` does not make a comment in Mzizi — a comment is `##` on a line of its own",
+        )
+        .with_fix(
+            whole,
+            format!("{indent}{}\n{indent}{code}", comment.trim_end()),
+            Confidence::Guess,
+        ),
+    );
+    Some(close + 2)
+}
+
+/// Whether `src` holds a `program` (RFC-0013 §1): its first line that is neither blank nor
+/// a comment starts with the word `program`. Only then does the lexer read operators and
+/// string escapes, so a component or a service lexes exactly as it did before. A comment
+/// here is `##`, or a `//` or `#` line, which a program reports as `MZ0911`.
+pub fn is_program(src: &str) -> bool {
+    src.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with("//"))
+        .is_some_and(|l| {
+            // `Program` too, which the lexer repairs to `program` for the parser: `Program t`
+            // is one `MZ0101`, not a program lexed without its operators.
+            l.get(..7).is_some_and(|w| w == "program" || w == "Program")
+                && l[7..].chars().next().is_none_or(char::is_whitespace)
+        })
+}
+
 /// Tokenize `src`. Never fails: bad input produces diagnostics and the lexer keeps going,
-/// so the parser always receives a full token stream to recover against.
+/// so the parser always receives a full token stream to recover against. A `program` file
+/// ([`is_program`]) also lexes operators and string escapes.
 pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    let program = is_program(src);
+    lex_with(src, file, program, program)
+}
+
+/// Tokenize a piece of a program on its own — the inside of a `{…}` interpolation — with
+/// a program's operators. Spans are relative to the piece: line 1, column 1 is its start.
+pub fn lex_fragment(text: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
+    lex_with(text, file, true, false)
+}
+
+/// `program`: lex a program's operators and escapes. `comments`: also read a line that
+/// starts with `//` or `#` as `MZ0911` (a whole program file, not an interpolation).
+fn lex_with(src: &str, file: &str, program: bool, comments: bool) -> (Vec<Token>, Vec<Diagnostic>) {
     let mut tokens = Vec::new();
     let mut diags = Vec::new();
 
@@ -388,6 +652,105 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                 continue;
             }
 
+            // In a program, a line that starts with another language's comment, `//` or
+            // `#`: one `MZ0911`, whose exact fix writes `##`, and the line reads as the
+            // doc comment it becomes (RFC-0013 §16).
+            if comments
+                && tokens.len() == line_first_token
+                && ((ch == '#' && bytes.get(i + 1) != Some(&'#'))
+                    || (ch == '/' && bytes.get(i + 1) == Some(&'/')))
+            {
+                // The whole marker: `#`, or `//` with any more `/`s and a `!` (`///`, `//!`).
+                let mut marker = 1;
+                if ch == '/' {
+                    while bytes.get(i + marker) == Some(&'/') {
+                        marker += 1;
+                    }
+                    if bytes.get(i + marker) == Some(&'!') {
+                        marker += 1;
+                    }
+                }
+                let written: String = bytes[i..i + marker].iter().collect();
+                let at = Span::single(line_no, col, marker as u32);
+                // Exact only when the marker is followed by a space or nothing. `#!` may be a
+                // shebang, and `#[inline]` or `#define` is code, which `##` would turn into a
+                // comment: there the fix is a guess.
+                let confidence = if bytes.get(i + marker).is_none_or(|c| c.is_whitespace()) {
+                    Confidence::Exact
+                } else {
+                    Confidence::Guess
+                };
+                diags.push(
+                    Diagnostic::error(
+                        "MZ0911",
+                        file,
+                        at,
+                        format!("`{written}` does not start a comment in Mzizi — write `##`"),
+                    )
+                    .with_fix(at, "##", confidence),
+                );
+                let text: String = bytes[i + marker..].iter().collect();
+                tokens.push(Token {
+                    kind: Tok::Doc(text.trim().to_string()),
+                    span: Span::single(line_no, col, (bytes.len() - i) as u32),
+                });
+                i = bytes.len();
+                continue;
+            }
+
+            // In a program, a `/* … */` with code after it on its line: the code is read.
+            if comments
+                && let Some(next) = inline_block_comment(&bytes, i, line_no, file, &mut diags)
+            {
+                i = next;
+                continue;
+            }
+
+            // In a program, a line that is a `/* … */` comment: `exact` fix `## …`. One that
+            // does not close on its line has no fix, since the next lines are not comments.
+            if comments
+                && tokens.len() == line_first_token
+                && ch == '/'
+                && bytes.get(i + 1) == Some(&'*')
+            {
+                let rest: String = bytes[i + 2..].iter().collect();
+                let at = Span::single(line_no, col, (bytes.len() - i) as u32);
+                let d = Diagnostic::error(
+                    "MZ0911",
+                    file,
+                    at,
+                    "`/* … */` does not make a comment in Mzizi — write `##`",
+                );
+                let inner = rest.trim_end().strip_suffix("*/").map(str::trim);
+                let d = match inner {
+                    Some(inner) => d.with_fix(
+                        at,
+                        format!("## {inner}").trim_end().to_string(),
+                        Confidence::Exact,
+                    ),
+                    None => d,
+                };
+                diags.push(d);
+                tokens.push(Token {
+                    kind: Tok::Doc(inner.unwrap_or(rest.trim()).to_string()),
+                    span: at,
+                });
+                i = bytes.len();
+                continue;
+            }
+
+            // In a program, a comment after code on the same line (`MZ0911`, with a `guess`
+            // fix that moves it above). The line's code reads as if the comment were not
+            // there.
+            if comments
+                && tokens.len() > line_first_token
+                && ((ch == '#' && bytes.get(i + 1) != Some(&'#'))
+                    || (ch == '/' && matches!(bytes.get(i + 1), Some('/' | '*'))))
+            {
+                trailing_comment(&bytes, i, line_no, file, &mut diags);
+                break;
+            }
+
             // Doc comment: `##` to end of line.
             if ch == '#' && bytes.get(i + 1) == Some(&'#') {
                 let text: String = bytes[(i + 2).min(bytes.len())..].iter().collect();
@@ -411,6 +774,13 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                         closed = true;
                         break;
                     }
+                    // In a program a backslash escapes the next character (RFC-0013 §3.1),
+                    // so `\"` does not close the string. The text keeps the backslash: the
+                    // program parser decodes escapes and interpolation together.
+                    if program && bytes[j] == '\\' && j + 1 < bytes.len() {
+                        text.push(bytes[j]);
+                        j += 1;
+                    }
                     text.push(bytes[j]);
                     j += 1;
                 }
@@ -429,7 +799,13 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                         .with_fix(
                             Span::single(line_no, (bytes.len() + 1) as u32, 0),
                             "\"",
-                            Confidence::Exact,
+                            // In a program, an escaped quote may be the one meant to end the string,
+                            // so where the string ends is the author's call.
+                            if program && text.contains("\\\"") {
+                                Confidence::Guess
+                            } else {
+                                Confidence::Exact
+                            },
                         ),
                     );
                 }
@@ -487,6 +863,24 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                 continue;
             }
 
+            // A number in a program: floats, and RFC-0013 §3.1's malformed forms.
+            if program
+                && (ch.is_ascii_digit()
+                    || (ch == '.'
+                        && bytes.get(i + 1).is_some_and(char::is_ascii_digit)
+                        && !(i > 0
+                            && (bytes[i - 1].is_ascii_alphanumeric()
+                                || matches!(bytes[i - 1], '_' | ')' | '"' | '.')))))
+            {
+                let (kind, len) = program_number(&bytes, i, line_no, file, &mut diags);
+                tokens.push(Token {
+                    kind,
+                    span: Span::single(line_no, col, len as u32),
+                });
+                i += len;
+                continue;
+            }
+
             // Integer.
             if ch.is_ascii_digit() {
                 let mut j = i;
@@ -501,12 +895,20 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                         kind: Tok::Int(v),
                         span: Span::single(line_no, col, len),
                     }),
-                    Err(_) => diags.push(Diagnostic::error(
-                        "MZ0103",
-                        file,
-                        Span::single(line_no, col, len),
-                        format!("`{text}` does not fit in an int"),
-                    )),
+                    Err(_) => {
+                        diags.push(Diagnostic::error(
+                            "MZ0103",
+                            file,
+                            Span::single(line_no, col, len),
+                            format!("`{text}` does not fit in an int"),
+                        ));
+                        if program {
+                            tokens.push(Token {
+                                kind: Tok::BadInt,
+                                span: Span::single(line_no, col, len),
+                            });
+                        }
+                    }
                 }
                 i = j;
                 continue;
@@ -521,6 +923,22 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
                     repair_symbolic_type(&bytes, i, line_no, file, &mut tokens, &mut diags)
             {
                 i += consumed;
+                continue;
+            }
+
+            if program
+                && let Some(op) = OPERATORS.iter().find(|op| {
+                    op.chars()
+                        .enumerate()
+                        .all(|(k, c)| bytes.get(i + k) == Some(&c))
+                })
+            {
+                let len = op.chars().count();
+                tokens.push(Token {
+                    kind: Tok::Op(op),
+                    span: Span::single(line_no, col, len as u32),
+                });
+                i += len;
                 continue;
             }
 
@@ -579,6 +997,17 @@ pub fn lex(src: &str, file: &str) -> (Vec<Token>, Vec<Diagnostic>) {
         span: eof,
     });
     (tokens, diags)
+}
+
+/// A number literal as a diagnostic quotes it: whole up to 24 characters, else its first 20
+/// and `…`, so a `say` stays within RFC-0001's 200 characters however long the literal is.
+fn short_literal(written: &str) -> String {
+    if written.chars().count() <= 24 {
+        written.to_string()
+    } else {
+        let head: String = written.chars().take(20).collect();
+        format!("{head}…")
+    }
 }
 
 #[cfg(test)]

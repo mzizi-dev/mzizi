@@ -30,7 +30,14 @@ fn corpus() -> Vec<(String, String)> {
             if file.extension().and_then(|e| e.to_str()) == Some("mz") {
                 // The path, not the bare name: a service reads its fixtures next to it.
                 let name = file.to_string_lossy().to_string();
-                out.push((name, std::fs::read_to_string(&file).expect("readable")));
+                let src = std::fs::read_to_string(&file).expect("readable");
+                // A program's `contract` block is a later wave's (RFC-0013 §15.1), so no
+                // program has clauses to evaluate yet; `tests/program.rs` checks its
+                // output with `mz run` instead.
+                if mzizi_lang_compiler::lex::is_program(&src) {
+                    continue;
+                }
+                out.push((name, src));
             }
         }
     }

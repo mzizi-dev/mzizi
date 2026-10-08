@@ -1,9 +1,6 @@
-name: changelog
-
-# AGENTS.md, "Changelog": a pull request that changes behaviour, diagnostics, the
-# language, the charter, an RFC or the benchmarks adds a CHANGELOG.md entry under
-# `## [Unreleased]`. This job fails a pull request that changes any file other than CI and
-# lint configuration without touching CHANGELOG.md. The `no-changelog` label exempts one.
+# AGENTS.md, "Changelog": every pull request adds a CHANGELOG.md entry under
+# `## [Unreleased]` (owner rule, 2026-10-07). This job fails one that does not touch
+# CHANGELOG.md. The `no-changelog` label exempts one, as does a Dependabot version bump.
 #
 # Not a required check: it is deliberately left out of branch protection (owner rule of
 # 2026-09-30). The check publishes as `changelog / entry required`, the job's own name.
@@ -39,4 +36,5 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           NO_CHANGELOG: ${{ contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: .github/scripts/changelog-entry.sh "$BASE_SHA" "$HEAD_SHA"
