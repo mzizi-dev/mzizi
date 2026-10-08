@@ -19,7 +19,7 @@ carry no pull request number.
 
 ### Added — the language harness, first slice: `mz harness` and one entry per built feature (2026-10-07)
 
-- **Tested** (`cargo test`, gated in CI; 402 tests in the compiler crate, 17 of them in the new `compiler/tests/harness.rs`; 533 in the workspace). **`compiler/src/harness.rs`** is the language harness's registry ([RFC-0012](./design/RFC-0012-harness.md) §1.1), with no new dependency. It registers:
+- **Tested** (`cargo test`, gated in CI; 403 tests in the compiler crate, 18 of them in the new `compiler/tests/harness.rs`; 534 in the workspace). **`compiler/src/harness.rs`** is the language harness's registry ([RFC-0012](./design/RFC-0012-harness.md) §1.1), with no new dependency. It registers:
   - `program`, and everything RFC-0013 builds so far: `int`, `float`, `bool` and `text`; the 13 binary and 2 prefix operators; the 11 numeric methods (`to_float`, `to_int`, `round`, `floor`, `ceil`, `sqrt`, `is_nan`, `abs`, `min`, `max`, `pow`); `fn`, `let`, `var`, assignment, `when`, `return`, expression statements, `print`, text literals, comments and names;
   - 52 diagnostic codes, each with its RFC section, severity, `say` text, fix kinds and a trigger: each `MZ09xx` a program can raise (`MZ0901`–`MZ0926`, `MZ0937`, `MZ0962`, `MZ0980`, and `mz run`'s `MZ0990` and `MZ0991`) and the 21 shared codes a program reuses (`MZ0101`–`MZ0106`, `MZ0204`–`MZ0208`, `MZ0306`, `MZ0310`, `MZ0407`, `MZ0411`, `MZ0701`, `MZ0707`, `MZ0708`, `MZ0711`, `MZ0712`, `MZ0714`);
   - the nine `mz` commands.
@@ -35,6 +35,8 @@ carry no pull request number.
   - an example stops checking with no diagnostic, or a program example stops printing its stated output under `mz run` (skipped, and said so, without `cargo`);
   - an operator the lexer reads has no entry, or a rejected spelling is not reported with the code its entry names;
   - a surface type or numeric method has no entry.
+
+  Each code's `say` text and each feature's grammar and teaching text are written by hand and not compared with the checker; only a length cap on `say` is tested. Fix kinds are recorded as raised, so an agent can still receive a `guess` (an overlapping `exact` fix, demoted) on a code whose entry lists only `exact`.
 
   In a debug build every report `check`, `check_contract`, `check_program` and `check_with_ast` return is checked against the registry, before overlapping fixes are demoted. A code with no entry, another severity, or a fix kind its entry does not declare panics; a release `mz` skips the check. That check found six wrong declarations in the full test suite (`MZ0101`, `MZ0707` and `MZ0708` carry `exact` and `guess` fixes; `MZ0905` a `guess`; `MZ0910` and `MZ0911` sometimes none), now corrected. Statement and expression forms, operators and types are matched exhaustively, so a new one does not compile until it names its entry.
 
