@@ -1988,10 +1988,10 @@ step: for each `examples/*.mz` file that holds a program, `mz run` it and compar
 output with `examples/<name>.expected`. Since a program's package has no dependencies, that step
 needs no network.
 
-### 18.5 What the harness gains
+### 18.5 What the language harness gains
 
-Every construct and code here reaches an agent through the harness (RFC-0012, H1), and through
-`benchmarks/prompts/mzizi-guide.md` until the harness serves it. This RFC does not change the
+Every construct and code here reaches an agent through the language harness (RFC-0012, H1), and
+through `benchmarks/prompts/mzizi-guide.md` until the language harness serves it. This RFC does not change the
 guide, because nothing it describes exists. The pull request that makes a construct real changes
 the guide, re-measures it in `BUDGET.md`, and says that no benchmark was re-run.
 
