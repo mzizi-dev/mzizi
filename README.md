@@ -7,7 +7,7 @@ feedback loop are designed for **machine authorship**, and specifically for the 
 need the help most: small open-weight models with limited parameters, context and long-range
 attention. Rust is its platform, the way JavaScript is TypeScript's: Mzizi is designed to lower
 to Rust, with no borrows, lifetimes or ownership at the surface ([RFC-0001](./design/RFC-0001-syntax.md)
-§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers and its control flow (`int`, `float`, `bool` and `text`, enums, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target.
+§1.8). **That is the design and the goal, not the state:** `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers, its control flow and its errors (`int`, `float`, `bool` and `text`, enums, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`, `result(T, E)`, `return error(e)`, `try`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target.
 "Makes Rust better" is what Phase 0 exists to test. The language harness is the spine of the language,
 where every feature is registered and what an agent reads ([RFC-0012](./design/RFC-0012-harness.md), a draft), and Mzizi Roots is its
 component model, the way React is JavaScript's.
@@ -123,7 +123,7 @@ not exist yet.
 components to Rust, rendering, a deployment target, a release, a published binary. A `service`
 does lower, to a local Rust + axum package (`mz build`, RFC-0011 §8), which CI compiles, tests
 and asks one request over a socket. A `program` lowers too, in RFC-0013's foundation slice
-with its numbers and its control flow only: no collections, records or results yet, and `for each`
+with its numbers, its control flow and its errors only: no collections or records yet, and `for each`
 iterates `range(a, to = b)` only. That is the whole of the
 lowering today.
 
@@ -169,7 +169,7 @@ mzizi/
 ├── design/             # the RFCs, and ROADMAP.md — read these next
 ├── compiler/           # the `mz` binary: lex → parse → lower → IR
 ├── primitives/         # nine primitives written in Mzizi itself
-├── examples/           # example components, the example service, and two programs with their .expected output
+├── examples/           # example components, the example service, and five programs with their .expected output
 └── benchmarks/         # Phase 0 benchmark harness, runner, arms, pilot tasks and results; READINESS.md; the held-out set is private
 ```
 
@@ -187,7 +187,7 @@ mzizi/
 | [0009 — comparison benchmark](./design/RFC-0009-comparison-benchmark.md)       | The arms, the task families, the best-incumbent kill criterion and the publication rules.                                                                  |
 | [0010 — contracts everywhere](./design/RFC-0010-contracts-everywhere.md)       | Contracts on functions, handlers, services and the standard library. Draft; nothing implemented.                                                           |
 | [0012 — the language harness](./design/RFC-0012-harness.md)                    | The language harness, the spine of the language: one entry per feature, what an agent reads, the agent protocol and the plugin host. Draft; mostly design. |
-| [0013 — the core language](./design/RFC-0013-core-language.md)                 | Tier 1 (C1–C10): a `program` file kind, expressions, bindings, functions, control flow, errors and `mz run`. Draft; nothing implemented.                   |
+| [0013 — the core language](./design/RFC-0013-core-language.md)                 | Tier 1 (C1–C10): a `program` file kind, expressions, bindings, functions, control flow, errors and `mz run`. Draft; Wave 0, C1, C4, C5 and C9 implemented. |
 
 RFC-0005 is reserved (`mzizi-dev/agent-tools#76`, private — not linked, since a link to a
 private repo 404s for anyone without access) but not yet written. RFC-0011 is claimed by the
