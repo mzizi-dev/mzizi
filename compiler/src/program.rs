@@ -94,6 +94,10 @@ pub struct FnDecl {
     pub body: Vec<Stmt>,
     /// The `end fn <name>` closer, or where it was missing.
     pub end_span: Span,
+    /// Whether the parser skipped any of its lines unread, as one diagnostic already
+    /// reported (a `do … while`, a C-style `for`, a form not built yet, a block past the
+    /// nesting cap): what those lines do, such as assign a `var`, is not known.
+    pub skipped: bool,
 }
 
 impl FnDecl {
@@ -592,7 +596,12 @@ impl<'a> FnCheck<'a> {
                 None => self.err("MZ0906", f.end_span, say),
             }
         }
-        // `var`s never reassigned: one intent, one form (RFC-0013 §5.1).
+        // `var`s never reassigned: one intent, one form (RFC-0013 §5.1). Not when lines of
+        // the function were skipped unread, which may assign one: the warning and its
+        // `exact` fix would then be wrong, and they return once those lines are fixed.
+        if f.skipped {
+            return;
+        }
         let unassigned: Vec<(String, Span)> = self
             .bindings
             .iter()
@@ -735,6 +744,13 @@ impl<'a> FnCheck<'a> {
     }
 
     fn stmt(&mut self, s: &Stmt, tail_value: Option<Span>) {
+        // A `when` used as a value is a chain too (RFC-0013 §7.1, §7.4: `MZ0936`).
+        if let StmtKind::Bind { value, .. }
+        | StmtKind::Assign { value, .. }
+        | StmtKind::Return(Some(value)) = &s.kind
+        {
+            self.value_variant_chain(s, value);
+        }
         match &s.kind {
             StmtKind::Bind {
                 mutable,

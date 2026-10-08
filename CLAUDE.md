@@ -78,7 +78,13 @@ cargo test -p mzizi-benchmark-probe                 # one workspace member, from
    axum package for `mz build`.
 
 Exit status is the interface: 0 clean (warnings allowed), 1 errors or a failed contract
-assertion, 2 usage or I/O. `mz` takes exactly one file.
+assertion, 2 usage or I/O. `mz` takes exactly one file. `mz run` is the exception, because
+1 belongs to the program it runs (`main.rs`, `run.rs`): it exits with the program's own
+status, which is 0, 101 for a trap (`MZ0991`) or a panic on `main`'s thread, 141 when
+standard output is closed, or 128 plus the signal that ended it; 3 when the check failed
+and nothing ran, or the lowered Rust did not compile (`MZ0990`); and 2 for a usage,
+environment or I/O problem (`--agent`, a file that is not a `program`, a `cargo` failure
+that is not `rustc` rejecting the lowered code).
 
 **Generated vs hand-written.**
 
