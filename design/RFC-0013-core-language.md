@@ -2424,6 +2424,90 @@ its own branch). Built and tested in `compiler/tests/program_text.rs` and
   §20 Q20's decision on whether built-in methods meet C6's "Done when", so the row stays
   🟡; and the guide change of §18.5.
 
+**Wave 1, C7: collections (§9)** (Refs #69; on `staging`, after C4, C9 and the language
+harness). Built and tested in `compiler/tests/program_collections.rs`, with
+`examples/collections.mz` run through `mz run` against `examples/collections.expected`;
+nothing measured.
+
+- **Modules.** Each of Wave 0's modules gains a child for §9: `parse/program/collections.rs`
+  (the types, bracket literals, indexing, `xs[i] = v`, `otherwise`, and the tuple, lambda and
+  `not in` idioms), `program/collections.rs` (the checker) and `run/collections.rs` (the
+  lowering and its runtime helpers); `compiler/src/collections.rs` is the one table of §9.2's
+  methods and §9.4's folds that the checker, the lowering and the language harness read. `Ty`
+  gains `List`, `Option`, `Map` and `Set`, each interned as `Result` is (`intern::one`); the
+  trees gain `ExprKind::List`, `MapLit`, `Index` and `None`, `BinOp::In` and `Otherwise`, and
+  `StmtKind::IndexAssign`.
+- **Built:** `list(T)`, `map(K, V)` and `set(K)` as types; bracket literals (§9.1); indexing
+  that returns an option (§3.7); `x otherwise d` (§8.1); `in` (§3.3); `c is none` and
+  `c is not none` on a collection; `for each` over a list (§7.3); `range(a, to = b)` as a list
+  anywhere; every operation of §9.2's two tables; `map`, `filter` and `fold` (§9.3); the
+  eight named folds of §9.4; §3.8's text forms for collections; and §14.2's rows for them.
+  Codes emitted: `MZ0909`, `MZ0960`–`MZ0964`, and `MZ0105`, `MZ0710`, `MZ0711`, `MZ0712`,
+  `MZ0905`, `MZ0910`, `MZ0912`, `MZ0915` and `MZ0950` reused as §16 says. `MZ0105` moved from
+  the lexer to the type parser in a program, and a component's and a service's `MZ0105`
+  tests are unchanged.
+- **Retired from `MZ0919`:** `list`, `map` and `set` types, `range` off a `for each` line, and
+  `none` in `c is none`. `MZ0919` still names `option(T)` written as a type, `none` as a value
+  and narrowing an option (below), and indexing text with the text methods (C6).
+- **Split: what this pull request leaves to the "C4 options" follow-up (§18.2).** C7 builds
+  options only as far as indexing needs: an option is what `xs[i]`, `m[k]`, `first` and
+  `slice` return, it may be bound with `let` or `var` and held in a collection, and it is read
+  with `otherwise`. Writing `option(T)` as a type, `none` as a value, `when x is none` /
+  `when x is not none` and the guard that narrows the rest of its block, implicit wrapping of
+  a `T` where an `option(T)` is expected, `MZ0938` (`??`, `.unwrap_or(d)`, and `otherwise` on
+  a non-option with its `exact` deletion) and `MZ0939` are that follow-up's.
+- **Where the code departs from this text, the code is the fact.**
+  - _`otherwise` on a value that is not an option is `MZ0912`, with no fix_, not §8.1's
+    `MZ0938` with its `exact` deletion: `MZ0938` is the "C4 options" follow-up's code, and
+    C7 claims only `MZ0909` and `MZ0960`–`MZ0964`.
+  - _The harness's precedence levels are §3.5's table_: `otherwise` takes level 6, so
+    comparison and `in` are 7, `not` 8, `and` 9 and `or` 10. Waves 0 and 1 numbered
+    comparison 6 to `or` 9, with no level for `otherwise`.
+  - _A type constructor's harness entry is named with its parameters_, `list(T)`,
+    `option(T)`, `map(K, V)` and `set(K)`, so the type `map` and the method `xs.map(f)` are two
+    entries.
+  - _§6.5's labels are not built_, so a collection method reads one label each, as `range`
+    reads `to`: `slice(a, to = b)` and `fold(init, step = f)` (and Python's
+    `sorted(xs, key = f)`, to repair it); the positional `xs.fold(0, add)` is still read.
+  - _`xs.slice(a, to = b)` is also `none` when `a` is past `b`_, not only when an end is
+    outside the list. §9.2 does not say what a reversed range is.
+  - _An empty `[]` where a type that is not a collection is expected_ (`let n: int = []`) is
+    `MZ0711`, one mismatch, not `MZ0961`; `MZ0961` is `[]` where nothing is expected.
+  - _`MZ0962`'s fixes that rewrite around a receiver_ (`.contains(x)` to `x in xs`,
+    `.is_empty()` to `xs is none`, `len(xs)`) are `exact` when the receiver is a name or a
+    path and a `guess` otherwise, as §16 says; a rename (`find` to `first`, `.append` to
+    `.push`, `.length` to `.length()`) is `exact` on any receiver. `x in xs` replacing
+    `xs.contains(x)` inside another comparison (`a is xs.contains(x)`) reads as a chained
+    comparison, `MZ0913`, on the next check.
+  - _`.append(v)` counts as a mutation_, as `push` does, so a `var` it changes is not
+    `MZ0924`, and on a `let` it is `MZ0960` beside `MZ0962`: applying both fixes gives
+    `var xs` and `xs.push(v)`.
+  - _A key written twice in a map literal_ is `MZ0961` only for literal keys (an `int`, a
+    `text` with no interpolation, a `bool`, a variant written with its enum), the ones the
+    checker can compare.
+  - _A function argument is the bare name of a `fn` of the program_, not shadowed by a
+    binding. A binding or any other expression there is `MZ0909`. The lowering passes the Rust
+    `fn` item to a generic helper (`mz_map(&xs, double)`), and each helper clones what it
+    hands on, so the list itself is read by reference and never copied for the call.
+  - _A read of a binding whose type is not `Copy` clones_, as §14.1 says, except as the
+    receiver of a method that only reads, an index, `in` and `is none`, which borrow it.
+  - _Indexed assignment through two indexes_ (`grid[i][j] = v`) is `MZ0917`, naming the
+    repair: bind the inner list to its own `var`. §9.2 lists one index.
+  - _Nesting:_ each type nested in another (`list(list(…))`, `[[…]]`) is a level of the
+    program's 32, as each bracket literal, index and `otherwise` link is, so 100,000 of any
+    of them is one `MZ0411` on a 1 MiB stack. A signature cut short by it has an unknown
+    return type, so its `return`s say nothing more.
+- **The language harness** (RFC-0012 §1.2): entries for the type constructors `list(T)`,
+  `option(T)`, `map(K, V)` and `set(K)`; the operators `in`, `otherwise`, `index` and `none`;
+  `bracket literal`, `indexed assignment` and `range`; one method entry per row of
+  `compiler/src/collections.rs`, which the harness's tests compare with the registry; the
+  `for each` entry's list form; and code entries for `MZ0710` (off the pending list),
+  `MZ0960`, `MZ0961`, `MZ0963` and `MZ0964`, each with a trigger. `examples/collections.mz`
+  and two smaller programs are the runnable examples, with their output compared.
+- **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and the text
+  methods (C6); `p in "a" "b"` as `MZ0910` (§3.3); `xs[i] += 1` as `MZ0918` (it is
+  `MZ0917`); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
+
 ## 19. What this RFC does not claim
 
 - That any of it is built. §18.6 records what lands, pull request by pull request.

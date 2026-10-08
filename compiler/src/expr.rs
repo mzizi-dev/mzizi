@@ -9,7 +9,8 @@
 //! additions (§7) and C9's (§12): `int`, `float`, `bool` and `text` values, the arithmetic
 //! operators, comparison, `and` / `or` / `not`, calls, the numeric methods of §4.4,
 //! interpolation, enum values and their columns, `when` and `match` used as values,
-//! `result(T, E)` and prefix `try`. Collections and other methods are later waves'.
+//! `result(T, E)` and prefix `try`, and C7's collections (§9): `list(T)`, `map(K, V)`,
+//! `set(K)`, bracket literals, indexing that returns an `option(T)`, `in` and `otherwise`.
 
 use std::collections::BTreeSet;
 use std::sync::{Mutex, OnceLock};
@@ -82,6 +83,14 @@ pub enum Ty {
     /// `result(T, E)` (RFC-0013 §12.1): the success type, [`Ty::Nothing`] for
     /// `result(none, E)`, and the error type. Interned, as [`Ty::Enum`]'s name is.
     Result(&'static (Ty, Ty)),
+    /// `list(T)` (RFC-0013 §2, §9). Interned.
+    List(&'static Ty),
+    /// `option(T)` (RFC-0013 §2, §8): what indexing and `first` return. Interned.
+    Option(&'static Ty),
+    /// `map(K, V)` (RFC-0013 §2, §9), `K` a key type ([`Ty::is_key`]). Interned.
+    Map(&'static (Ty, Ty)),
+    /// `set(K)` (RFC-0013 §2, §9), `K` a key type. Interned.
+    Set(&'static Ty),
 }
 
 impl Ty {
@@ -102,9 +111,16 @@ impl Ty {
     pub fn listed(self) -> bool {
         match self {
             Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Nothing | Ty::Error => true,
-            Ty::Enum(_) | Ty::Result(_) => false,
+            Ty::Enum(_) | Ty::Result(_) | Ty::List(_) | Ty::Option(_) | Ty::Map(_) | Ty::Set(_) => {
+                false
+            }
         }
     }
+
+    /// The type constructors an author writes with their element types: the language
+    /// harness registers each as a type entry, and the program parser reads exactly these
+    /// (with `result`, which is the `result` entry's).
+    pub const CONSTRUCTORS: &'static [&'static str] = &["list", "option", "map", "set"];
 
     /// Whether an author writes this type by a built-in name. `Nothing` and `Error` are the
     /// checker's own, an enum is the program's, and a `result(T, E)` is built from two
@@ -112,7 +128,7 @@ impl Ty {
     /// variant, including one added later, is a surface type, which the language harness
     /// must register (its tests fail otherwise).
     pub fn is_surface(self) -> bool {
-        !matches!(self, Ty::Nothing | Ty::Error | Ty::Enum(_) | Ty::Result(_))
+        self.listed() && !matches!(self, Ty::Nothing | Ty::Error)
     }
 
     /// The surface types, in declaration order.
@@ -144,6 +160,74 @@ impl Ty {
                 };
                 intern(&format!("result({ok}, {})", err.name()))
             }
+            Ty::List(t) => intern(&format!("list({})", t.name())),
+            Ty::Option(t) => intern(&format!("option({})", t.name())),
+            Ty::Map((k, v)) => intern(&format!("map({}, {})", k.name(), v.name())),
+            Ty::Set(t) => intern(&format!("set({})", t.name())),
+        }
+    }
+
+    /// `list(t)`, interned.
+    pub fn list(t: Ty) -> Ty {
+        Ty::List(crate::intern::one(t))
+    }
+
+    /// `option(t)`, interned.
+    pub fn option(t: Ty) -> Ty {
+        Ty::Option(crate::intern::one(t))
+    }
+
+    /// `map(k, v)`, interned.
+    pub fn map(k: Ty, v: Ty) -> Ty {
+        Ty::Map(crate::intern::pair(k, v))
+    }
+
+    /// `set(k)`, interned.
+    pub fn set(k: Ty) -> Ty {
+        Ty::Set(crate::intern::one(k))
+    }
+
+    /// Whether a value of this type can be a map's key or a set's element: an ordered
+    /// scalar (RFC-0013 §2). A `float` has no total order, and a collection, option, record
+    /// or result is not a scalar (`MZ0964`). [`Ty::Error`] is silent.
+    pub fn is_key(self) -> bool {
+        matches!(
+            self,
+            Ty::Int | Ty::Text | Ty::Bool | Ty::Enum(_) | Ty::Error
+        )
+    }
+
+    /// Whether this is a list, a map or a set: a value whose emptiness is `is none`
+    /// (RFC-0013 §3.3).
+    pub fn is_collection(self) -> bool {
+        matches!(self, Ty::List(_) | Ty::Map(_) | Ty::Set(_))
+    }
+
+    /// The element type of a list or a set, or the key type of a map: what `in` asks about.
+    pub fn element(self) -> Option<Ty> {
+        match self {
+            Ty::List(t) | Ty::Set(t) => Some(*t),
+            Ty::Map(&(k, _)) => Some(k),
+            _ => None,
+        }
+    }
+
+    /// Whether a Rust value of this type is `Copy`, so a read of it needs no `.clone()`
+    /// (RFC-0013 §14.1).
+    pub fn is_copy(self) -> bool {
+        matches!(
+            self,
+            Ty::Int | Ty::Float | Ty::Bool | Ty::Enum(_) | Ty::Nothing | Ty::Error
+        )
+    }
+
+    /// Whether this type holds a [`Ty::Error`] anywhere: a part already reported.
+    pub fn has_error(self) -> bool {
+        match self {
+            Ty::Error => true,
+            Ty::List(t) | Ty::Option(t) | Ty::Set(t) => t.has_error(),
+            Ty::Map((a, b)) | Ty::Result((a, b)) => a.has_error() || b.has_error(),
+            _ => false,
         }
     }
 
@@ -201,6 +285,11 @@ listed_enum! {
         Gt,
         /// `>=`
         Ge,
+        /// `in`: an element of a list or a set, or a key of a map (RFC-0013 §3.3, §9.2).
+        In,
+        /// `otherwise`: the left `option(T)`'s value, or the right when it is `none`, which
+        /// is evaluated only then (RFC-0013 §8.1). Right-associative, level 6.
+        Otherwise,
         /// `and`, short-circuit.
         And,
         /// `or`, short-circuit.
@@ -223,6 +312,8 @@ impl BinOp {
             BinOp::Le => "<=",
             BinOp::Gt => ">",
             BinOp::Ge => ">=",
+            BinOp::In => "in",
+            BinOp::Otherwise => "otherwise",
             BinOp::And => "and",
             BinOp::Or => "or",
         }
@@ -233,9 +324,16 @@ impl BinOp {
         match self {
             BinOp::Mul | BinOp::Div | BinOp::Rem => 4,
             BinOp::Add | BinOp::Sub => 5,
-            BinOp::Is | BinOp::IsNot | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => 6,
-            BinOp::And => 8,
-            BinOp::Or => 9,
+            BinOp::Otherwise => 6,
+            BinOp::Is
+            | BinOp::IsNot
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge
+            | BinOp::In => 7,
+            BinOp::And => 9,
+            BinOp::Or => 10,
         }
     }
 
@@ -244,9 +342,9 @@ impl BinOp {
         self.level() <= 5
     }
 
-    /// Whether this is a comparison (level 6, which does not chain).
+    /// Whether this is a comparison (level 7, which does not chain), `in` among them.
     pub fn is_comparison(self) -> bool {
-        self.level() == 6
+        self.level() == 7
     }
 }
 
@@ -355,6 +453,20 @@ pub enum ExprKind {
         /// Where that word is.
         name_span: Span,
     },
+    /// `[a, b, c]` or `[]`, a bracket literal of plain elements (RFC-0013 §9.1): a list, or a
+    /// set where a `set` is expected.
+    List(Vec<Expr>),
+    /// `[k: v, …]`, a bracket literal of entries: a map (RFC-0013 §9.1).
+    MapLit(Vec<(Expr, Expr)>),
+    /// `base[index]`: an element of a list or a map's value, as an `option` (RFC-0013 §3.7).
+    Index {
+        /// The list or map.
+        base: Box<Expr>,
+        /// The position or key.
+        index: Box<Expr>,
+    },
+    /// `none`: in this slice, only a collection's emptiness, `c is none` (RFC-0013 §3.3).
+    None,
     /// Something the parser could not read. Already reported.
     Error,
 }
@@ -409,8 +521,8 @@ impl Expr {
                 op: UnOp::Neg | UnOp::Try,
                 ..
             } => 3,
-            ExprKind::Unary { op: UnOp::Not, .. } => 7,
-            ExprKind::Method { .. } | ExprKind::Field { .. } => 2,
+            ExprKind::Unary { op: UnOp::Not, .. } => 8,
+            ExprKind::Method { .. } | ExprKind::Field { .. } | ExprKind::Index { .. } => 2,
             _ => 1,
         }
     }
@@ -446,10 +558,16 @@ impl Expr {
                         .any(|a| a.body.has_error() || a.values.iter().any(Expr::has_error))
                     || otherwise.as_ref().is_some_and(|o| o.body.has_error())
             }
+            ExprKind::List(items) => items.iter().any(Expr::has_error),
+            ExprKind::MapLit(entries) => {
+                entries.iter().any(|(k, v)| k.has_error() || v.has_error())
+            }
+            ExprKind::Index { base, index } => base.has_error() || index.has_error(),
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::Bool(_)
             | ExprKind::Name(_)
+            | ExprKind::None
             | ExprKind::Variant { .. } => false,
         }
     }
@@ -481,6 +599,11 @@ impl Expr {
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_text_literal() || rhs.has_text_literal(),
             ExprKind::When { .. } | ExprKind::Match { .. } => true,
             ExprKind::Field { base, .. } => base.has_text_literal(),
+            ExprKind::List(items) => items.iter().any(Expr::has_text_literal),
+            ExprKind::MapLit(entries) => entries
+                .iter()
+                .any(|(k, v)| k.has_text_literal() || v.has_text_literal()),
+            ExprKind::Index { base, index } => base.has_text_literal() || index.has_text_literal(),
             _ => false,
         }
     }
@@ -546,7 +669,7 @@ pub fn canonical(e: &Expr) -> String {
                     format!("-({inner})")
                 }
                 UnOp::Neg => format!("-{inner}"),
-                UnOp::Not if operand.level() > 7 => format!("not ({inner})"),
+                UnOp::Not if operand.level() > 8 => format!("not ({inner})"),
                 UnOp::Not => format!("not {inner}"),
                 UnOp::Try if operand.level() > 3 => format!("try ({inner})"),
                 UnOp::Try => format!("try {inner}"),
@@ -569,9 +692,17 @@ pub fn canonical(e: &Expr) -> String {
             let meets = |o: &Expr| {
                 *op == BinOp::Or && matches!(o.kind, ExprKind::Binary { op: BinOp::And, .. })
             };
-            let left_parens =
-                lhs.level() > level || (op.is_comparison() && lhs.level() == level) || meets(lhs);
-            let right_parens = rhs.level() >= level || meets(rhs);
+            // `otherwise` is the one right-associative level (§3.5): a chain of fallbacks
+            // nests to the right, and a left operand at its level needs the parentheses.
+            let right_assoc = *op == BinOp::Otherwise;
+            let left_parens = lhs.level() > level
+                || ((op.is_comparison() || right_assoc) && lhs.level() == level)
+                || meets(lhs);
+            let right_parens = if right_assoc {
+                rhs.level() > level
+            } else {
+                rhs.level() >= level
+            } || meets(rhs);
             let wrap = |s: String, p: bool| if p { format!("({s})") } else { s };
             format!(
                 "{} {} {}",
@@ -589,6 +720,27 @@ pub fn canonical(e: &Expr) -> String {
             None => "when …".to_string(),
         },
         ExprKind::Match { scrutinee, .. } => format!("match {} …", canonical(scrutinee)),
+        ExprKind::List(items) => {
+            let items: Vec<String> = items.iter().map(canonical).collect();
+            format!("[{}]", items.join(", "))
+        }
+        ExprKind::MapLit(entries) => {
+            let entries: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{}: {}", canonical(k), canonical(v)))
+                .collect();
+            format!("[{}]", entries.join(", "))
+        }
+        ExprKind::Index { base, index } => {
+            let b = canonical(base);
+            let b = if base.level() > 2 {
+                format!("({b})")
+            } else {
+                b
+            };
+            format!("{b}[{}]", canonical(index))
+        }
+        ExprKind::None => "none".to_string(),
         ExprKind::Error => "…".to_string(),
     }
 }
@@ -707,16 +859,28 @@ pub fn method_signature(recv: Ty, name: &str) -> Option<(Vec<Ty>, Ty)> {
 /// Whether a value of this type has a text form (RFC-0013 §3.8), so it can be printed or
 /// interpolated.
 pub fn has_text_form(t: Ty) -> bool {
-    matches!(
-        t,
-        Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Enum(_) | Ty::Error
-    )
+    match t {
+        Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Enum(_) | Ty::Error => true,
+        Ty::List(e) | Ty::Set(e) => has_inner_text_form(*e),
+        Ty::Map((k, v)) => has_inner_text_form(*k) && has_inner_text_form(*v),
+        // An option has none at the top level (`MZ0710`), and a result none at all (§3.8).
+        Ty::Option(_) | Ty::Result(_) | Ty::Nothing => false,
+    }
+}
+
+/// Whether a value of this type has a text form inside a collection: as at the top level,
+/// and an option too, which prints as its value or `none` there (RFC-0013 §3.8).
+fn has_inner_text_form(t: Ty) -> bool {
+    match t {
+        Ty::Option(e) => has_inner_text_form(*e),
+        t => has_text_form(t),
+    }
 }
 
 /// The type a binary operator gives two operand types, or the reason it does not apply.
 /// `Ty::Error` on either side is silent: that operand was already reported.
 pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
-    if l == Ty::Error || r == Ty::Error {
+    if l.has_error() || r.has_error() {
         return Ok(
             if op.is_comparison() || matches!(op, BinOp::And | BinOp::Or) {
                 Ty::Bool
@@ -726,6 +890,39 @@ pub fn binary_type(op: BinOp, l: Ty, r: Ty) -> Result<Ty, String> {
         );
     }
     match op {
+        BinOp::In => match r.element() {
+            Some(e) if e == l => Ok(Ty::Bool),
+            Some(e) => Err(format!(
+                "`in` asks whether a value is in a list, a set or a map's keys, and this asks about {} in {}, whose {} are {}",
+                l.name(),
+                r.name(),
+                if matches!(r, Ty::Map(_)) {
+                    "keys"
+                } else {
+                    "elements"
+                },
+                e.name()
+            )),
+            None => Err(format!(
+                "`in` asks whether a value is in a list, a set or a map's keys, and this is {} in {}",
+                l.name(),
+                r.name()
+            )),
+        },
+        BinOp::Otherwise => match l {
+            Ty::Option(t) if r == *t || r == l => Ok(r),
+            Ty::Option(t) => Err(format!(
+                "`otherwise` gives an {}'s default, which is {} or {}, and this one is {}",
+                l.name(),
+                t.name(),
+                l.name(),
+                r.name()
+            )),
+            _ => Err(format!(
+                "`otherwise` gives an option's default, and the value before it is {}, which is never `none`",
+                l.name()
+            )),
+        },
         _ if op.is_arithmetic() => {
             if l == r && matches!(l, Ty::Int | Ty::Float) {
                 Ok(l)

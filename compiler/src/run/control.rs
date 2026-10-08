@@ -189,6 +189,9 @@ impl Lower<'_> {
         if matches!(e.kind, ExprKind::When { .. } | ExprKind::Match { .. }) {
             return self.block_value(e, want);
         }
+        if matches!(e.kind, ExprKind::List(_) | ExprKind::MapLit(_)) {
+            return self.bracket(e, want);
+        }
         self.expr(e)
     }
 
@@ -335,14 +338,25 @@ impl Lower<'_> {
             StmtKind::For {
                 name, source, body, ..
             } => {
-                self.types.insert(name.clone(), Ty::Int);
                 let range = match &source.kind {
-                    ExprKind::Call { args, .. } if args.len() == 2 => {
+                    ExprKind::Call {
+                        name: callee, args, ..
+                    } if callee == "range"
+                        && !self.fns.contains_key("range")
+                        && args.len() == 2 =>
+                    {
+                        self.types.insert(name.clone(), Ty::Int);
                         let a = self.bound(&args[0]);
                         let b = self.bound(&args[1]);
                         format!("{a}..{b}")
                     }
-                    _ => "0i64..0i64".to_string(),
+                    // A list: the loop iterates the value it had when it began (§7.3, §14.1).
+                    _ => {
+                        let el = self.ty(source).element().unwrap_or(Ty::Error);
+                        let list = self.expr(source);
+                        self.types.insert(name.clone(), el);
+                        list
+                    }
                 };
                 let _ = writeln!(out, "{pad}for {} in {range} {{", ident(name));
                 self.block(body, depth + 1, out);
