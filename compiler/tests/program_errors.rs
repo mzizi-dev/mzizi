@@ -989,3 +989,101 @@ fn a_malformed_result_case_is_one_diagnostic() {
         "        print(e)\n    end\n",
     );
 }
+
+// ------------------------------------------------------------------- review of the merge
+
+#[test]
+fn an_unread_result_in_a_for_each_is_mz0950() {
+    // `main` returns nothing, so there is no `try` to offer.
+    no_fix(
+        &main_body("for each i in range(0, to = 3)\n  let r = check(i)\nend"),
+        "MZ0950",
+    );
+    // Not while lines of the function were skipped unread: they may read it, as they may
+    // assign a `var` (`MZ0924` waits the same way).
+    let src = main_body("let r = check(1)\ntry:\n    print(r)\nexcept:\n    print(2)");
+    let all = errors(&src);
+    let codes: Vec<&str> = all.iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0952"], "{all:#?}");
+}
+
+#[test]
+fn a_returned_bare_variant_is_read_against_the_success_enum() {
+    clean(
+        "program t\n\n  enum color\n    red\n    blue\n  end\n\n  enum mood\n    red\n    calm\n  end\n\n  fn main\n    match pick(1)\n      case ok c\n        print(c)\n      case error e\n        print(e)\n    end\n  end fn main\n\n  fn pick(n: int): result(color, text)\n    when n > 1\n      return error(\"no\")\n    end\n    return red\n  end fn pick\n\nend program t\n",
+    );
+}
+
+#[test]
+fn a_result_parameter_is_one_diagnostic_at_the_parameter() {
+    let src = with(
+        "  fn main\n    print(g(check(1)))\n    print(g(3))\n  end fn main\n\n  fn g(r: result(int, problem)): int\n    return 1\n  end fn g\n",
+    );
+    no_fix(&src, "MZ0950");
+}
+
+#[test]
+fn a_try_column_fix_is_never_built_over_a_placeholder() {
+    let src = in_fn(
+        "result(text, problem)",
+        "let s = try check(1 +).say\nreturn s",
+    );
+    let report = check(&src, "t.mz");
+    assert!(
+        report.diagnostics.iter().all(|d| d.code != "MZ0950"),
+        "{:#?}",
+        report.diagnostics
+    );
+    assert!(!apply_exact_fixes(&src, &report).contains('…'));
+}
+
+#[test]
+fn a_bare_ok_or_error_variant_is_qualified_wherever_it_resolves() {
+    let status = "  enum status\n    ok\n    error\n  end\n\n";
+    // An annotated binding, and `error(…)`'s argument, read a bare variant against their
+    // type; in a result function each is `MZ0953`, with the exact fix naming its enum.
+    let src = format!(
+        "program t\n\n{status}  fn main\n    print(\"t\")\n  end fn main\n\n  fn f(n: int): result(int, text)\n    let s: status = ok\n    print(s)\n    return n\n  end fn f\n\nend program t\n"
+    );
+    fixed_by(&src, "MZ0953", "let s: status = status.ok\n");
+    let src = format!(
+        "program t\n\n{status}  fn main\n    print(\"t\")\n  end fn main\n\n  fn h(n: int): result(int, status)\n    return error(error)\n  end fn h\n\nend program t\n"
+    );
+    fixed_by(&src, "MZ0953", "return error(status.error)\n");
+}
+
+#[test]
+fn a_column_missing_from_one_variant_blames_that_variant() {
+    // The first variant forgets `rank`: it is the one reported, not every other.
+    let src = "program t\n\n  enum e\n    a say \"x\"\n    b say \"y\" rank 2\n    c say \"z\" rank 3\n  end\n\n  fn main\n    print(a)\n  end fn main\n\nend program t\n";
+    let d = one(src, "MZ0303");
+    assert_eq!(d.span.start_line, 4, "{d:#?}");
+    // A column without a literal is `MZ0302`, and its variant's line is not compared.
+    let src = "program t\n\n  enum e\n    a say 1.5 rank 2\n    b say \"y\" rank 3\n  end\n\n  fn main\n    print(a)\n  end fn main\n\nend program t\n";
+    one(src, "MZ0302");
+}
+
+#[test]
+fn a_result_bound_with_another_annotation_is_mz0950() {
+    guess(
+        &in_fn("result(int, problem)", "let x: int = check(2)\nreturn x"),
+        "MZ0950",
+        "try ",
+    );
+}
+
+#[test]
+fn a_result_as_a_condition_offers_try_only_for_a_bool() {
+    // `when try check(n)` would be an int: no fix.
+    no_fix(
+        &in_fn(
+            "result(int, problem)",
+            "when check(n)\n  return 1\nend\nreturn 2",
+        ),
+        "MZ0950",
+    );
+    let src = with(
+        "  fn main\n    print(\"t\")\n  end fn main\n\n  fn ok_n(n: int): result(bool, problem)\n    return n > 0\n  end fn ok_n\n\n  fn f(n: int): result(int, problem)\n    when ok_n(n)\n      return 1\n    end\n    return 2\n  end fn f\n",
+    );
+    guess(&src, "MZ0950", "try ");
+}

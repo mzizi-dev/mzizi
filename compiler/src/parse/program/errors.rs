@@ -80,7 +80,8 @@ impl Known {
 
 impl P {
     /// `say "no digits" code 3`: a variant's columns, each a name and a literal.
-    pub(super) fn columns(&mut self, variant: &str) -> Vec<Column> {
+    /// Also whether the line was read to its end, `false` after `MZ0302`.
+    pub(super) fn columns(&mut self, variant: &str) -> (Vec<Column>, bool) {
         let mut columns = Vec::new();
         while let Tok::Ident(col) = self.peek().clone() {
             let span = self.span();
@@ -104,7 +105,7 @@ impl P {
                         "column `{col}` of `{variant}` needs a literal value — a text with no `{{…}}`, an int or a bool, e.g. `{col} \"…\"`"
                     ),
                 );
-                break;
+                return (columns, false);
             };
             self.bump();
             columns.push(Column {
@@ -113,7 +114,7 @@ impl P {
                 value: Expr { kind, span: at },
             });
         }
-        columns
+        (columns, true)
     }
 
     /// The type after `result`: `(<success>, <error>)`, the cursor on `(`. The success type

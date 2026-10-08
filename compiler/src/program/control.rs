@@ -484,7 +484,7 @@ impl FnCheck<'_> {
                 self.loops += 1;
                 self.block(body, None);
                 self.loops -= 1;
-                self.scopes.pop();
+                self.end_scope();
                 self.whens.pop();
             }
             StmtKind::While { cond, body } => {
@@ -668,6 +668,7 @@ impl FnCheck<'_> {
             && let Ty::Enum(en) = want
             && self.enums.iter().any(|d| d.name == en && d.has(n))
         {
+            self.bare_ok_error(n, e.span, want);
             return want;
         }
         if matches!(e.kind, ExprKind::When { .. } | ExprKind::Match { .. }) {
@@ -685,6 +686,7 @@ impl FnCheck<'_> {
         };
         let decl = self.enums.iter().find(|d| d.name == en)?;
         if decl.has(name) {
+            self.bare_ok_error(name, at, other);
             return Some(other);
         }
         self.no_such_variant(decl, name, at);
