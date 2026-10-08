@@ -2552,6 +2552,44 @@ nothing measured.
 - **Not built:** the "C4 options" follow-up's part of §8 (above); text indexing and C6's
   methods that return an option or a list (above); `p in "a" "b"` as `MZ0910` (§3.3); the rest of a collections library (P2, §9.2); and the guide change of §18.5.
 
+**C8, records and methods** (Refs #69; tracker row C8, 🟡 until it is on `main`). Built and tested in
+`compiler/tests/program_records.rs`, with `examples/records.mz` run by `mz run` against `examples/records.expected`.
+Nothing here is measured.
+
+- **Built:** the `record` block with `field`s, `fn` methods and a `contract` of `always` clauses (§11, §11.2, §11.4);
+  construction by field name (`point(x = 1.0, y = 2.0)`, §11.1); `p with (x = 3.0)` (§11.1); field reads `p.x`; a
+  field assigned through a `var` (`p.x = v`, the statement form of §11.1); `is` on records;
+  the text form `point(x = 1.0, y = 2.0)`, with text fields quoted (§3.8). A method's receiver is `self`, bound in the
+  method and never declared; `self` outside a method and in a parameter list is `MZ0970`.
+- **Checked at check time:** `MZ0808` for a literal (positional, unknown field with its nearest name as a `guess`,
+  missing, repeated, out of declaration order, a value of the wrong type); `MZ0974` for `with` on the same kinds of
+  mistake and on a value that is not a record; `MZ0971` for assigning to `self` in a method; `MZ0975` for a literal
+  that breaks an `always` clause (folded over literal fields), and for a clause that calls a `fn` or a method, builds
+  or copies a record, or uses `try`; `MZ0712` for a clause that is not a `bool`; `MZ0950` for a result field;
+  `MZ0904`, `MZ0921` for names; `MZ0708` for a field or method that is not there, and for a method named without its
+  parentheses; `MZ0905` for a method's arguments; `MZ0960` and `MZ0711` for a field assignment.
+- **Checked at run time:** `always` is checked after every construction, `with` and field assignment, and a broken
+  clause traps with `MZ0991` and exit 101, naming the record, the clause and the line (§4.3, §11.4). The check is in
+  every build, as §11.4 says.
+- **Lowered:** a record is a Rust struct deriving `Clone`, `Debug` and `PartialEq`; each method is an `impl` method
+  named `m_<name>` taking `&self`, so no user method can shadow a derived trait or a generated helper; each `always`
+  clause is an `mz_check` method. The record shares the enums' Rust naming (`rust_enum_names`).
+- **Where the code departs from this text, the code is the fact.**
+  - _The `MZ0808` fixes are not built._ §11.1's `exact` fixes for positional construction and out-of-order fields are
+    not built: both are `MZ0808` with no fix, and a `guess` only for an unknown name's nearest field. A field left out
+    is reported once, and not again when a misspelt name is guessed to be that field.
+  - _`MZ0919` reports two designed forms that are not built_: a method that says `changes self` (§11.2), and a record
+    that holds itself, directly or through an `option` (§11.5's boxes; a `list` holds one with no box). `MZ0972`,
+    `MZ0973` and `MZ0976` are not emitted.
+  - _A method's name cannot be a field's_ (`MZ0970`, §11.2). Two methods of one record may not share a name
+    (`MZ0904`); a method and a `fn` are in different namespaces and may share one.
+  - _A record is not a map key or a set element_ (§11.1): `MZ0964`, as the key rule already gives.
+  - _Positional values of a record_ are reported as `MZ0808` with no fix, not `exact`, because a record's order is
+    the author's to state.
+- **Not built:** `changes self` (`MZ0919`); a record that holds itself (`MZ0919`); payload enums (§11.5), so
+  `MZ0973` is not emitted; `to_json` (§11.1); generics and interfaces (row P12, §11.3); `option` fields built with
+  `none` (the C4 options follow-up).
+
 ## 19. What this RFC does not claim
 
 - That any of it is built. §18.6 records what lands, pull request by pull request.
