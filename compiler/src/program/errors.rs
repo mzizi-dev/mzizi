@@ -186,6 +186,11 @@ impl FnCheck<'_> {
         want: Option<Ty>,
         how: impl FnOnce() -> String,
     ) -> bool {
+        // An option, used where its value is meant, is `MZ0710` (RFC-0013 §8).
+        if let Ty::Option(_) = t {
+            let _ = how;
+            return self.unnarrowed(e, t, "it is used here as its value");
+        }
         let Some((ok, _)) = t.as_result() else {
             return false;
         };
@@ -203,6 +208,15 @@ impl FnCheck<'_> {
             None => self.err("MZ0950", e.span, say),
         }
         true
+    }
+
+    /// [`Self::unhandled`] for a result only: where an option is what is wanted (the left
+    /// of `otherwise`, an element of a collection).
+    pub(super) fn unhandled_result(&mut self, e: &Expr, t: Ty, how: &str) -> bool {
+        if matches!(t, Ty::Option(_)) {
+            return false;
+        }
+        self.unhandled(e, t, || how.to_string())
     }
 
     /// `MZ0953`: a bare variant `ok` or `error` (resolved to `enum en`) in a function that

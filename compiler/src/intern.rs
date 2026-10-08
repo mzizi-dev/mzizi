@@ -1,5 +1,6 @@
-//! Interned type pairs, so that [`crate::expr::Ty`] stays `Copy` while it holds a
-//! `result`'s two types (RFC-0013 §12). An enum's name is interned by
+//! Interned types and type pairs, so that [`crate::expr::Ty`] stays `Copy` while it holds
+//! a `result`'s or a `map`'s two types (RFC-0013 §12, §9), or a list's, an option's or a
+//! set's element type. An enum's name is interned by
 //! [`crate::expr::intern`].
 //!
 //! Each distinct pair is allocated once and kept for the life of the process: the memory is
@@ -12,6 +13,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 use crate::expr::Ty;
 
 static PAIRS: Mutex<Vec<&'static (Ty, Ty)>> = Mutex::new(Vec::new());
+static ONES: Mutex<Vec<&'static Ty>> = Mutex::new(Vec::new());
 
 /// A lock that a panic elsewhere cannot poison for good: the list only ever grows, so what
 /// it holds is valid whatever a panicking holder was doing.
@@ -27,6 +29,18 @@ pub fn pair(a: Ty, b: Ty) -> &'static (Ty, Ty) {
     }
     let leaked: &'static (Ty, Ty) = Box::leak(Box::new((a, b)));
     pairs.push(leaked);
+    leaked
+}
+
+/// `t`, as a value that lives as long as the process: a list's, an option's or a set's
+/// element type. Equal types share one allocation.
+pub fn one(t: Ty) -> &'static Ty {
+    let mut ones = lock(&ONES);
+    if let Some(&have) = ones.iter().find(|p| ***p == t) {
+        return have;
+    }
+    let leaked: &'static Ty = Box::leak(Box::new(t));
+    ones.push(leaked);
     leaked
 }
 
