@@ -88,12 +88,15 @@ pub fn designed() -> impl Iterator<Item = &'static str> {
 /// (`toUpperCase` is `to_upper_case` here). `None` when `name` is not such a spelling.
 pub fn idiom(name: &str, argc: usize) -> Option<(&'static str, bool)> {
     Some(match (name, argc) {
-        // Python's `len`, Rust's `.len()` (which counts bytes, so `exact` only because the
-        // Mzizi program that compiles has one meaning), Java's `.size()`, and `count()`
-        // with no argument (§9.4's rule for lists, here for text).
-        ("len" | "size" | "count", 0) => ("length", true),
-        // Python's `strip()`; with an argument it strips those characters instead.
-        ("strip", 0) => ("trim", true),
+        // Rust's `.len()` counts bytes, Java's `.size()` and a bare `count()` (§9.4's rule
+        // for lists, here for text) are no text length at all: `"é".len()` is 2 in Rust
+        // and `"é".length()` is 1 here, so the fix may change the meaning, and is a guess.
+        // Python's `len(s)`, which counts scalar values as Mzizi does, is not a method and
+        // keeps its `exact` fix.
+        ("len" | "size" | "count", 0) => ("length", false),
+        // Python's `strip()` also strips U+001C to U+001F, which `trim()` keeps: a guess.
+        // With an argument it strips those characters instead.
+        ("strip", 0) => ("trim", false),
         ("strip", _) => ("trim", false),
         ("upper" | "uppercase" | "to_uppercase" | "to_upper_case", 0) => ("to_upper", true),
         ("lower" | "lowercase" | "to_lowercase" | "to_lower_case", 0) => ("to_lower", true),
@@ -150,7 +153,12 @@ mod tests {
         assert_eq!(sorted, METHODS);
         assert!(METHODS.iter().all(|m| method(Ty::Text, m).is_some()));
         assert!(WAITING.iter().all(|(m, _)| method(Ty::Text, m).is_none()));
-        assert_eq!(idiom("len", 0), Some(("length", true)));
+        assert_eq!(
+            idiom("len", 0),
+            Some(("length", false)),
+            "Rust counts bytes"
+        );
+        assert_eq!(idiom("strip", 0), Some(("trim", false)));
         assert_eq!(idiom("strip", 1), Some(("trim", false)));
     }
 }

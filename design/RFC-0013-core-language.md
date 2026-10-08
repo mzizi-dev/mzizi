@@ -2365,8 +2365,10 @@ its own branch). Built and tested in `compiler/tests/program_text.rs` and
 - **Codes emitted:** `MZ0905` (a text method's arity or argument type), `MZ0708` (a method
   text does not have, with the nearest of §10's names as a `guess`), `MZ0915` (a literal
   negative `repeat` count), `MZ0919` (the methods below), `MZ0927` (`replace`'s label), and
-  `MZ0962`: `len(s)`, `s.len()`, `s.size()`, `s.count()` and `s.length` (`exact`
-  `s.length()`); `strip()`, `upper()`, `lower()`, `to_uppercase()`, `to_lowercase()`,
+  `MZ0962`: `len(s)` (`exact` `s.length()`, since Python counts scalar values too);
+  `s.len()`, `s.size()`, `s.count()` and `s.length` (`guess` `s.length()`: Rust's `len`
+  counts bytes and JavaScript's `length` UTF-16 units, so the fix may change the meaning);
+  `strip()` (`guess` `trim()`: Python also strips U+001C to U+001F); `upper()`, `lower()`, `to_uppercase()`, `to_lowercase()`,
   `toUpperCase()`, `toLowerCase()`, `startswith`, `endswith` and `includes` (`exact`, the
   name alone); `replace_all(a, b)` and `replaceAll(a, b)` (`exact` `replace(a, by = b)`);
   and §3.3's emptiness, `s.is_empty()`, `s.length() is 0`, `is not 0`, `> 0` and

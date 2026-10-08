@@ -183,27 +183,14 @@ fn mz0962_other_languages_lengths_are_length() {
         "MZ0962",
         "print(\"日本\".length())",
     );
-    fixed_by(
-        &wrap("let s = \"é\"\nprint(s.len())"),
-        "MZ0962",
-        "s.length()",
-    );
-    fixed_by(
-        &wrap("let s = \"é\"\nprint(s.size())"),
-        "MZ0962",
-        "s.length()",
-    );
-    fixed_by(
-        &wrap("let s = \"é\"\nprint(s.count())"),
-        "MZ0962",
-        "s.length()",
-    );
-    fixed_by(
-        &wrap("let s = \"é\"\nprint(s.length)"),
-        "MZ0962",
-        "s.length()",
-    );
-    fixed_by(&wrap("let s = \"é\"\nprint(s.len)"), "MZ0962", "s.length()");
+    guessed(&wrap("let s = \"é\"\nprint(s.len())"), "MZ0962", "length");
+    guessed(&wrap("let s = \"é\"\nprint(s.size())"), "MZ0962", "length");
+    guessed(&wrap("let s = \"é\"\nprint(s.count())"), "MZ0962", "length");
+    guessed(&wrap("let s = \"é\"\nprint(s.length)"), "MZ0962", "()");
+    guessed(&wrap("let s = \"é\"\nprint(s.len)"), "MZ0962", "length()");
+    // Rust's `len()` counts bytes, Java's `size()` is a collection's, JavaScript's `length`
+    // counts UTF-16 units: "é" is 2 bytes and "🙂" 2 units, but each is one `length()`, so
+    // those fixes are guesses. Python's `len(s)` counts as Mzizi does, and stays exact.
     // Python's `s.count(t)` counts occurrences, which Mzizi has no method for.
     one(&wrap("let s = \"é\"\nprint(s.count(\"é\"))"), "MZ0708");
 }
@@ -211,7 +198,6 @@ fn mz0962_other_languages_lengths_are_length() {
 #[test]
 fn mz0962_other_languages_method_names() {
     for (written, want) in [
-        ("s.strip()", "s.trim()"),
         ("s.upper()", "s.to_upper()"),
         ("s.lower()", "s.to_lower()"),
         ("s.to_uppercase()", "s.to_upper()"),
@@ -249,6 +235,8 @@ fn mz0962_other_languages_method_names() {
         "MZ0101",
         "s.starts_with(\"a\")",
     );
+    // Python's `strip()` also strips U+001C to U+001F, which `trim()` keeps: a guess.
+    guessed(&wrap("let s = \"Ä\"\nprint(s.strip())"), "MZ0962", "trim");
     // Python's `strip(chars)` strips those characters: renaming it would only move the
     // error, so there is no fix.
     unfixed(&wrap("let s = \"Ä\"\nprint(s.strip(\"x\"))"), "MZ0962");

@@ -1994,13 +1994,21 @@ impl<'a> FnCheck<'a> {
                 "`.{name}` is a method, and a method is always called with parentheses: `{r}.{name}(…)`"
             );
             if params.is_empty() {
+                // JavaScript's `s.length` counts UTF-16 code units, Mzizi's `s.length()`
+                // Unicode scalar values (§10): `"🙂".length` is 2 there and 1 here, so
+                // that fix may change what the program means, and is a guess.
+                let c = if rt == Ty::Text && name == "length" {
+                    Confidence::Guess
+                } else {
+                    Confidence::Exact
+                };
                 self.err_fix(
                     "MZ0962",
                     name_span,
                     say,
                     Span::single(name_span.end_line, name_span.end_col, 0),
                     "()",
-                    Confidence::Exact,
+                    c,
                 );
             } else {
                 self.err("MZ0962", name_span, say);
