@@ -31,12 +31,15 @@ fn src_dir() -> PathBuf {
 
 /// Every `MZ` + four digits on a line of compiler source that is not a comment.
 fn emitted_codes() -> BTreeMap<String, String> {
-    codes_under(vec![src_dir()])
+    codes_under(vec![src_dir()], false)
 }
 
 /// [`emitted_codes`] over the given files and directories (searched recursively), each
-/// code with the first file that names it.
-fn codes_under(roots: Vec<PathBuf>) -> BTreeMap<String, String> {
+/// code with the first file that names it, relative to `compiler/src`. With `skip_tests`,
+/// each file is read only up to its `#[cfg(test)]` module, so a unit test's assertion about
+/// some other code is not taken for a code the file raises.
+fn codes_under(roots: Vec<PathBuf>, skip_tests: bool) -> BTreeMap<String, String> {
+    let src = src_dir();
     let mut out = BTreeMap::new();
     let mut stack = roots;
     while let Some(path) = stack.pop() {
@@ -51,7 +54,11 @@ fn codes_under(roots: Vec<PathBuf>) -> BTreeMap<String, String> {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
+        let file = path.strip_prefix(&src).unwrap_or(&path).to_string_lossy();
         for line in text.lines() {
+            if skip_tests && line.trim_start().starts_with("#[cfg(test)]") {
+                break;
+            }
             if line.trim_start().starts_with("//") {
                 continue;
             }
@@ -59,9 +66,7 @@ fn codes_under(roots: Vec<PathBuf>) -> BTreeMap<String, String> {
             for i in 0..b.len().saturating_sub(5) {
                 if &b[i..i + 2] == b"MZ" && b[i + 2..i + 6].iter().all(u8::is_ascii_digit) {
                     let code = line[i..i + 6].to_string();
-                    let file = path.strip_prefix(src_dir()).unwrap_or(&path);
-                    out.entry(code)
-                        .or_insert_with(|| file.to_string_lossy().into());
+                    out.entry(code).or_insert_with(|| file.to_string());
                 }
             }
         }
@@ -73,9 +78,12 @@ fn codes_under(roots: Vec<PathBuf>) -> BTreeMap<String, String> {
 /// `compiler/src`: the lexer (`parse::parse_program` hands a file that starts `program`
 /// to the program parser straight after it), the program parser, the program checker, the
 /// expression and number modules they share, the lowering, and `main.rs`, where `mz run`
-/// reports `MZ0990`. A code written in any of them is one a program can raise. `lib.rs` and
-/// `parse.rs` are left out: past the lexer, their codes are the component and service
-/// parsers' and resolvers'.
+/// reports `MZ0990`. A code written in any of them, outside its unit tests, is one a
+/// program can raise. `lib.rs` and `parse.rs` are left out: past the lexer, their codes are
+/// the component and service parsers' and resolvers'. `lex.rs` and `main.rs` serve every
+/// kind of file; today every code they write is one a program can raise too, and a
+/// component- or service-only code added to either belongs in a file of its own, not under
+/// a `program` kind it does not have.
 const PROGRAM_SOURCES: &[&str] = &[
     "lex.rs",
     "expr.rs",
@@ -90,9 +98,9 @@ const PROGRAM_SOURCES: &[&str] = &[
     "main.rs",
 ];
 
-/// Every code a program can raise, by [`PROGRAM_SOURCES`].
-fn program_codes() -> BTreeMap<String, String> {
-    let roots: Vec<PathBuf> = PROGRAM_SOURCES
+/// Every `.rs` file in [`PROGRAM_SOURCES`].
+fn program_files() -> Vec<PathBuf> {
+    let mut stack: Vec<PathBuf> = PROGRAM_SOURCES
         .iter()
         .map(|p| {
             let path = src_dir().join(p);
@@ -103,7 +111,22 @@ fn program_codes() -> BTreeMap<String, String> {
             path
         })
         .collect();
-    codes_under(roots)
+    let mut out = Vec::new();
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                stack.push(entry.unwrap().path());
+            }
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Every code a program can raise, by [`PROGRAM_SOURCES`].
+fn program_codes() -> BTreeMap<String, String> {
+    codes_under(program_files(), true)
 }
 
 #[test]
@@ -306,13 +329,41 @@ fn every_form_mz0919_names_is_still_not_built() {
                 .iter()
                 .map(|d| d.code)
                 .collect();
-            assert!(
-                codes.contains(&"MZ0919"),
+            // Exactly one `MZ0919` and nothing else, so the program cannot pass by reporting
+            // some other unbuilt form.
+            assert_eq!(
+                codes,
+                ["MZ0919"],
                 "MZ0919's say calls {form} not built, and this program reports {codes:?}: if it \
                  is built, take it out of the say and register its entry\n{src}"
             );
         }
     }
+    // The other direction: a new place that reports `MZ0919` changes this count, and is
+    // named in the say and given a program in NOT_BUILT before the count is raised. Each
+    // `"MZ0919"` written in the program's source is one place, except the one inside the
+    // parser's `not_built`, where each call is one instead.
+    let mut literals = 0;
+    let mut calls = 0;
+    for path in program_files() {
+        let text = std::fs::read_to_string(&path).unwrap();
+        for line in text.lines() {
+            if line.trim_start().starts_with("#[cfg(test)]") {
+                break;
+            }
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            literals += line.matches("\"MZ0919\"").count();
+            calls += line.matches("self.not_built(").count();
+        }
+    }
+    assert_eq!(
+        literals - 1 + calls,
+        9,
+        "the number of places a program reports MZ0919 changed: name each new form in \
+         MZ0919's say and in NOT_BUILT, then update this count"
+    );
 }
 
 #[test]
