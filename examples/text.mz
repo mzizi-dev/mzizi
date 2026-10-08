@@ -22,7 +22,32 @@ program text
     print(describe(""))
     print(describe(name))
     print("-".repeat(12))
+    let sentence = "héllo, 日本語"
+    print(sentence[1] otherwise "?")
+    print(sentence[9] otherwise "?")
+    print(sentence.slice(0, to = 5) otherwise "?")
+    print(sentence.find("日") otherwise -1)
+    print(first_word(sentence))
+    print(first_word("one two"))
+    for each c in sentence.chars()
+      print("[{c}]")
+    end
+    print(split_count("a,,b", ","))
+    print(split_count("", ","))
+    print("42".parse_int() otherwise 0)
+    print("-0x10".parse_int() otherwise 0)
+    print("1.5".parse_float() otherwise 0.0)
+    print("1.".parse_float() otherwise 0.0)
   end fn main
+
+  fn first_word(s: text): text
+    let stop = s.find(" ") otherwise s.length()
+    return s.slice(0, to = stop) otherwise s
+  end fn first_word
+
+  fn split_count(s: text, sep: text): int
+    return s.split(sep).length()
+  end fn split_count
 
   fn banner(word: text, width: int): text
     let edge = "=".repeat(width)

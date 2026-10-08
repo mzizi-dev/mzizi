@@ -57,7 +57,7 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow, errors, collections and records, wave 2 text (part)";
+pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow, errors, collections and records, wave 2 text";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -739,11 +739,15 @@ pub const FEATURES: &[Feature] = &[
         kind: Kind::Operator,
         depth: Depth::Full,
         rfc: "RFC-0013 §3.7, §3.5",
-        grammar: &["<list>[<int>]", "<map>[<key>]"],
-        teach: "`xs[i]` is the element at position `i` of a list, counted from 0, and `m[k]` the value at key `k` of a map, each as an option: `none` when `i` is outside the list or `k` is not a key. An option is read with `otherwise`: `xs[i] otherwise 0`. Indexing never traps. There is no `.get`: `xs.get(i)` is an error whose exact fix writes `xs[i]`. A literal negative index, Python's count from the end, is an error whose guess writes `xs[xs.length() - 1]`. A set has no index.",
-        types: "list(T)[int] → option(T); map(K, V)[K] → option(V)",
-        codes: &["MZ0711", "MZ0710", "MZ0915", "MZ0917", "MZ0919"],
-        examples: &[run(LISTS, LISTS_OUT), run(MAPS, MAPS_OUT)],
+        grammar: &["<list>[<int>]", "<text>[<int>]", "<map>[<key>]"],
+        teach: "`xs[i]` is the element at position `i` of a list, counted from 0, and `m[k]` the value at key `k` of a map, each as an option: `none` when `i` is outside the list or `k` is not a key. `s[i]` on text is the one character at scalar-value position `i`, as an option of text. An option is read with `otherwise`: `xs[i] otherwise 0`. Indexing never traps. There is no `.get`: `xs.get(i)` is an error whose exact fix writes `xs[i]`. A literal negative index, Python's count from the end, is an error whose guess writes `xs[xs.length() - 1]`. A set has no index.",
+        types: "list(T)[int] → option(T); text[int] → option(text); map(K, V)[K] → option(V)",
+        codes: &["MZ0711", "MZ0710", "MZ0915", "MZ0917"],
+        examples: &[
+            run(LISTS, LISTS_OUT),
+            run(MAPS, MAPS_OUT),
+            run(TEXT_OPS, TEXT_OPS_OUT),
+        ],
     },
     Feature {
         name: "indexed assignment",
@@ -1227,7 +1231,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.7, §4.1, §4.4, §16",
         NONE_GUESS,
         PROGRAM,
-        "a fault visible in constants: division or remainder by a literal `0`, a literal negative `int` exponent or `repeat` count, a constant computation (including `pow` and `abs`) that overflows an `int`, or a literal negative index (guess `xs[xs.length() - 1]`)",
+        "a fault visible in constants: division by a literal `0`, a literal negative `int` exponent or `repeat` count, a constant `int` overflow, a literal negative index (guess `xs[xs.length() - 1]`), or a literal empty `split` separator (guess `s.chars()`)",
         "program t\n  fn main\n    print(1 / 0)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1259,7 +1263,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "not built yet (RFC-0013), reported once: `option(T)` as a type, `none` as a value, narrowing an option; indexing text and text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`; a method that changes `self`; a record that holds itself; a `use` line; a `test` block; a `contract` block",
+        "not built yet (RFC-0013), reported once: `option(T)` as a type, `none` as a value, narrowing an option; a method that changes `self`; a record that holds itself; a `use` line; a `test` block; a `contract` block",
         "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1455,7 +1459,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.3, §3.7, §3.8, §4.4, §9.2, §9.4, §10, §16",
         ALL_FIXES,
         PROGRAM,
-        "an operation spelt another way: `str(x)`, `abs(x)`, `len(x)`, `s.strip()`, `is_empty()`, a method without `()`; on a list `.size()`, `.append`, `.contains`, `.get(i)`, `is []`, `find`, `some`, `every`, `sorted`, `.reduce`; `t in s` on text; a guess where meanings differ",
+        "an operation spelt another way: `str(x)`, `len(x)`, `s.strip()`, a method without `()`; `int(s)` and `float(s)` on text (guess `s.parse_int()`); on a list `.size()`, `.append`, `.get(i)`, `is []`, `find`, `sorted`; `t in s` on text (`exact` `s.contains(t)`); a guess where meanings differ",
         "program t\n  fn main\n    let n = 2\n    print(str(n))\n  end fn main\nend program t\n",
     ),
     code(
@@ -1850,7 +1854,7 @@ fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
         ),
         "contains" => (
             "s.contains(t)",
-            "Whether `t` occurs in `s`; `\"\"` occurs in every text. JavaScript's `includes` gets the exact fix. `t in s` is not built (it waits for `in`).",
+            "Whether `t` occurs in `s`; `\"\"` occurs in every text. JavaScript's `includes` gets the exact fix. `t in s` on text is `MZ0962`, with the exact fix `s.contains(t)`: `in` takes a collection on its right, never text (RFC-0013 §3.3).",
         ),
         "starts_with" => (
             "s.starts_with(t)",
@@ -1879,6 +1883,30 @@ fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
         "repeat" => (
             "s.repeat(n)",
             "`s` written `n` times; `\"\"` when `n` is `0`. A negative `n` traps (exit 101; a literal one is `MZ0915`), and so does a result too long for a text to hold.",
+        ),
+        "chars" => (
+            "s.chars()",
+            "One text per Unicode scalar value of `s`, in order, as a `list(text)`: `\"héllo\".chars()` has five elements. Java's `toCharArray()` gets the guess `s.chars()`, since Java counts UTF-16 units.",
+        ),
+        "find" => (
+            "s.find(t)",
+            "The scalar-value index of the first occurrence of `t` in `s`, as an option: `none` when `t` does not occur, and `0` for `\"\"`. `indexOf` and `index` get the fix as a guess, since they answer `-1`, not `none`.",
+        ),
+        "slice" => (
+            "s.slice(a, to = b)",
+            "The scalar values from `a` up to, not including, `b`, as an option: `none` when either end is negative or past the end, or `a` is past `b`; a slice from the end to the end is `\"\"`. `substring(a, b)` gets the fix as a guess, since JavaScript clamps its ends and swaps them. `s[i]` is the one character at `i`, as an option of text (§3.7).",
+        ),
+        "split" => (
+            "s.split(sep)",
+            "The pieces of `s` between each occurrence of `sep`, as a `list(text)`, empty pieces kept: `\"a,,b\".split(\",\")` has three. An empty `sep` traps (exit 101) when it is empty at run time; a literal one is `MZ0915`, with the guess `s.chars()`.",
+        ),
+        "parse_int" => (
+            "s.parse_int()",
+            "`s` as an `int`, as an option, by the query-parameter rule (RFC-0011 §4.2): an optional `-`, then ASCII digits that fit an `int`. `\"0x10\"`, `\"1e2\"`, `\" 7 \"`, `\"1.5\"` and `\"+1\"` are `none`. `int(s)` and `parseInt(s)` get the guess `s.parse_int()`.",
+        ),
+        "parse_float" => (
+            "s.parse_float()",
+            "`s` as a `float`, as an option: an optional `-`, digits, and an optional `.` followed by digits. No exponent, no leading `+`, no `inf` or `nan`; `\"1.\"` and `\".5\"` are `none`, and so is a number too large for a `float`. `float(s)` and `parseFloat(s)` get the guess `s.parse_float()`.",
         ),
         _ => return None,
     })
@@ -1956,7 +1984,7 @@ pub fn registry() -> Vec<HarnessEntry> {
             codes: match t {
                 Ty::Int => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0103", "MZ0915", "MZ0991"],
                 Ty::Float => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0914", "MZ0991"],
-                Ty::Text => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0962", "MZ0919"],
+                Ty::Text => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0962", "MZ0915", "MZ0991"],
                 _ => TYPE_CODES.to_vec(),
             },
             examples: vec![match t {
@@ -2093,7 +2121,8 @@ pub fn registry() -> Vec<HarnessEntry> {
         let mut codes = vec!["MZ0708", "MZ0905", "MZ0962"];
         match *name {
             "repeat" => codes.extend(["MZ0915", "MZ0991"]),
-            "replace" => codes.push("MZ0927"),
+            "split" => codes.extend(["MZ0915", "MZ0991"]),
+            "replace" | "slice" => codes.push("MZ0927"),
             _ => {}
         }
         out.push(HarnessEntry {
@@ -2112,11 +2141,12 @@ pub fn registry() -> Vec<HarnessEntry> {
     }
     for m in crate::collections::METHODS {
         out.push(HarnessEntry {
-            // Text's `length` has the entry `length`; a collection's is its own.
-            name: if m.name == "length" {
-                "collection length"
-            } else {
-                m.name
+            // Text's `length` and `slice` have the entries `length` and `slice`; a
+            // collection's are its own.
+            name: match m.name {
+                "length" => "collection length",
+                "slice" => "collection slice",
+                name => name,
             },
             kind: Kind::Method,
             depth: Depth::Full,
