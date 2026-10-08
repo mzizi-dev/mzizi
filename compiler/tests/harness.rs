@@ -406,8 +406,11 @@ fn operators_and_types_come_from_the_checker() {
             UnOp::Not => "not",
             UnOp::Try => "try",
         };
-        assert!(harness::entry(name).is_some(), "{name}");
+        let e = harness::entry(name).expect("a prefix operator entry");
+        assert_eq!(e.precedence, Some(op.level()), "{name}");
     }
+    // `not` binds looser than comparison: `not a is 3` is `not (a is 3)` (RFC-0013 §3.5).
+    assert!(UnOp::Not.level() > BinOp::Is.level());
     for t in Ty::surface() {
         let e = harness::entry(t.name()).expect("a type entry");
         assert_eq!(e.kind, Kind::Type);
