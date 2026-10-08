@@ -38,6 +38,9 @@ pub struct Variant {
     pub span: Span,
     /// Its columns, in the order written.
     pub columns: Vec<Column>,
+    /// Whether its line was read to the end: `false` after a column without a literal
+    /// (`MZ0302`), whose later columns were not read, so it is not compared with the rest.
+    pub complete: bool,
 }
 
 /// `say "no digits"`: a column and its literal value.
@@ -83,12 +86,22 @@ pub fn returns_none_result(t: Ty) -> bool {
     t.as_result().is_some_and(|(ok, _)| ok == Ty::Nothing)
 }
 
-/// Every variant has every column, once, and a column has one type (RFC-0001 §1.3).
+/// Every variant has every column, once, and a column has one type (RFC-0001 §1.3). The
+/// columns are those any variant has, so a variant missing one is the one reported, not
+/// every variant that has it; a variant whose line was cut short (`MZ0302`) is left out.
 pub(super) fn check_columns(e: &EnumDecl, file: &str, diags: &mut Vec<Diagnostic>) {
-    let Some(first) = e.variants.first() else {
-        return;
-    };
-    for v in &e.variants {
+    let read: Vec<&Variant> = e.variants.iter().filter(|v| v.complete).collect();
+    // Every column some variant has, in first-written order, with the first variant that
+    // has it.
+    let mut all: Vec<(&str, &str)> = Vec::new();
+    for v in &read {
+        for c in &v.columns {
+            if !all.iter().any(|(n, _)| *n == c.name) {
+                all.push((&c.name, &v.name));
+            }
+        }
+    }
+    for v in &read {
         let mut seen: Vec<&str> = Vec::new();
         for c in &v.columns {
             if seen.contains(&c.name.as_str()) {
@@ -118,27 +131,16 @@ pub(super) fn check_columns(e: &EnumDecl, file: &str, diags: &mut Vec<Diagnostic
                     ));
                 }
             }
-            if !first.columns.iter().any(|f| f.name == c.name) {
-                diags.push(Diagnostic::error(
-                    "MZ0303",
-                    file,
-                    c.span,
-                    format!(
-                        "variant `{}` has a `{}` column, and `{}` does not — every variant has the same columns",
-                        v.name, c.name, first.name
-                    ),
-                ));
-            }
         }
-        for want in &first.columns {
-            if !v.columns.iter().any(|c| c.name == want.name) {
+        for (want, owner) in &all {
+            if !v.columns.iter().any(|c| c.name == *want) {
                 diags.push(Diagnostic::error(
                     "MZ0303",
                     file,
                     v.span,
                     format!(
-                        "variant `{}` has no `{}` column, but `{}` does — every variant needs every column",
-                        v.name, want.name, first.name
+                        "variant `{}` has no `{want}` column, but `{owner}` does — every variant needs every column",
+                        v.name
                     ),
                 ));
             }
@@ -171,16 +173,32 @@ impl FnCheck<'_> {
     /// built when there is something to report. True when it reported, so the caller says
     /// nothing more about the value.
     pub(super) fn unhandled(&mut self, e: &Expr, t: Ty, how: impl FnOnce() -> String) -> bool {
-        if t.as_result().is_none() {
+        self.unhandled_wanting(e, t, None, how)
+    }
+
+    /// [`Self::unhandled`], where the value is wanted as `want`: the `guess` `try` is
+    /// offered only when the success value is of that type, since otherwise it leads to
+    /// the next type error.
+    pub(super) fn unhandled_wanting(
+        &mut self,
+        e: &Expr,
+        t: Ty,
+        want: Option<Ty>,
+        how: impl FnOnce() -> String,
+    ) -> bool {
+        let Some((ok, _)) = t.as_result() else {
             return false;
-        }
+        };
         let say = format!(
             "`{}` is a {}, and {} — a result is matched (`match`, with `case ok` and `case error`) or propagated (`try`)",
             canonical(e),
             t.name(),
             how()
         );
-        match self.try_fix(e.span, t) {
+        let fix = self
+            .try_fix(e.span, t)
+            .filter(|_| want.is_none_or(|w| w == ok));
+        match fix {
             Some(at) => self.err_fix("MZ0950", e.span, say, at, "try ", Confidence::Guess),
             None => self.err("MZ0950", e.span, say),
         }
@@ -324,6 +342,10 @@ impl FnCheck<'_> {
         } = &operand.kind
         {
             let bt = self.expr(base);
+            if bt.as_result().is_some() && base.has_error() {
+                // The base was reported, and its text holds a placeholder.
+                return Ty::Error;
+            }
             if bt.as_result().is_some() {
                 let fixed = format!("(try {}).{name}", canonical(base));
                 self.err_fix(
@@ -480,7 +502,7 @@ impl FnCheck<'_> {
                 }
                 self.try_of(v, operand, ot)
             }
-            _ => self.expr(v),
+            _ => self.expr_want(v, ok),
         };
         if t == Ty::Error || t == ret || (t == ok && ok != Ty::Nothing) {
             return;
@@ -556,7 +578,7 @@ impl FnCheck<'_> {
                 };
                 self.bind(name, kind, bound, None);
             }
-            None if is_ok && a.values.len() == 1 && ok != Ty::Nothing && ok != Ty::Error => {
+            None if is_ok && ok != Ty::Nothing && ok != Ty::Error => {
                 self.err(
                     "MZ0917",
                     a.span,
@@ -580,6 +602,11 @@ impl FnCheck<'_> {
 
     /// `MZ0950` for each binding in `scope` that holds a result and was never read.
     pub(super) fn unmatched_results(&mut self, scope: &[usize]) {
+        // Lines the parser skipped unread may read the binding, as they may assign a `var`
+        // (`MZ0924` waits the same way): the verdict waits until they are rewritten.
+        if self.f.skipped {
+            return;
+        }
         let unread: Vec<(String, Span, Span, Ty)> = self
             .results
             .iter()

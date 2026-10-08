@@ -2329,6 +2329,13 @@ error(e)`) as well as returned.
     `MZ0950`, and `MZ0906`'s `exact` fix `return` also applies when the line's type is the
     function's success type. An unknown return type is `MZ0701` alone, not also `MZ0906`.
   - A bare `result` with no types is `MZ0306`, naming the two types, not `MZ0919`.
+  - _An unread result waits while lines of its function were skipped unread_ (a `try`
+    block, a form `MZ0919` names), as `MZ0924` does: those lines may read it.
+  - _Columns are compared with every column any variant has_, so a variant missing one is
+    the variant reported (`MZ0303`), and a variant whose line stopped at a column with no
+    literal (`MZ0302`) is not compared.
+  - _A result used as a condition_ gets `MZ0950`'s `guess` `try` only when its success is a
+    `bool`; a result bound by `let x: int = …` is `MZ0950`, not a type mismatch.
 - **Not built:** converting one error type to another on `try` (`via`, `MZ0955`), `MZ0950`'s
   `match`-stub fix where `try` does not fit (§12.3; `MZ0950` has no fix there), both the
   "C9 via" follow-up of §18.2; `mz run --agent`'s NDJSON line for `MZ0992`; and the guide

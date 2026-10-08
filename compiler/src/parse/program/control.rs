@@ -1133,11 +1133,12 @@ impl P {
                 Tok::Ident(v) => {
                     self.bump();
                     // Its columns (RFC-0001 §1.3, RFC-0013 §12.1): `say "is below zero"`.
-                    let columns = self.columns(&v);
+                    let (columns, complete) = self.columns(&v);
                     variants.push(Variant {
                         name: v,
                         span: at,
                         columns,
+                        complete,
                     });
                     self.finish_line("a variant's columns");
                 }
