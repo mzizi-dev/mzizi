@@ -12,8 +12,9 @@
 //!   order, with a value of its type: every way it does not is `MZ0808`.
 //! - **`with`** copies a record with some fields replaced, and is `MZ0974` on the same kinds
 //!   of mistake, and on a value that is not a record.
-//! - **A method** is a `fn` whose receiver is `self`, written and never declared. `self` is a
-//!   `let` in it: assigning to it is `MZ0971`. `changes self` is not built (`MZ0919`, from the
+//! - **A method** is a `fn` whose receiver is `self`, written and never declared. A method
+//!   cannot change its receiver: `self` is bound as a parameter (so `self = …` is `MZ0922`),
+//!   and a field of it assigned is `MZ0971`. `changes self` is not built (`MZ0919`, from the
 //!   parser).
 //! - **An `always` clause** holds for every value. It is checked after each construction and
 //!   each `with`, and after each field assignment, which the lowering does; the checker
@@ -420,22 +421,12 @@ impl FnCheck<'_> {
             }
             let Some(index) = d.fields.iter().position(|rf| rf.name == f.name) else {
                 ok = false;
-                let names = d.fields.iter().map(|rf| rf.name.as_str());
+                let names: Vec<&str> = d.fields.iter().map(|rf| rf.name.as_str()).collect();
                 let say = format!("`{name}` has no field `{}`", f.name);
-                match nearest(&f.name, names) {
-                    Some((near, _)) => {
-                        guessed.push(near.clone());
-                        self.err_fix(
-                            "MZ0808",
-                            f.span,
-                            format!("{say} — did you mean `{near}`?"),
-                            f.span,
-                            near,
-                            Confidence::Guess,
-                        )
-                    }
-                    None => self.err("MZ0808", f.span, say),
+                if let Some((near, _)) = nearest(&f.name, names.iter().copied()) {
+                    guessed.push(near);
                 }
+                self.did_you_mean("MZ0808", f.span, say, &f.name, names);
                 continue;
             };
             if given.contains(&index) {
@@ -601,19 +592,9 @@ impl FnCheck<'_> {
                 continue;
             }
             let Some(index) = d.fields.iter().position(|rf| rf.name == f.name) else {
-                let names = d.fields.iter().map(|rf| rf.name.as_str());
+                let names: Vec<&str> = d.fields.iter().map(|rf| rf.name.as_str()).collect();
                 let say = format!("`{name}` has no field `{}`", f.name);
-                match nearest(&f.name, names) {
-                    Some((near, _)) => self.err_fix(
-                        "MZ0974",
-                        f.span,
-                        format!("{say} — did you mean `{near}`?"),
-                        f.span,
-                        near,
-                        Confidence::Guess,
-                    ),
-                    None => self.err("MZ0974", f.span, say),
-                }
+                self.did_you_mean("MZ0974", f.span, say, &f.name, names);
                 continue;
             };
             if given.contains(&index) {
@@ -675,18 +656,8 @@ impl FnCheck<'_> {
             return Ty::Error;
         }
         let say = format!("`{}` is {r}, which has no field `{name}`", canonical(base));
-        let names = d.fields.iter().map(|f| f.name.as_str());
-        match nearest(name, names) {
-            Some((near, _)) => self.err_fix(
-                "MZ0708",
-                name_span,
-                format!("{say} — did you mean `{near}`?"),
-                name_span,
-                near,
-                Confidence::Guess,
-            ),
-            None => self.err("MZ0708", name_span, say),
-        }
+        let names: Vec<&str> = d.fields.iter().map(|f| f.name.as_str()).collect();
+        self.did_you_mean("MZ0708", name_span, say, name, names);
         Ty::Error
     }
 
@@ -731,18 +702,8 @@ impl FnCheck<'_> {
                 );
             } else {
                 let say = format!("`{}` is {r}, which has no method `{name}`", canonical(recv));
-                let names = d.methods.iter().map(|m| m.name.as_str());
-                match nearest(name, names) {
-                    Some((near, _)) => self.err_fix(
-                        "MZ0708",
-                        name_span,
-                        format!("{say} — did you mean `{near}`?"),
-                        name_span,
-                        near,
-                        Confidence::Guess,
-                    ),
-                    None => self.err("MZ0708", name_span, say),
-                }
+                let names: Vec<&str> = d.methods.iter().map(|m| m.name.as_str()).collect();
+                self.did_you_mean("MZ0708", name_span, say, name, names);
             }
             return Ty::Error;
         };
@@ -803,9 +764,7 @@ impl FnCheck<'_> {
                 self.err(
                     "MZ0971",
                     name_span,
-                    format!(
-                        "a method cannot assign to `self`, which is a `let` in every method — return a changed copy with `with`, as `self.{field}` is read; a method that changes `self` (`changes self`) is designed but not built (RFC-0013 §11.2)"
-                    ),
+                    "a method cannot assign to a field of `self`, which it only reads — return a changed copy with `with`; a method that changes `self` (`changes self`) is designed but not built (RFC-0013 §11.2)",
                 );
             } else {
                 self.err(
@@ -871,6 +830,31 @@ impl FnCheck<'_> {
                     vt.name()
                 ),
             );
+        }
+    }
+}
+
+impl FnCheck<'_> {
+    /// A name the record does not have: `say`, with the nearest of `names` as a guess when one
+    /// is near (`MZ0708`, `MZ0808`, `MZ0974`).
+    fn did_you_mean(
+        &mut self,
+        code: &'static str,
+        span: Span,
+        say: String,
+        name: &str,
+        names: Vec<&str>,
+    ) {
+        match nearest(name, names) {
+            Some((near, _)) => self.err_fix(
+                code,
+                span,
+                format!("{say} — did you mean `{near}`?"),
+                span,
+                near,
+                Confidence::Guess,
+            ),
+            None => self.err(code, span, say),
         }
     }
 }
