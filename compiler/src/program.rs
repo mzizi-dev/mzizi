@@ -1297,6 +1297,10 @@ impl<'a> FnCheck<'a> {
                 format!("`{name}(…)` is not a Mzizi function — a value's text is `\"{{x}}\"`");
             if args[0].has_error() {
                 self.err("MZ0962", at, say);
+            } else if !has_text_form(types[0]) {
+                // A value with no text form cannot be interpolated either: no fix is safe.
+                say.push_str(&format!(", and {} has no text form", types[0].name()));
+                self.err("MZ0962", at, say);
             } else if types[0] != Ty::Text && args[0].has_text_literal() {
                 say.push_str(
                     ", and an interpolation holds no string literal: bind the value with `let` first",
@@ -1355,10 +1359,25 @@ impl<'a> FnCheck<'a> {
         let say = format!(
             "`{name}(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
         );
+        // A fix that changes behaviour is a `guess` (RFC-0013 §16). Python's `round` breaks
+        // ties to even and JavaScript's `Math.round` breaks them upward, where `.round()`
+        // rounds half away from zero; Python's `pow(2, -1)` is `0.5`, where `int.pow` with a
+        // negative exponent traps. So `round` is always a guess, and `pow` is exact only for
+        // an exponent that is a non-negative `int` literal.
+        let preserves = match method {
+            "round" => false,
+            "pow" => matches!(rest.first().map(|e| &e.kind), Some(ExprKind::Int(n)) if *n >= 0),
+            _ => true,
+        };
+        let confidence = if preserves {
+            Confidence::Exact
+        } else {
+            Confidence::Guess
+        };
         if args.iter().any(Expr::has_error) {
             self.err("MZ0962", at, say);
         } else {
-            self.err_fix("MZ0962", at, say, at, fixed, Confidence::Exact);
+            self.err_fix("MZ0962", at, say, at, fixed, confidence);
         }
         Some(ty)
     }

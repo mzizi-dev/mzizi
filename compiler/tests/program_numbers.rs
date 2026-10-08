@@ -230,7 +230,11 @@ fn mz0914_malformed_numbers() {
     }
     // A float literal too large for a float has no value to repair to.
     let huge = format!("print({}.0)", "9".repeat(400));
-    assert!(one(&wrap(&huge), "MZ0914").fix.is_none());
+    let d = one(&wrap(&huge), "MZ0914");
+    assert!(d.fix.is_none());
+    // RFC-0001: a `say` stays within 200 characters, however long the literal.
+    assert!(d.say.chars().count() <= 200, "{}", d.say);
+    assert!(d.say.contains("99999999999999999999…"), "{}", d.say);
 }
 
 #[test]
@@ -314,7 +318,10 @@ fn mz0962_free_functions_and_bare_methods_from_other_languages() {
     fixed_by(&wrap("print(float(3))"), "MZ0962", "print(3.to_float())");
     fixed_by(&wrap("print(int(2.5))"), "MZ0962", "print(2.5.to_int())");
     fixed_by(&wrap("print(abs(-3))"), "MZ0962", "print((-3).abs())");
-    fixed_by(&wrap("print(round(2.5))"), "MZ0962", "print(2.5.round())");
+    // A fix that changes behaviour is a `guess` (RFC-0013 §16): Python's `round(2.5)` is
+    // `2`, Mzizi's `2.5.round()` is `3.0`; Python's `pow(2, -1)` is `0.5`, Mzizi's traps.
+    guessed(&wrap("print(round(2.5))"), "MZ0962", "2.5.round()");
+    guessed(&wrap("let n = 1\nprint(pow(2, n))"), "MZ0962", "2.pow(n)");
     fixed_by(&wrap("print(max(2, 3))"), "MZ0962", "print(2.max(3))");
     fixed_by(&wrap("print(pow(2.0, 3))"), "MZ0962", "print(2.0.pow(3))");
     fixed_by(&wrap("print(float(2.5))"), "MZ0962", "print(2.5)");
@@ -700,4 +707,12 @@ fn long_method_and_power_chains_are_capped() {
             .expect("thread");
         assert_eq!(worker.join().expect("no stack overflow"), want);
     }
+}
+
+#[test]
+fn mz0962_str_of_a_value_with_no_text_form_gets_no_fix() {
+    // `"{f()}"` would be `MZ0711` again: a function that returns nothing has no text.
+    let src = "program t\n\n  fn main\n    print(str(log_one()))\n  end fn main\n\n  fn log_one\n    print(1)\n  end fn log_one\n\nend program t\n";
+    let d = one(src, "MZ0962");
+    assert!(d.fix.is_none(), "{d:#?}");
 }
