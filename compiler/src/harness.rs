@@ -13,7 +13,8 @@
 //! - **Single source, read from the checker:** each operator's spelling and precedence,
 //!   which operators apply to which types (asked of [`binary_type`], the checker's own
 //!   typing rule), the list of operators and types (`ALL`, generated with each enum in
-//!   [`crate::expr`]), and each numeric method's signature ([`crate::numbers::method`]).
+//!   [`crate::expr`]), and each method's signature ([`crate::numbers::method`],
+//!   [`crate::text::method`]).
 //! - **Single source, read by the compiler:** `mz` dispatches on [`COMMANDS`], so a command
 //!   with no entry cannot run, and the program parser accepts exactly the surface types'
 //!   names (`Ty::from_name`).
@@ -56,7 +57,7 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow and errors";
+pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow, errors, collections and records, wave 2 text (part)";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -71,7 +72,8 @@ pub enum Kind {
     Statement,
     /// A built-in function.
     Function,
-    /// A method on a value: the numeric methods of RFC-0013 §4.4.
+    /// A method on a value: the numeric methods of RFC-0013 §4.4, the text methods of §10,
+    /// and a collection's (§9).
     Method,
     /// Something the lexer reads: comments, text literals.
     Lexical,
@@ -254,6 +256,10 @@ pub struct Command {
 const HELLO: &str = include_str!("../../examples/hello.mz");
 const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
 const FIB: &str = include_str!("../../examples/fib.mz");
+const RECORDS: &str = include_str!("../../examples/records.mz");
+const RECORDS_OUT: &str = include_str!("../../examples/records.expected");
+const TEXT_OPS: &str = include_str!("../../examples/text.mz");
+const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
 const FIB_OUT: &str = include_str!("../../examples/fib.expected");
 
 const BINDINGS: &str = "program bindings\n\n  fn main\n    let width: int = 6\n    let height = 7\n    var area = 0\n    area = width * height\n    print(\"area {area}\")\n  end fn main\n\nend program bindings\n";
@@ -283,6 +289,12 @@ const MAIN_RESULT: &str = "program halves\n\n  fn main: result(none, text)\n    
 const MAIN_RESULT_OUT: &str = "half of 8 is 4\nhalf of 4 is 2\n";
 const COLUMNS: &str = "program columns\n\n  enum level\n    low  say \"fine\"     rank 1\n    high say \"too much\" rank 2\n  end\n\n  fn main\n    let l = high\n    print(\"{l}: {l.say}, rank {l.rank}\")\n    match pick(3)\n      case ok v\n        print(v)\n      case error e\n        print(\"no: {e.say}\")\n    end\n  end fn main\n\n  fn pick(n: int): result(level, level)\n    when n > 2\n      return error(level.high)\n    end\n    return low\n  end fn pick\n\nend program columns\n";
 const COLUMNS_OUT: &str = "high: too much, rank 2\nno: too much\n";
+const COLLECTIONS: &str = include_str!("../../examples/collections.mz");
+const COLLECTIONS_OUT: &str = include_str!("../../examples/collections.expected");
+const LISTS: &str = "program lists\n\n  fn main\n    var xs: list(int) = []\n    for each n in range(0, to = 4)\n      xs.push(n * n)\n    end\n    print(xs)\n    print(xs[2] otherwise 0)\n    print(xs[7] otherwise -1)\n    xs[0] = 5\n    print(\"{xs.length()} {5 in xs} {xs is none}\")\n    for each x in xs\n      print(x)\n    end\n  end fn main\n\nend program lists\n";
+const LISTS_OUT: &str = "[0, 1, 4, 9]\n4\n-1\n4 true false\n5\n1\n4\n9\n";
+const MAPS: &str = "program maps\n\n  fn main\n    var stock: map(text, int) = [\"fig\": 3]\n    stock[\"pear\"] = 2\n    stock[\"fig\"] = 4\n    print(stock)\n    print(stock[\"kiwi\"] otherwise 0)\n    let tags: set(text) = [\"b\", \"a\", \"b\"]\n    print(tags)\n    for each k in stock.keys()\n      print(\"{k}: {stock[k] otherwise 0}\")\n    end\n  end fn main\n\nend program maps\n";
+const MAPS_OUT: &str = "[\"fig\": 4, \"pear\": 2]\n0\n[\"a\", \"b\"]\nfig: 4\npear: 2\n";
 const COMPONENT: &str = include_str!("../../primitives/badge.mz");
 const SERVICE: &str = "service t\n  route r\n    get \"/r\"\n    respond 200\n  end\n  contract\n    example get \"/r\" status is 200\n  end\nend service t\n";
 
@@ -506,13 +518,16 @@ pub const FEATURES: &[Feature] = &[
         kind: Kind::Statement,
         depth: Depth::Full,
         rfc: "RFC-0013 §7.3, §6.5",
-        grammar: &["for each <name> in range(<from>, to = <to>)\n  …\nend"],
-        teach: "`for each i in range(a, to = b)` runs its block once for each `int` from `a` up to but not including `b`; the name is bound in the block only and cannot be assigned. `range` is read only on a `for each` line, and `for each` over a list waits for lists. Python's `for x in xs`, TypeScript's `for (const x of xs)` and Python's `range(n)` get exact fixes; a C-style `for (…; …; …)` is an error with no fix, and so is `for each` over an `int` (its guess is `range(0, to = n)`). `to: b` is written `to = b`.",
-        types: "`range` takes two `int`s; the name is an `int`.",
-        codes: &[
-            "MZ0934", "MZ0927", "MZ0711", "MZ0905", "MZ0920", "MZ0922", "MZ0937", "MZ0919",
+        grammar: &[
+            "for each <name> in range(<from>, to = <to>)\n  …\nend",
+            "for each <name> in <list>\n  …\nend",
         ],
-        examples: &[run(LOOPS, LOOPS_OUT)],
+        teach: "`for each x in xs` runs its block once for each element of a list, in order, over the value the list had when the loop began, so changing the list in the body changes the next use of its name, not this loop. `for each i in range(a, to = b)` counts the `int`s from `a` up to but not including `b`. The name is bound in the block only and cannot be assigned. A map is iterated through `m.keys()` and a set through `s.to_list()`, both in key order: `for each k in m` is an error whose fix writes `m.keys()`. Python's `for x in xs`, TypeScript's `for (const x of xs)` and Python's `range(n)` get exact fixes; a C-style `for (…; …; …)` is an error with no fix, and so is `for each` over an `int` (its guess is `range(0, to = n)`). `to: b` is written `to = b`.",
+        types: "The name has the list's element type, or `int` over a `range`.",
+        codes: &[
+            "MZ0934", "MZ0927", "MZ0711", "MZ0905", "MZ0920", "MZ0922", "MZ0937", "MZ0710",
+        ],
+        examples: &[run(LOOPS, LOOPS_OUT), run(LISTS, LISTS_OUT)],
     },
     Feature {
         name: "while",
@@ -586,6 +601,71 @@ pub const FEATURES: &[Feature] = &[
         ],
     },
     Feature {
+        name: "record",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11, §18.6",
+        grammar: &[
+            "record <name>\n  field <field>: <type>\n  fn <method>(<params>): <type>\n    …\n  end fn <method>\n  contract\n    always <bool>\n  end\nend",
+            "<record>(<field> = <value>, …)",
+            "<value> with (<field> = <value>, …)",
+            "<value>.<field>",
+            "<value>.<method>(<args>)",
+        ],
+        teach: "A program declares a record with `record <name>` and a bare `end`. Each `field <name>: <type>` line names a field, and a value is built by naming every field once, in declaration order: `point(x = 1.0, y = 2.0)`. There are no zero values: a field left out is an error, and a field that may be absent is an `option`. `p with (x = 3.0)` is a copy of `p` with `x` replaced, and `p` is unchanged. A `fn` inside the record is a method, called on a value as `p.norm()`; its receiver is `self`, always written and never declared, and a method reads `self` and returns a value, since assigning to `self` is an error (a method that changes `self` is designed, not built: it returns a changed copy with `with`). A `contract` block of `always <bool>` lines holds for every value: a value that breaks one traps when it is built or changed (exit 101), and a literal that breaks one is an error at check time. A clause reads the fields and calls nothing: a method called on a field's value (`i.dbl()`, with `i` a field) is `MZ0975`, and a bare call such as `width()` is `MZ0707`, since a clause has no implicit `self`. Records compare with `is`, print as `point(x = 1.0, y = 2.0)`, and are copied when read.",
+        types: "Each record is its own type. `p.x` has the field's declared type, and `p.m()` the method's return type. A record is not a map key or a set element, and holds no record of itself except through a `list`.",
+        codes: &[
+            "MZ0808", "MZ0921", "MZ0904", "MZ0950", "MZ0970", "MZ0971", "MZ0974", "MZ0975",
+            "MZ0708", "MZ0905", "MZ0711", "MZ0712", "MZ0707", "MZ0917", "MZ0301", "MZ0310",
+            "MZ0206", "MZ0919", "MZ0960", "MZ0991",
+        ],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "record literal",
+        kind: Kind::Function,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §11.4",
+        grammar: &["<record>(<field> = <value>, …)"],
+        teach: "A record's name, called with every field by name, builds a value of it: `span(low = 2, high = 9)`. Each field is given once, in declaration order, with a value of its type; a positional value, a repeated or unknown field, and a field left out are `MZ0808`, and an unknown field's guess is its nearest name. A literal whose fields are all literals and that breaks an `always` clause is `MZ0975` at check time, as it would trap every time it ran.",
+        types: "`<record>(…)` → the record's type",
+        codes: &["MZ0808", "MZ0975", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "with",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §3.5",
+        grammar: &["<record> with (<field> = <value>, …)"],
+        teach: "`p with (x = 3.0)` is a copy of the record `p` with the named fields replaced, and `p` itself is not changed. It is a postfix form that binds like a method call, so `p with (x = 0.0).norm()` calls `norm` on the copy. Its fields follow the record literal's rules: names of `p`'s record, at least one, each once, in declaration order, and each value of its type. Its mistakes are `MZ0974`. The copy is checked by the record's `always` clauses when it is made: a copy that breaks one traps at run time (`MZ0991`, exit 101), as a changed field does. Only a record literal whose fields are all literals is `MZ0975`, at check time.",
+        types: "`<record> with (…)` → the same record's type",
+        codes: &["MZ0974", "MZ0975", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "field",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §12.1",
+        grammar: &["<value>.<field>"],
+        teach: "`value.name` with no parentheses reads a column of an enum value (RFC-0013 §12.1) or a field of a record (§11.1). A record's field has its declared type, and is copied out when that type is not `Copy`. A method is called with parentheses, `p.norm()`, and named without them it is `MZ0708`; a name that is no field is `MZ0708` with the nearest field's name as its guess.",
+        types: "`<record>.<field>` → the field's type; `<enum>.<column>` → the column's type",
+        codes: &["MZ0708", "MZ0950"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "field assignment",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §11.1, §11.4",
+        grammar: &["<var>.<field> = <value>"],
+        teach: "`p.x = 3.0` replaces one field of a record held by a `var`, and changes that `var` only. On a `let` it is an error whose exact fix makes the binding a `var` (`MZ0960`), as for a list. The record's `always` clauses are checked after the change, at run time: a broken one traps at this line (`MZ0991`, exit 101). Assigning to a field of `self` is `MZ0971` in a method, which returns a changed copy with `with` instead.",
+        types: "The value has the field's type. The record is a `var` and is changed in place.",
+        codes: &["MZ0960", "MZ0711", "MZ0708", "MZ0971", "MZ0970", "MZ0991"],
+        examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
         name: "result",
         kind: Kind::Declaration,
         depth: Depth::Full,
@@ -642,6 +722,61 @@ pub const FEATURES: &[Feature] = &[
         types: "",
         codes: &["MZ0952", "MZ0104"],
         examples: &[run(MAIN_RESULT, MAIN_RESULT_OUT)],
+    },
+    Feature {
+        name: "bracket literal",
+        kind: Kind::Lexical,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §3.1, §9.1",
+        grammar: &["[<value>, <value>, …]", "[<key>: <value>, …]", "[]"],
+        teach: "A bracket literal builds a collection. `[1, 2, 3]` is a list, or a set where a `set(K)` is expected (a repeated element keeps one); `[\"a\": 1, \"b\": 2]` is a map. `[]` is empty, and needs its type from where it stands: `let xs: list(int) = []`, a parameter, a return type. Every element has one type. With nothing to say otherwise, a literal is a list. An empty literal with no type to take, mixed element types, entries mixed with elements and a map key written twice are errors. `{\"a\": 1}` is not a form. Mzizi has no tuples: `(a, b)` is an error, and two values that travel together are a record.",
+        types: "A literal's type is the collection expected where it stands, or `list(T)` of its elements' type `T`, or `map(K, V)` of its entries'.",
+        codes: &["MZ0961", "MZ0963", "MZ0964", "MZ0711", "MZ0917"],
+        examples: &[run(COLLECTIONS, COLLECTIONS_OUT), run(MAPS, MAPS_OUT)],
+    },
+    Feature {
+        name: "index",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §3.7, §3.5",
+        grammar: &["<list>[<int>]", "<map>[<key>]"],
+        teach: "`xs[i]` is the element at position `i` of a list, counted from 0, and `m[k]` the value at key `k` of a map, each as an option: `none` when `i` is outside the list or `k` is not a key. An option is read with `otherwise`: `xs[i] otherwise 0`. Indexing never traps. There is no `.get`: `xs.get(i)` is an error whose exact fix writes `xs[i]`. A literal negative index, Python's count from the end, is an error whose guess writes `xs[xs.length() - 1]`. A set has no index.",
+        types: "list(T)[int] → option(T); map(K, V)[K] → option(V)",
+        codes: &["MZ0711", "MZ0710", "MZ0915", "MZ0917", "MZ0919"],
+        examples: &[run(LISTS, LISTS_OUT), run(MAPS, MAPS_OUT)],
+    },
+    Feature {
+        name: "indexed assignment",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §9.2, §4.3",
+        grammar: &["<var>[<int>] = <value>", "<var>[<key>] = <value>"],
+        teach: "`xs[i] = v` replaces a list's element, and traps (exit 101) when `i` is outside the list: a statement has no value to make an option of. `m[k] = v` inserts or replaces a map's value. Either changes a `var`: on a `let` it is an error whose exact fix makes the binding a `var`. A set has no index: `s.insert(v)` adds to one.",
+        types: "The index is an `int` for a list and the key type for a map; the value is the element or value type.",
+        codes: &["MZ0960", "MZ0711", "MZ0991", "MZ0917"],
+        examples: &[run(LISTS, LISTS_OUT), run(MAPS, MAPS_OUT)],
+    },
+    Feature {
+        name: "none",
+        kind: Kind::Operator,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §3.3, §3.4, §8",
+        grammar: &["<collection> is none", "<collection> is not none"],
+        teach: "A collection's emptiness is `c is none`, and having elements is `c is not none`. `c is []`, `c.length() is 0` and `c.is_empty()` are other languages' spellings, each with the fix to `is none`; `when xs` is truthiness, an error whose guess asks `xs is not none`. `none` as a value, and narrowing an option with `when x is none`, are not built yet: an option is read with `otherwise`.",
+        types: "list, map or set `is none` → bool",
+        codes: &["MZ0962", "MZ0912", "MZ0919", "MZ0712"],
+        examples: &[run(LISTS, LISTS_OUT), run(COLLECTIONS, COLLECTIONS_OUT)],
+    },
+    Feature {
+        name: "range",
+        kind: Kind::Function,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §7.3, §6.5",
+        grammar: &["range(<from>, to = <to>)"],
+        teach: "`range(a, to = b)` is the list of `int`s from `a` up to but not including `b`, empty when `b` is not above `a`. On a `for each` line it is a counted loop and builds no list; elsewhere, a list too long to hold in memory traps (exit 101). Python's `range(n)` gets the exact fix `range(0, to = n)` on a `for each` line.",
+        types: "range(int, to = int) → list(int)",
+        codes: &["MZ0905", "MZ0927", "MZ0934", "MZ0991"],
+        examples: &[run(COLLECTIONS, COLLECTIONS_OUT), run(LOOPS, LOOPS_OUT)],
     },
 ];
 
@@ -726,6 +861,7 @@ pub const COMMANDS: &[Command] = &[
 
 const PROGRAM: &[&str] = &["program"];
 const ALL_KINDS: &[&str] = &["program", "component", "service"];
+const PROGRAM_SERVICE: &[&str] = &["program", "service"];
 const NONE: &[FixKind] = &[FixKind::None];
 const EXACT: &[FixKind] = &[FixKind::Exact];
 const NONE_EXACT: &[FixKind] = &[FixKind::None, FixKind::Exact];
@@ -795,7 +931,7 @@ pub const CODES: &[Code] = &[
         "RFC-0008 §1, §6",
         EXACT,
         ALL_KINDS,
-        "a type spelt with symbols, such as `list<text>` or `text[]`; the exact fix writes `list(text)`",
+        "a type spelt with symbols, such as `list<text>`, `text[]` or `[text]`; the exact fix writes `list(text)` (in a program the type parser reports `[T]` and `T[]`, since `[` is also a list literal)",
         "component a\n  prop xs: list<text>\nend component a\n",
     ),
     code(
@@ -931,15 +1067,23 @@ pub const CODES: &[Code] = &[
         "RFC-0008 §6, RFC-0013 §16",
         ALL_FIXES,
         ALL_KINDS,
-        "no such field, variant or method: in a program, a number's method (`f.sqrt2()`), an enum's variant or column, or a bare variant two enums share; in a component or service, a field, variant or column; the fix names the nearest, or the enum (`exact` or a guess, as the checker judges)",
+        "no such field, variant or method: in a program, a number's, a text's or a collection's method, an enum's variant or column, or a bare variant two enums share; in a component or service, a field, variant or column; the fix names the nearest, or the enum (`exact` or a guess)",
         "program t\n  fn main\n    let f = 2.0\n    print(f.sqrt2())\n  end fn main\nend program t\n",
     ),
     code(
-        "MZ0711",
-        "RFC-0008 §6",
-        NONE_GUESS,
+        "MZ0710",
+        "RFC-0008 §4, RFC-0013 §8, §3.7",
+        NONE,
         ALL_KINDS,
-        "a value of the wrong kind: a binding's declared type, an assignment, a call to a binding, an interpolation with no text form, a column whose type differs between variants, a `match` over a `float`, or `for each` over an `int` (guess `range(0, to = n)`)",
+        "an option used where its value is meant: in a program, an index (`xs[i]`, `m[k]`) or `first` used as its element, printed, passed, compared or computed with; give it a default with `otherwise`. In a component or service, an option read outside the `else` of `when x is none`",
+        "program t\n  fn main\n    let xs = [1, 2]\n    print(xs[0] + 1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0711",
+        "RFC-0008 §6, RFC-0013 §7.3, §9",
+        ALL_FIXES,
+        ALL_KINDS,
+        "a value of the wrong kind: a declared type, an assignment, a call to a binding, an interpolation with no text form, a column's type, a `match` over a `float`, a collection's element, index or key, or `for each` over an `int` (guess) or a map or set (fix `m.keys()`, `s.to_list()`)",
         "program t\n  fn main\n    let n: int = \"one\"\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -957,6 +1101,14 @@ pub const CODES: &[Code] = &[
         ALL_KINDS,
         "a malformed `{…}` in text: empty, unclosed, a stray `}`, or more than one value",
         "program t\n  fn main\n    print(\"{}\")\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0808",
+        "RFC-0011 §3, RFC-0013 §11.1, §16",
+        NONE_GUESS,
+        PROGRAM_SERVICE,
+        "a record built wrong: a positional value, a field the record lacks (its nearest name is the guess), a field given twice, fields out of order, a field left out, or a value of the wrong type; a service's record literal with a field that has no value",
+        "program t\n  record point\n    field x: float\n    field y: float\n  end\n  fn main\n    print(point(x = 1.0))\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0901",
@@ -995,7 +1147,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.3, §16",
         NONE_GUESS,
         PROGRAM,
-        "a call with the wrong number of arguments or an argument of the wrong type, or a named argument; the say quotes the signature. A `float` exponent to `pow` gets a guess (`2.0` to `2`, `0.5` to `x.sqrt()`)",
+        "a call or method with the wrong number of arguments or an argument of the wrong type, or a named argument; the say quotes the signature. A `float` exponent to `pow` gets a guess (`2.0` to `2`, `0.5` to `x.sqrt()`)",
         "program t\n  fn main\n    print(twice(1, 2))\n  end fn main\n  fn twice(n: int): int\n    return n * 2\n  end fn twice\nend program t\n",
     ),
     code(
@@ -1027,7 +1179,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.4, §16",
         NONE_EXACT,
         PROGRAM,
-        "a `fn` used as a value; exact fix `()` when it takes no parameters",
+        "a `fn` used as a value outside `map`, `filter` and the folds (exact fix `()` when it takes no parameters), a function argument that is not a named `fn` or whose signature does not fit (the say quotes both), or a lambda",
         "program t\n  fn main\n    print(one)\n  end fn main\n  fn one: int\n    return 1\n  end fn one\nend program t\n",
     ),
     code(
@@ -1035,7 +1187,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.3, §3.4, §16",
         ALL_FIXES,
         PROGRAM,
-        "an operator spelt from another language: `==` `===` `!=` `!==` `&&` `||` `!` (exact), `not a is b` without parentheses (exact), a contract predicate in an expression (exact), or `**` (guess `x.pow(n)`; no fix when an operand could not be read)",
+        "an operator spelt from another language: `==` `===` `!=` `!==` `&&` `||` `!` (exact), `not a is b` without parentheses (exact), Python's `x not in xs` (exact `not x in xs`), a contract predicate in an expression (exact), or `**` (guess `x.pow(n)`; no fix when an operand could not be read)",
         "program t\n  fn main\n    print(1 == 1)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1051,7 +1203,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.2, §3.6, §16",
         ALL_FIXES,
         PROGRAM,
-        "operands of the wrong type: `int` with `float` (exact on an `int` literal), `+` on text (fix to interpolation), arithmetic on a non-number, unlike types compared, `not` or `-` on the wrong type",
+        "operands of the wrong type: `int` with `float` (exact on an `int` literal), `+` on text (fix to interpolation), unlike types compared, `not` or `-` on the wrong type, `in` on another type than the collection holds, `otherwise` on a non-option, `is none` on a non-collection",
         "program t\n  fn main\n    let a = \"x\"\n    print(a + \"y\")\n  end fn main\nend program t\n",
     ),
     code(
@@ -1072,10 +1224,10 @@ pub const CODES: &[Code] = &[
     ),
     code(
         "MZ0915",
-        "RFC-0013 §4.1, §4.4, §16",
-        NONE,
+        "RFC-0013 §3.7, §4.1, §4.4, §16",
+        NONE_GUESS,
         PROGRAM,
-        "a fault visible in constants: division or remainder by a literal `0`, a literal negative `int` exponent, or a constant computation (including `pow` and `abs`) that overflows an `int`",
+        "a fault visible in constants: division or remainder by a literal `0`, a literal negative `int` exponent or `repeat` count, a constant computation (including `pow` and `abs`) that overflows an `int`, or a literal negative index (guess `xs[xs.length() - 1]`)",
         "program t\n  fn main\n    print(1 / 0)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1096,10 +1248,10 @@ pub const CODES: &[Code] = &[
     ),
     code(
         "MZ0918",
-        "RFC-0013 §5.1, §16",
-        EXACT,
+        "RFC-0013 §5.1, §9.2, §16",
+        ALL_FIXES,
         PROGRAM,
-        "`+=`, `-=`, `*=`, `/=`, `++` or `--`; the exact fix writes `x = x + 1`",
+        "`+=`, `-=`, `*=`, `/=`, `++` or `--`; the exact fix writes `x = x + 1`. On `xs[i]`, an option, the fix is a guess, `xs[i] = (xs[i] otherwise 0) + 1`, and there is none when no default can be guessed",
         "program t\n  fn main\n    var n = 1\n    n += 1\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1107,8 +1259,8 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §16, §18",
         NONE,
         PROGRAM,
-        "a form RFC-0013 designs that this compiler does not build yet, named and reported once: lists, maps, sets and options (`none` among them); `range` off a `for each` line; methods on `text`; a `record`; a `use` line; a `test` block; a `contract` block in a program or on a `fn`",
-        "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
+        "not built yet (RFC-0013), reported once: `option(T)` as a type, `none` as a value, narrowing an option; indexing text and text's `slice`, `find`, `parse_int`, `parse_float`, `split`, `chars`; a method that changes `self`; a record that holds itself; a `use` line; a `test` block; a `contract` block",
+        "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0920",
@@ -1131,7 +1283,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §5.1, §16",
         NONE_EXACT,
         PROGRAM,
-        "assignment to a `let` (exact fix `var`), to a parameter, or to a `for each` binding",
+        "assignment to a `let` (exact fix `var`), to a parameter, to a method's `self` (a method cannot reassign its receiver: it returns `self with (…)`), or to a `for each` binding",
         "program t\n  fn main\n    let n = 1\n    n = 2\n    print(n)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1175,7 +1327,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.5, §16",
         EXACT,
         PROGRAM,
-        "a call's label written another way: `range(a, to: b)`, whose exact fix writes `to = b` (§6.5's other labels are not built)",
+        "a call's label written another way: `range(a, to: b)` (exact `to = b`), or `s.replace(a, b)`, `s.replace(a, by: b)` or `s.replace(a, with = b)` (exact `by = b`); §6.5's other labels are not built",
         "program t\n  fn main\n    for each i in range(0, to: 3)\n      print(i)\n    end\n  end fn main\nend program t\n",
     ),
     code(
@@ -1283,12 +1435,76 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(n: int): result(int, text)\n    return try g(n)\n  end fn f\n  fn g(n: int): result(int, text)\n    return n\n  end fn g\nend program t\n",
     ),
     code(
+        "MZ0960",
+        "RFC-0013 §9.2, §16",
+        NONE_EXACT,
+        PROGRAM,
+        "a mutation (`push`, `insert`, `remove`, `xs[i] = v`) of something that is not a `var`: a `let` (exact fix `var`), a parameter, a loop binding, or a value no name holds",
+        "program t\n  fn main\n    let xs = [1]\n    xs.push(2)\n    print(xs)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0961",
+        "RFC-0013 §9.1, §16",
+        NONE,
+        PROGRAM,
+        "a bracket literal that cannot be typed: `[]` with nothing to say what it holds, elements of different types, `key: value` entries mixed with elements, or a map key written twice",
+        "program t\n  fn main\n    print([1, \"two\"])\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0962",
-        "RFC-0013 §3.7, §3.8, §4.4, §16",
+        "RFC-0013 §3.3, §3.7, §3.8, §4.4, §9.2, §9.4, §10, §16",
         ALL_FIXES,
         PROGRAM,
-        "an operation spelt another way: `str(x)` or `x.to_string()` (exact `\"{x}\"`), a free numeric function such as `abs(x)` (exact `x.abs()`; a guess for `round` and `pow`, which differ), or a method without parentheses, `f.round` (exact `()` when it takes no arguments)",
+        "an operation spelt another way: `str(x)`, `abs(x)`, `len(x)`, `s.strip()`, `is_empty()`, a method without `()`; on a list `.size()`, `.append`, `.contains`, `.get(i)`, `is []`, `find`, `some`, `every`, `sorted`, `.reduce`; `t in s` on text; a guess where meanings differ",
         "program t\n  fn main\n    let n = 2\n    print(str(n))\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0963",
+        "RFC-0013 §2, §16",
+        NONE,
+        PROGRAM,
+        "a tuple, `(a, b)`: Mzizi has none, and two values that travel together are a record with named fields, which only the author can name",
+        "program t\n  fn main\n    let p = (1, 2)\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0964",
+        "RFC-0013 §2, §9.4, §16",
+        NONE,
+        PROGRAM,
+        "a map key, set element or `sort_by` / `group_by` key whose type has no order: a `float`, a collection, an option",
+        "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(s: set(float)): int\n    return 1\n  end fn f\nend program t\n",
+    ),
+    code(
+        "MZ0970",
+        "RFC-0013 §11.2, §16",
+        NONE,
+        PROGRAM,
+        "`self` where it is not a method's receiver: as a parameter (`fn norm(self)`, delete it), or read outside a method. A method's receiver is written `self` and never declared, and a method's name cannot be a field's",
+        "program t\n  fn main\n    print(self)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0971",
+        "RFC-0013 §11.2, §16",
+        NONE,
+        PROGRAM,
+        "a method assigns to `self` or one of its fields. A method reads its receiver: it returns a changed copy with `with`. A method that changes `self` (`changes self`) is designed but not built (MZ0919)",
+        "program t\n  record counter\n    field count: int\n    fn bump\n      self.count = self.count + 1\n    end fn bump\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0974",
+        "RFC-0013 §11.1, §16",
+        NONE_GUESS,
+        PROGRAM,
+        "a `with` that cannot copy a record: on a value that is not a record, with no fields, a field the record does not have (the nearest name is its guess), a field replaced twice, fields out of declaration order, or a value of the wrong type",
+        "program t\n  record point\n    field x: float\n    field y: float\n  end\n  fn main\n    let p = point(x = 1.0, y = 2.0)\n    print(p with (z = 3.0))\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0975",
+        "RFC-0013 §11.4, §16",
+        NONE,
+        PROGRAM,
+        "an `always` clause that cannot hold or cannot be checked: a literal record that breaks it (it traps every time it runs), or a clause that calls a `fn` or a method, builds or copies a record, or uses `try`",
+        "program t\n  record span\n    field low: int\n    field high: int\n    contract\n      always low <= high\n    end\n  end\n  fn main\n    print(span(low = 3, high = 1))\n  end fn main\nend program t\n",
     ),
     code(
         "MZ0980",
@@ -1313,7 +1529,7 @@ pub const CODES: &[Code] = &[
         rfc: "RFC-0013 §4.3, §16",
         severity: Severity::Error,
         tool: "mz run",
-        say: "a trap while the program ran: integer overflow (including `pow` and `abs`), `int` division or remainder by zero, a negative `int` exponent, or `to_int()` on a float out of range. The line names the `.mz` position and the expression; exit 101",
+        say: "a trap while the program ran: integer overflow (including `pow` and `abs`), `int` division or remainder by zero, a negative `int` exponent or `repeat` count, a `repeat` or a `range` list too long to hold, or `to_int()` on a float out of range. The line names the `.mz` position and the expression; exit 101",
         fixes: NONE,
         kinds: PROGRAM,
         trigger: None,
@@ -1339,9 +1555,9 @@ pub const PENDING_CODES: &[&str] = &[
     "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0304", "MZ0305", "MZ0307", "MZ0308", "MZ0309",
     "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404", "MZ0405", "MZ0406", "MZ0408",
     "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
-    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
-    "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
-    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
+    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0713",
+    "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807",
+    "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 /// The registered code, if any.
@@ -1432,6 +1648,14 @@ fn binop_teach(op: BinOp) -> (&'static str, &'static str) {
             "Greater than or equal. Comparisons do not chain.",
             "RFC-0013 §3.3",
         ),
+        BinOp::In => (
+            "Membership: `x in xs` asks whether `x` is an element of a list or a set, or a key of a map. It is a comparison, so it does not chain, and `not x in xs` reads `not (x in xs)`: Python's `x not in xs` gets that exact fix. On text a substring is the method `s.contains(t)`, and `.contains(x)`, `.includes(x)` and `.has(x)` on a collection get the exact fix `x in xs`.",
+            "RFC-0013 §3.3, §9.2",
+        ),
+        BinOp::Otherwise => (
+            "`x otherwise d` is the value of the option `x` when it is there, and `d` when it is `none`; `d` runs only then. It binds below arithmetic and above comparison, and to the right, so `a otherwise b otherwise 0` is a chain of fallbacks. On a value that is not an option it is an error. It is how this slice reads what indexing, `first` and `slice` return; `??`, `.unwrap_or(d)` and narrowing with `when x is not none` are the \"C4 options\" follow-up's.",
+            "RFC-0013 §8.1, §3.5",
+        ),
         BinOp::And => (
             "Logical and, short-circuit. `&&` is another language's: the exact fix writes `and`.",
             "RFC-0013 §3.4",
@@ -1443,30 +1667,27 @@ fn binop_teach(op: BinOp) -> (&'static str, &'static str) {
     }
 }
 
-/// A prefix operator's name, grammar, teaching text, types and precedence level. Matched on
-/// every variant.
-fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static str, u8) {
+/// A prefix operator's name, grammar, teaching text and types. Matched on every variant. Its
+/// precedence level is [`UnOp::level`], the checker's own.
+fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static str) {
     match op {
         UnOp::Neg => (
             "prefix -",
             "-<number>",
             "Negation of an `int` (negating `int`'s minimum traps) or a `float`.",
             "int → int; float → float",
-            3,
         ),
         UnOp::Not => (
             "not",
             "not <bool>",
             "Logical not. It binds looser than comparison, so `not a is 3` is `not (a is 3)`. `!` is another language's: the exact fix writes `not`.",
             "bool → bool",
-            7,
         ),
         UnOp::Try => (
             "try",
             "try <result>",
             "`try r` is `r`'s success value; when `r` is an error, the enclosing function returns that error at once. The function must return a result with the same error type. It binds tighter than arithmetic and looser than a dot: `try f(a) + 1` is `(try f(a)) + 1`, and a column of the success value is `(try f(a)).say`. `return try r` with `r` of the function's own result type is `return r`.",
             "result(T, E) → T, in a function returning result(_, E)",
-            3,
         ),
     }
 }
@@ -1493,13 +1714,80 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
         )),
         Ty::Text => Some((
             &["text", "\"hello\"", "\"{name}\""],
-            "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value.",
-            "RFC-0013 §3.6, §3.8",
+            "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value. Its methods count and cut by Unicode scalar value, never by byte; it is empty when it `is \"\"`.",
+            "RFC-0013 §3.6, §3.8, §10",
         )),
-        // An enum is the program's own type, registered as the `enum` entry, and a result
-        // is built from two types, registered as the `result` entry.
-        Ty::Nothing | Ty::Error | Ty::Enum(_) | Ty::Result(_) => None,
+        // An enum is the program's own type, registered as the `enum` entry, a result is
+        // built from two types, registered as the `result` entry, and the collections and
+        // the option are built from their element types, registered by
+        // [`constructor_teach`].
+        Ty::Nothing
+        | Ty::Error
+        | Ty::Enum(_)
+        | Ty::Result(_)
+        | Ty::List(_)
+        | Ty::Option(_)
+        | Ty::Map(_)
+        | Ty::Set(_)
+        | Ty::Record(_) => None,
     }
+}
+
+/// A type constructor's entry name, written with its parameters (`map(K, V)`), so it is
+/// told apart from a method of the same name (`xs.map(f)`).
+pub fn constructor_entry(name: &str) -> &'static str {
+    match name {
+        "list" => "list(T)",
+        "option" => "option(T)",
+        "map" => "map(K, V)",
+        "set" => "set(K)",
+        _ => "unknown",
+    }
+}
+
+/// A type constructor's entry: its grammar, teaching text, types, codes and example.
+type ConstructorTeach = (
+    &'static [&'static str],
+    &'static str,
+    &'static str,
+    Vec<&'static str>,
+    Example,
+);
+
+/// A type constructor's grammar, teaching text, types, codes and examples, for each name in
+/// [`Ty::CONSTRUCTORS`], the names the program parser reads.
+fn constructor_teach(name: &str) -> Option<ConstructorTeach> {
+    Some(match name {
+        "list" => (
+            &["list(<type>)", "[1, 2, 3]"],
+            "An ordered sequence of values of one type, built with a bracket literal and changed only through a `var` (`push`, `xs[i] = v`). A value: assigning or passing a list copies it, so a change through one name is never seen through another. Indexing gives an option. Equality is element by element. Its text form is `[1, 2, 3]`, with text inside quoted. `[int]` and `int[]` are other languages' spellings: the exact fix writes `list(int)`.",
+            "Methods: `length`, `slice`, `map`, `filter`, `join`, `push`, and the named folds `count`, `sum`, `any`, `all`, `first`, `fold`, `sort_by`, `group_by`. `is`, `is not` and `in` apply. Lowers to `Vec<T>`.",
+            vec!["MZ0105", "MZ0961", "MZ0960", "MZ0711", "MZ0950"],
+            run(LISTS, LISTS_OUT),
+        ),
+        "map" => (
+            &["map(<key>, <type>)", "[\"a\": 1]"],
+            "Keys of one type, each with a value of one type, kept and iterated in key order (never insertion or hash order), so a printed map is the same on every run. A key is an `int`, a `text`, a `bool` or an enum: a `float` has no total order. `m[k]` gives an option; `m[k] = v` inserts or replaces on a `var`. Its text form is `[\"a\": 1, \"b\": 2]`. A map is never optional: the empty map is its absence.",
+            "Methods: `length`, `keys`, `values`, `remove`. `k in m` asks for a key. Lowers to `BTreeMap<K, V>`.",
+            vec!["MZ0964", "MZ0961", "MZ0960", "MZ0711"],
+            run(MAPS, MAPS_OUT),
+        ),
+        "set" => (
+            &["set(<key>)", "[1, 2, 3]"],
+            "Distinct values of one key type, kept and iterated in key order. A bracket literal is a set where a `set` is expected, and a value written twice is kept once. It has no index: ask `x in s`.",
+            "Methods: `length`, `to_list`, `insert`, `remove`. Lowers to `BTreeSet<K>`.",
+            vec!["MZ0964", "MZ0960", "MZ0711"],
+            run(MAPS, MAPS_OUT),
+        ),
+        "option" => (
+            &["<list>[<int>]", "<value> otherwise <default>"],
+            "A value that may be absent: what indexing, `first` and `slice` return. It is never used as its value directly (that is `MZ0710`): read it with `otherwise`. Inside a collection it prints as its value or `none`. Writing `option(T)` as a type, `none` as a value and narrowing with `when x is not none` are designed (RFC-0013 §8) and not built yet: the \"C4 options\" follow-up.",
+            "`option(T) otherwise T` → T; `option(T) otherwise option(T)` → option(T). Lowers to `Option<T>`.",
+            vec!["MZ0710", "MZ0919", "MZ0912"],
+            run(LISTS, LISTS_OUT),
+        ),
+        _ => return None,
+    })
 }
 
 const TYPE_CODES: &[&str] = &["MZ0701", "MZ0711", "MZ0912"];
@@ -1551,6 +1839,51 @@ fn method_teach(name: &str) -> Option<(&'static str, &'static str)> {
     })
 }
 
+/// A text method's grammar and teaching text, for each name in [`crate::text::METHODS`],
+/// the table the checker types text methods with. `compiler/tests/harness.rs` fails when a
+/// method there has no text here.
+fn text_method_teach(name: &str) -> Option<(&'static str, &'static str)> {
+    Some(match name {
+        "length" => (
+            "s.length()",
+            "How many Unicode scalar values `s` holds, not bytes: `\"héllo\".length()` is `5`. `len(s)` gets the exact fix `s.length()`; `s.len()`, `s.size()` and `s.length` get it as a guess, since Rust's `len` counts bytes and JavaScript's `length` UTF-16 units. Emptiness is `s is \"\"`, never `s.length() is 0` or `s.is_empty()`, whose exact fixes write it.",
+        ),
+        "contains" => (
+            "s.contains(t)",
+            "Whether `t` occurs in `s`; `\"\"` occurs in every text. JavaScript's `includes` gets the exact fix. `t in s` is not built (it waits for `in`).",
+        ),
+        "starts_with" => (
+            "s.starts_with(t)",
+            "Whether `s` begins with `t`. Python's `startswith` gets the exact fix.",
+        ),
+        "ends_with" => (
+            "s.ends_with(t)",
+            "Whether `s` ends with `t`. Python's `endswith` gets the exact fix.",
+        ),
+        "trim" => (
+            "s.trim()",
+            "`s` without Unicode whitespace at either end. Python's `strip()` gets the fix as a guess, since it also strips U+001C to U+001F; there is no one-sided trim.",
+        ),
+        "to_upper" => (
+            "s.to_upper()",
+            "`s` in upper case, by Unicode's full case mapping, so a character may become two: `\"straße\"` is `\"STRASSE\"`. `upper()`, `toUpperCase()` and `to_uppercase()` get the exact fix.",
+        ),
+        "to_lower" => (
+            "s.to_lower()",
+            "`s` in lower case, by Unicode's full case mapping. `lower()`, `toLowerCase()` and `to_lowercase()` get the exact fix.",
+        ),
+        "replace" => (
+            "s.replace(old, by = new)",
+            "`s` with every occurrence of `old` replaced by `new`; the second argument is labelled `by`, and an unlabelled one gets the exact fix. An empty `old` inserts `new` between every character and at both ends, as Python does. JavaScript's `replaceAll(a, b)` gets the exact fix.",
+        ),
+        "repeat" => (
+            "s.repeat(n)",
+            "`s` written `n` times; `\"\"` when `n` is `0`. A negative `n` traps (exit 101; a literal one is `MZ0915`), and so does a result too long for a text to hold.",
+        ),
+        _ => return None,
+    })
+}
+
 /// The whole registry, in a stable order: kind by kind, and within a kind in the order the
 /// tables above give.
 pub fn registry() -> Vec<HarnessEntry> {
@@ -1594,7 +1927,10 @@ pub fn registry() -> Vec<HarnessEntry> {
             grammar: grammar.to_vec(),
             teach: teach.to_string(),
             types: {
-                let methods = crate::numbers::methods_of(t);
+                let mut methods = crate::numbers::methods_of(t);
+                if t == Ty::Text {
+                    methods.extend(crate::text::METHODS);
+                }
                 let methods = if methods.is_empty() {
                     String::new()
                 } else {
@@ -1620,6 +1956,7 @@ pub fn registry() -> Vec<HarnessEntry> {
             codes: match t {
                 Ty::Int => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0103", "MZ0915", "MZ0991"],
                 Ty::Float => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0914", "MZ0991"],
+                Ty::Text => vec!["MZ0701", "MZ0711", "MZ0912", "MZ0962", "MZ0919"],
                 _ => TYPE_CODES.to_vec(),
             },
             examples: vec![match t {
@@ -1628,6 +1965,25 @@ pub fn registry() -> Vec<HarnessEntry> {
                 Ty::Bool => run(LOGIC, LOGIC_OUT),
                 _ => run(TEXT, "hello, Mzizi: 2 {braces} and \"quotes\"\n"),
             }],
+            diagnostic: None,
+        });
+    }
+    for name in Ty::CONSTRUCTORS {
+        // `None` for a constructor fails `compiler/tests/harness.rs`.
+        let Some((grammar, teach, types, codes, example)) = constructor_teach(name) else {
+            continue;
+        };
+        out.push(HarnessEntry {
+            name: constructor_entry(name),
+            kind: Kind::Type,
+            depth: Depth::Full,
+            rfc: "RFC-0013 §2, §3.7, §8, §9",
+            grammar: grammar.to_vec(),
+            teach: teach.to_string(),
+            types: types.to_string(),
+            precedence: None,
+            codes,
+            examples: vec![example],
             diagnostic: None,
         });
     }
@@ -1647,6 +2003,8 @@ pub fn registry() -> Vec<HarnessEntry> {
             }
             BinOp::Is | BinOp::IsNot | BinOp::And | BinOp::Or => codes.push("MZ0910"),
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => codes.push("MZ0913"),
+            BinOp::In => codes.extend(["MZ0910", "MZ0962", "MZ0710"]),
+            BinOp::Otherwise => codes.push("MZ0710"),
         }
         if matches!(op, BinOp::And | BinOp::Or) {
             codes.push("MZ0913");
@@ -1661,16 +2019,16 @@ pub fn registry() -> Vec<HarnessEntry> {
             types: operands.join("; "),
             precedence: Some(op.level()),
             codes,
-            examples: vec![if op.is_arithmetic() {
-                run(ARITH, ARITH_OUT)
-            } else {
-                run(LOGIC, LOGIC_OUT)
+            examples: vec![match op {
+                BinOp::In | BinOp::Otherwise => run(LISTS, LISTS_OUT),
+                _ if op.is_arithmetic() => run(ARITH, ARITH_OUT),
+                _ => run(LOGIC, LOGIC_OUT),
             }],
             diagnostic: None,
         });
     }
     for &op in UnOp::ALL {
-        let (name, grammar, teach, types, level) = unop_entry(op);
+        let (name, grammar, teach, types) = unop_entry(op);
         out.push(HarnessEntry {
             name,
             kind: Kind::Operator,
@@ -1679,7 +2037,7 @@ pub fn registry() -> Vec<HarnessEntry> {
             grammar: vec![grammar],
             teach: teach.to_string(),
             types: types.to_string(),
-            precedence: Some(level),
+            precedence: Some(op.level()),
             codes: match op {
                 UnOp::Not => vec!["MZ0912", "MZ0910"],
                 UnOp::Neg => vec!["MZ0912", "MZ0915", "MZ0991"],
@@ -1721,6 +2079,69 @@ pub fn registry() -> Vec<HarnessEntry> {
             precedence: Some(2),
             codes: vec!["MZ0708", "MZ0905", "MZ0915", "MZ0991"],
             examples: vec![run(METHODS, METHODS_OUT)],
+            diagnostic: None,
+        });
+    }
+    for name in crate::text::METHODS {
+        let Some((grammar, teach)) = text_method_teach(name) else {
+            continue;
+        };
+        let types = crate::text::method(Ty::Text, name).map_or(String::new(), |(params, ret)| {
+            let params: Vec<&str> = params.iter().map(|p| p.name()).collect();
+            format!("text.{name}({}) → {}", params.join(", "), ret.name())
+        });
+        let mut codes = vec!["MZ0708", "MZ0905", "MZ0962"];
+        match *name {
+            "repeat" => codes.extend(["MZ0915", "MZ0991"]),
+            "replace" => codes.push("MZ0927"),
+            _ => {}
+        }
+        out.push(HarnessEntry {
+            name,
+            kind: Kind::Method,
+            depth: Depth::Full,
+            rfc: "RFC-0013 §3.7, §10",
+            grammar: vec![grammar],
+            teach: teach.to_string(),
+            types,
+            precedence: Some(2),
+            codes,
+            examples: vec![run(TEXT_OPS, TEXT_OPS_OUT)],
+            diagnostic: None,
+        });
+    }
+    for m in crate::collections::METHODS {
+        out.push(HarnessEntry {
+            // Text's `length` has the entry `length`; a collection's is its own.
+            name: if m.name == "length" {
+                "collection length"
+            } else {
+                m.name
+            },
+            kind: Kind::Method,
+            depth: Depth::Full,
+            rfc: "RFC-0013 §3.7, §9.2, §9.3, §9.4",
+            grammar: vec![m.grammar],
+            teach: m.teach.to_string(),
+            types: m.types.to_string(),
+            precedence: Some(2),
+            codes: {
+                let mut codes = vec!["MZ0708", "MZ0905", "MZ0962", "MZ0710"];
+                if m.takes_fn {
+                    codes.push("MZ0909");
+                }
+                if m.mutates {
+                    codes.push("MZ0960");
+                }
+                if matches!(m.name, "sort_by" | "group_by") {
+                    codes.push("MZ0964");
+                }
+                if m.name == "sum" {
+                    codes.push("MZ0991");
+                }
+                codes
+            },
+            examples: vec![run(COLLECTIONS, COLLECTIONS_OUT)],
             diagnostic: None,
         });
     }
@@ -1776,6 +2197,8 @@ fn op_grammar(op: BinOp) -> &'static str {
         BinOp::Le => "<a> <= <b>",
         BinOp::Gt => "<a> > <b>",
         BinOp::Ge => "<a> >= <b>",
+        BinOp::In => "<value> in <collection>",
+        BinOp::Otherwise => "<option> otherwise <default>",
         BinOp::And => "<a> and <b>",
         BinOp::Or => "<a> or <b>",
     }
@@ -1802,6 +2225,8 @@ pub fn statement_entry(kind: &crate::program::StmtKind) -> &'static str {
         StmtKind::While { .. } => "while",
         StmtKind::Break => "break",
         StmtKind::Continue => "continue",
+        StmtKind::IndexAssign { .. } => "indexed assignment",
+        StmtKind::FieldAssign { .. } => "field assignment",
     }
 }
 
@@ -1819,17 +2244,25 @@ pub fn expression_entry(kind: &crate::expr::ExprKind) -> &'static str {
         ExprKind::Name(_) => "names",
         ExprKind::Method { name, .. } => crate::numbers::METHODS
             .iter()
-            .find(|m| *m == name)
+            .chain(crate::text::METHODS)
             .copied()
+            .chain(crate::collections::METHODS.iter().map(|m| m.name))
+            .find(|m| m == name)
             .unwrap_or("MZ0708"),
         ExprKind::Call { name, .. } if name == "print" => "print",
-        ExprKind::Call { name, .. } if name == "range" => "for each",
+        ExprKind::Call { name, .. } if name == "range" => "range",
         ExprKind::Call { name, .. } if name == "error" => "error",
         ExprKind::Call { .. } => "fn",
         ExprKind::Unary { op, .. } => unop_entry(*op).0,
         ExprKind::Binary { op, .. } => op.text(),
-        ExprKind::Variant { .. } | ExprKind::Field { .. } => "enum",
+        ExprKind::Variant { .. } => "enum",
+        ExprKind::Field { .. } => "field",
+        ExprKind::Record { .. } => "record literal",
+        ExprKind::With { .. } => "with",
         ExprKind::When { .. } | ExprKind::Match { .. } => "when or match as a value",
+        ExprKind::List(_) | ExprKind::MapLit(_) => "bracket literal",
+        ExprKind::Index { .. } => "index",
+        ExprKind::None => "none",
         ExprKind::Error => "MZ0917",
     }
 }

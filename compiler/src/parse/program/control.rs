@@ -108,7 +108,7 @@ impl P {
     }
 
     /// The rest of a line, and the block it opened, skipped as one error already reported.
-    fn skip_open_block(&mut self) {
+    pub(super) fn skip_open_block(&mut self) {
         let line = self.span().start_line;
         self.skipped.push((line, line));
         self.recover_line();
@@ -144,7 +144,7 @@ impl P {
     }
 
     /// `MZ0204`: a block still open when a line that cannot be inside it arrives.
-    fn unclosed(&mut self, what: &str, open_at: Span, end_at: Span) {
+    pub(super) fn unclosed(&mut self, what: &str, open_at: Span, end_at: Span) {
         let indent = " ".repeat(open_at.start_col.saturating_sub(1) as usize);
         self.err_fix(
             "MZ0204",

@@ -753,3 +753,82 @@ fn deep_errors_are_one_mz0411() {
     assert_eq!(codes, ["MZ0411"], "5,000 nested `match`es");
     run("5,000 nested `match`es", src);
 }
+
+/// RFC-0013 §9's collections share the program's nesting budget (`MZ0411`): 100,000 nested
+/// bracket literals, list types written either way, `otherwise`s and indexes each give
+/// exactly one `MZ0411`, and nothing else is read past the cap. A literal of 100,000
+/// elements, and a map literal of 100,000 entries, check and lower on the 1 MiB stack; the
+/// map's repeated key at its end is one `MZ0961`.
+#[test]
+fn deep_collections_are_one_mz0411_and_huge_literals_check() {
+    let n = 100_000;
+    let values = [
+        (
+            "nested bracket literals",
+            format!("{}1{}", "[".repeat(n), "]".repeat(n)),
+        ),
+        (
+            "an `otherwise` chain",
+            format!("xs[0]{} 0", " otherwise xs[0]".repeat(n)),
+        ),
+        ("an index chain", format!("xs{}", "[0]".repeat(n))),
+    ];
+    for (label, value) in values {
+        let src = deep_program(&format!(
+            "    let xs = [1]\n    let x = {value}\n    print(\"{{x}}\")\n"
+        ));
+        assert_eq!(count(&src, "MZ0411"), 1, "{label}");
+        run(label, src);
+    }
+    let types = [
+        (
+            "nested `list(…)` types",
+            format!("{}int{}", "list(".repeat(n), ")".repeat(n)),
+        ),
+        (
+            "nested `[…]` types",
+            format!("{}int{}", "[".repeat(n), "]".repeat(n)),
+        ),
+        (
+            "nested `map(…)` types",
+            format!("{}int{}", "map(int, ".repeat(n), ")".repeat(n)),
+        ),
+    ];
+    for (label, ty) in types {
+        let src = format!(
+            "program deep\n\n  fn main\n    print(1)\n  end fn main\n\n  fn f(x: {ty}): int\n    return 1\n  end fn f\n\nend program deep\n"
+        );
+        let codes: Vec<_> = check(&src, "case.mz")
+            .diagnostics
+            .iter()
+            .map(|d| d.code)
+            .collect();
+        assert_eq!(codes, ["MZ0411"], "{label}");
+        run(label, src);
+    }
+    // A chain of methods as long as the cap allows types and lowers in linear time: the
+    // lowering once typed each receiver twice per link, doubling the time with each one.
+    let src = format!(
+        "program deep\n\n  fn main\n    print([1, 3]{})\n  end fn main\n\n  fn keep(n: int): bool\n    return n > 0\n  end fn keep\n\nend program deep\n",
+        ".filter(keep)".repeat(60)
+    );
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("a chain of 60 `filter`s", src);
+    let items = vec!["7"; n].join(", ");
+    let src = deep_program(&format!("    let xs = [{items}]\n    print(xs.sum())\n"));
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("a list literal of 100,000 elements", src);
+    let entries: Vec<String> = (0..n).map(|k| format!("\"k{k}\": {k}")).collect();
+    let src = deep_program(&format!(
+        "    let m = [{}]\n    print(m.length())\n",
+        entries.join(", ")
+    ));
+    assert_eq!(check(&src, "case.mz").error_count(), 0);
+    run("a map literal of 100,000 entries", src);
+    let src = deep_program(&format!(
+        "    let m = [{}, \"k0\": 1]\n    print(m.length())\n",
+        entries.join(", ")
+    ));
+    assert_eq!(count(&src, "MZ0961"), 1);
+    run("a map literal of 100,000 entries and a repeated key", src);
+}
