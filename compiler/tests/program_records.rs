@@ -740,3 +740,70 @@ fn a_record_is_not_a_map_key() {
         "a record is not an ordered key: {report:#?}"
     );
 }
+
+// ------------------------------------------------------------------- review regressions
+
+#[test]
+fn a_field_named_at_does_not_shadow_the_generated_check() {
+    // The lowered `mz_check` takes the trap site; a field called `at` must not shadow it.
+    let src = with_decls(
+        "  record stamp
+    field at: int
+
+    contract
+      always at >= 0
+    end
+  end
+",
+        "print(stamp(at = 5))\nvar s = stamp(at = 1)\ns.at = 2\nprint(s)",
+    );
+    clean(&src);
+    let Some(out) = mz_run_src("field_at", &src) else {
+        return;
+    };
+    assert_eq!(
+        stdout(&out),
+        "stamp(at = 5)\nstamp(at = 2)\n",
+        "stderr: {}",
+        stderr(&out)
+    );
+    assert_eq!(out.status.code(), Some(0));
+}
+
+#[test]
+fn a_method_that_changes_self_is_reported_once_and_its_calls_are_quiet() {
+    // Its signature is kept, so a call to it is not an unknown method (`MZ0708`).
+    let src = with_decls(
+        "  record counter
+    field count: int
+
+    fn bump changes self
+      self.count = self.count + 1
+    end fn bump
+  end
+",
+        "let c = counter(count = 0)\nc.bump()\nprint(c.count)",
+    );
+    one(&src, "MZ0919");
+}
+
+#[test]
+fn a_contract_left_open_before_the_next_declaration_is_mz0204_not_a_missing_main() {
+    let src = "program t
+
+  record point
+    field x: float
+
+    contract
+      always x > 0.0
+
+  fn main
+    print(point(x = 1.0))
+  end fn main
+
+end program t
+";
+    let errs = errors(src);
+    assert!(errs.iter().any(|d| d.code == "MZ0204"), "{errs:#?}");
+    assert!(!errs.iter().any(|d| d.code == "MZ0902"), "{errs:#?}");
+}

@@ -111,12 +111,7 @@ impl Lower<'_> {
     /// The type of `base.name`: a column of an enum value, or a field of a record.
     pub(super) fn field_ty(&self, base: &Expr, name: &str) -> Ty {
         match self.ty(base) {
-            Ty::Record(r) => self
-                .records
-                .iter()
-                .find(|d| d.name == r)
-                .and_then(|d| d.field(name))
-                .map_or(Ty::Error, |f| f.ty.ty),
+            Ty::Record(r) => self.field_of(r, name),
             Ty::Enum(en) => self
                 .enums
                 .iter()

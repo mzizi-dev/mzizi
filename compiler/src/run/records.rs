@@ -110,7 +110,8 @@ impl Lower<'_> {
         for f in &r.fields {
             self.types.insert(f.name.clone(), f.ty.ty);
         }
-        let _ = writeln!(out, "\n    fn mz_check(&self, at: &MzAt) {{");
+        // The parameter's name is reserved (`mz_`), so no field of the record can shadow it.
+        let _ = writeln!(out, "\n    fn mz_check(&self, mz_at: &MzAt) {{");
         for f in &r.fields {
             let _ = writeln!(
                 out,
@@ -126,7 +127,7 @@ impl Lower<'_> {
                 r.name,
                 canonical(&inv.expr)
             );
-            let _ = writeln!(out, "        if !({cond}) {{ mz_trap(at, {what:?}); }}");
+            let _ = writeln!(out, "        if !({cond}) {{ mz_trap(mz_at, {what:?}); }}");
         }
         out.push_str("    }\n");
     }
@@ -134,6 +135,11 @@ impl Lower<'_> {
     /// The record called `name`.
     fn record_of(&self, name: &str) -> Option<&RecordDecl> {
         self.records.iter().find(|d| d.name == name)
+    }
+
+    /// Whether the record called `name` has `always` clauses, so its values are checked.
+    fn has_always(&self, name: &str) -> bool {
+        self.record_of(name).is_some_and(|d| !d.always.is_empty())
     }
 
     /// The type a method of a record of type `rt` returns, or [`Ty::Error`].
@@ -176,7 +182,7 @@ impl Lower<'_> {
     }
 
     /// The Rust type of field `name` of record `r`, or [`Ty::Error`].
-    fn field_of(&self, r: &str, name: &str) -> Ty {
+    pub(super) fn field_of(&self, r: &str, name: &str) -> Ty {
         self.record_of(r)
             .and_then(|d| d.field(name))
             .map_or(Ty::Error, |f| f.ty.ty)
@@ -196,7 +202,7 @@ impl Lower<'_> {
             values.push(format!("{}: {v}", ident(&f.name)));
         }
         let build = format!("{rust} {{ {} }}", values.join(", "));
-        let has_always = self.record_of(name).is_some_and(|d| !d.always.is_empty());
+        let has_always = self.has_always(name);
         if !has_always {
             return format!("({build})");
         }
@@ -217,7 +223,7 @@ impl Lower<'_> {
             let v = self.expr_want(&f.value, want);
             let _ = write!(body, "mz_value.{} = {v}; ", ident(&f.name));
         }
-        if self.record_of(name).is_some_and(|d| !d.always.is_empty()) {
+        if self.has_always(name) {
             let at = self.site(e);
             let _ = write!(body, "mz_value.mz_check({at}); ");
         }
@@ -240,7 +246,7 @@ impl Lower<'_> {
         let v = self.expr_want(value, want);
         let mut line = format!("{}.{} = {v};", ident(name), ident(field));
         if let Ty::Record(r) = rt
-            && self.record_of(r).is_some_and(|d| !d.always.is_empty())
+            && self.has_always(r)
         {
             // The trap names the assignment, `p.x = 3.0`, at the line it is on.
             self.sites.push((
