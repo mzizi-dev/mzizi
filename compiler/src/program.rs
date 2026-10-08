@@ -23,6 +23,7 @@ use crate::resolve::nearest;
 mod collections;
 mod control;
 mod errors;
+mod records;
 mod text;
 
 /// How `MZ0962`'s `say` opens for text emptiness asked another way (`s.length() is 0`), so
@@ -35,6 +36,7 @@ pub const COLLECTION_EMPTINESS: &str = "a collection's emptiness is asked with `
 
 pub use control::{canonical_stmts, variant_owner};
 pub use errors::{Column, EnumDecl, Variant};
+pub use records::{Invariant, RecordDecl, RecordField};
 
 /// `program <name>` … `end program <name>`.
 #[derive(Clone, Debug, PartialEq)]
@@ -49,6 +51,8 @@ pub struct Program {
     pub fns: Vec<FnDecl>,
     /// Every `enum`, in source order (RFC-0013 §1, §7.2, §12.1).
     pub enums: Vec<EnumDecl>,
+    /// Every `record`, in source order (RFC-0013 §11).
+    pub records: Vec<RecordDecl>,
     /// Whether statements stood outside every `fn` (reported as `MZ0901`, whose message
     /// names `fn main`, so a missing `fn main` is not reported a second time).
     pub stray_statements: bool,
@@ -209,6 +213,20 @@ pub enum StmtKind {
         /// The new value.
         value: Expr,
     },
+    /// `name.field = value`: replaces one field of a record held by a `var` (RFC-0013
+    /// §11.1). The lowering checks the record's `always` clauses after it.
+    FieldAssign {
+        /// The record's binding, which is changed.
+        name: String,
+        /// Where the binding's name is.
+        name_span: Span,
+        /// The field assigned.
+        field: String,
+        /// Where the field's name is.
+        field_span: Span,
+        /// The new value.
+        value: Expr,
+    },
     /// `break`: leaves the innermost loop.
     Break,
     /// `continue`: starts the innermost loop's next pass.
@@ -345,8 +363,9 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
     for e in &p.enums {
         errors::check_columns(e, file, &mut diags);
     }
+    diags.extend(records::check_records(&p.records, &p.enums, &fns, file));
     for f in &p.fns {
-        let mut cx = FnCheck::new(f, &fns, &p.enums, file);
+        let mut cx = FnCheck::new(f, &fns, &p.enums, &p.records, file);
         cx.run();
         diags.append(&mut cx.diags);
     }
@@ -405,6 +424,14 @@ struct FnCheck<'a> {
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
     /// The program's enums, whose variants a bare name may be (RFC-0008 §5).
     enums: &'a [EnumDecl],
+    /// The program's records, whose fields and methods a value of their type has (§11).
+    records: &'a [RecordDecl],
+    /// The record whose method this is, when it is one: `self` is bound to that record
+    /// (§11.2). `None` for an ordinary `fn`.
+    receiver: Option<&'static str>,
+    /// Whether an `always` clause is being checked, which may read a record's fields and
+    /// call nothing (§11.4, `MZ0975`).
+    in_always: bool,
     /// How many loops enclose the statement being checked (`MZ0935` at none).
     loops: usize,
     /// Where each statement `match` reported as missing a case (`MZ0930`) starts, by its
@@ -434,12 +461,16 @@ impl<'a> FnCheck<'a> {
         f: &'a FnDecl,
         fns: &'a BTreeMap<&'a str, &'a FnDecl>,
         enums: &'a [EnumDecl],
+        records: &'a [RecordDecl],
         file: &'a str,
     ) -> Self {
         let mut cx = FnCheck {
             f,
             fns,
             enums,
+            records,
+            receiver: None,
+            in_always: false,
             loops: 0,
             partial: Vec::new(),
             file,
@@ -564,6 +595,9 @@ impl<'a> FnCheck<'a> {
 
     fn run(&mut self) {
         let f = self.f;
+        if let Some(record) = self.receiver {
+            self.bind("self", Kind::Param, Ty::Record(record), None);
+        }
         for p in &f.params {
             if let Some(why) = reserved_name(&p.name) {
                 self.err(
@@ -1097,6 +1131,13 @@ impl<'a> FnCheck<'a> {
                 index,
                 value,
             } => self.index_assign(name, *name_span, index, value),
+            StmtKind::FieldAssign {
+                name,
+                name_span,
+                field,
+                field_span: _,
+                value,
+            } => self.field_assign(name, *name_span, field, value),
             StmtKind::Match { .. }
             | StmtKind::For { .. }
             | StmtKind::While { .. }
@@ -1308,6 +1349,12 @@ impl<'a> FnCheck<'a> {
                 name,
                 name_span,
             } => self.field(e, base, name, *name_span),
+            ExprKind::Record {
+                name,
+                name_span: _,
+                fields,
+            } => self.record_literal(e, name, fields),
+            ExprKind::With { base, fields } => self.with_expr(e, base, fields),
             ExprKind::Unary {
                 op: UnOp::Not,
                 operand,
@@ -1562,6 +1609,15 @@ impl<'a> FnCheck<'a> {
             self.bindings[i].read = true;
             return self.bindings[i].ty;
         }
+        if name == "self" {
+            // Bound in every method (RFC-0013 §11.2), so unbound here, outside one.
+            self.err(
+                "MZ0970",
+                at,
+                "`self` is the receiver of a method, and only a method has one — a record's `fn` names it",
+            );
+            return Ty::Error;
+        }
         if let Some(t) = self.bare_variant(name, at) {
             self.bare_ok_error(name, at, t);
             return t;
@@ -1615,6 +1671,16 @@ impl<'a> FnCheck<'a> {
     }
 
     fn call(&mut self, name: &str, name_span: Span, args: &[Expr], labelled: bool, at: Span) -> Ty {
+        if self.in_always && self.fns.contains_key(name) {
+            self.err(
+                "MZ0975",
+                at,
+                format!(
+                    "`{name}` is a `fn`, and an `always` clause may not call one — a clause reads the fields of a value and nothing else"
+                ),
+            );
+            return Ty::Error;
+        }
         if !self.fns.contains_key(name) && self.visible(name).is_none() {
             if name == "range" {
                 return self.range_value(at, args);
@@ -1918,6 +1984,9 @@ impl<'a> FnCheck<'a> {
             Ty::Error => return Ty::Error,
             Ty::Int | Ty::Float => {}
             Ty::Text => return self.text_method(e, recv, name, name_span, args, &types, called),
+            Ty::Record(r) => {
+                return self.record_method(e, recv, r, name, name_span, args, &types, called);
+            }
             Ty::Enum(_) => {
                 self.err(
                     "MZ0708",

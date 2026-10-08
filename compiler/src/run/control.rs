@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 
 use super::{Lower, ident};
 use crate::expr::{BinOp, Expr, ExprKind, TextPart, Ty, UnOp, fold, intern};
-use crate::program::{EnumDecl, Stmt, StmtKind, variant_owner};
+use crate::program::{EnumDecl, RecordDecl, Stmt, StmtKind, variant_owner};
 
 /// Names a Rust prelude or derive already takes, which an enum is not emitted as
 /// (RFC-0013 §14.2).
@@ -78,6 +78,7 @@ fn pascal(name: &str) -> String {
 /// no Mzizi name becomes an `MzUser` one.
 pub(super) fn rust_enum_names(
     enums: &[EnumDecl],
+    records: &[RecordDecl],
 ) -> BTreeMap<String, (String, BTreeMap<String, String>)> {
     let mut out = BTreeMap::new();
     let mut used: Vec<String> = Vec::new();
@@ -102,6 +103,18 @@ pub(super) fn rust_enum_names(
             variants.insert(v.clone(), rust);
         }
         out.insert(e.name.clone(), (name, variants));
+    }
+    // A record shares the enums' Rust namespace (RFC-0013 §14.2), and has no variants.
+    for (k, r) in records.iter().enumerate() {
+        let mut name = pascal(&r.name);
+        if PRELUDE.contains(&name.as_str()) {
+            name = format!("MzUser{name}");
+        }
+        if name.is_empty() || used.contains(&name) {
+            name = format!("MzUser{}{name}", enums.len() + k + 1);
+        }
+        used.push(name.clone());
+        out.insert(r.name.clone(), (name, BTreeMap::new()));
     }
     out
 }

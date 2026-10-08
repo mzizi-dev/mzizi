@@ -142,7 +142,9 @@ fn the_control_example_parses_and_checks_clean() {
             StmtKind::When { .. } => "when",
             StmtKind::Return(_) => "return",
             StmtKind::Bind { .. } => "bind",
-            StmtKind::Assign { .. } | StmtKind::IndexAssign { .. } => "assign",
+            StmtKind::Assign { .. }
+            | StmtKind::IndexAssign { .. }
+            | StmtKind::FieldAssign { .. } => "assign",
             StmtKind::Expr(_) => "expr",
             StmtKind::Break | StmtKind::Continue => "jump",
         })
