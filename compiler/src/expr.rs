@@ -5,11 +5,11 @@
 //! expressions later without taking a program's statements with them (RFC-0013 §18.1).
 //! The parser for this tree is [`crate::parse`]'s, because it shares the token cursor.
 //!
-//! What is here is RFC-0013's Wave 0 subset, Wave 1's numbers (C1 and C5) and C4's
-//! additions (§7): `int`, `float`, `bool` and `text` values, the arithmetic operators,
-//! comparison, `and` / `or` / `not`, calls, the numeric methods of §4.4, interpolation,
-//! enum values, and `when` and `match` used as values. Collections, other methods and
-//! results are later waves'.
+//! What is here is RFC-0013's Wave 0 subset, Wave 1's numbers (C1 and C5), C4's
+//! additions (§7) and C9's (§12): `int`, `float`, `bool` and `text` values, the arithmetic
+//! operators, comparison, `and` / `or` / `not`, calls, the numeric methods of §4.4,
+//! interpolation, enum values and their columns, `when` and `match` used as values,
+//! `result(T, E)` and prefix `try`. Collections and other methods are later waves'.
 
 use std::collections::BTreeSet;
 use std::sync::{Mutex, OnceLock};
@@ -58,8 +58,8 @@ pub fn intern(name: &str) -> &'static str {
 
 /// A type an expression in a program can have.
 ///
-/// Not declared with `listed_enum!`, because [`Ty::Enum`] carries a name: [`Ty::ALL`]
-/// lists every other variant by hand, and [`Ty::listed`]'s exhaustive `match` stops a new
+/// Not declared with `listed_enum!`, because [`Ty::Enum`] carries a name and
+/// [`Ty::Result`] two types: [`Ty::ALL`] lists every other variant by hand, and [`Ty::listed`]'s exhaustive `match` stops a new
 /// variant from compiling until it is listed there too.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Ty {
@@ -79,6 +79,9 @@ pub enum Ty {
     /// A sub-expression that already failed. It is reported once and silent from then on
     /// (RFC-0013 §16: one diagnostic per true error).
     Error,
+    /// `result(T, E)` (RFC-0013 §12.1): the success type, [`Ty::Nothing`] for
+    /// `result(none, E)`, and the error type. Interned, as [`Ty::Enum`]'s name is.
+    Result(&'static (Ty, Ty)),
 }
 
 impl Ty {
@@ -99,16 +102,17 @@ impl Ty {
     pub fn listed(self) -> bool {
         match self {
             Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Nothing | Ty::Error => true,
-            Ty::Enum(_) => false,
+            Ty::Enum(_) | Ty::Result(_) => false,
         }
     }
 
     /// Whether an author writes this type by a built-in name. `Nothing` and `Error` are the
-    /// checker's own, and an enum is the program's; every other variant, including one
-    /// added later, is a surface type, which the language harness must register (its
-    /// tests fail otherwise).
+    /// checker's own, an enum is the program's, and a `result(T, E)` is built from two
+    /// others (the language harness registers it as the `result` feature); every other
+    /// variant, including one added later, is a surface type, which the language harness
+    /// must register (its tests fail otherwise).
     pub fn is_surface(self) -> bool {
-        !matches!(self, Ty::Nothing | Ty::Error | Ty::Enum(_))
+        !matches!(self, Ty::Nothing | Ty::Error | Ty::Enum(_) | Ty::Result(_))
     }
 
     /// The surface types, in declaration order.
@@ -132,6 +136,27 @@ impl Ty {
             Ty::Nothing => "nothing",
             Ty::Enum(name) => name,
             Ty::Error => "unknown",
+            Ty::Result((ok, err)) => {
+                let ok = if *ok == Ty::Nothing {
+                    "none"
+                } else {
+                    ok.name()
+                };
+                intern(&format!("result({ok}, {})", err.name()))
+            }
+        }
+    }
+
+    /// `result(ok, err)`, interned.
+    pub fn result(ok: Ty, err: Ty) -> Ty {
+        Ty::Result(crate::intern::pair(ok, err))
+    }
+
+    /// The success and error types, when this is a `result`.
+    pub fn as_result(self) -> Option<(Ty, Ty)> {
+        match self {
+            Ty::Result(&(ok, err)) => Some((ok, err)),
+            _ => None,
         }
     }
 }
@@ -144,6 +169,9 @@ listed_enum! {
         Neg,
         /// `not b`, on `bool`.
         Not,
+        /// `try r`, on a `result`: its success value, or its error returned from the
+        /// enclosing function at once (RFC-0013 §12.2). Level 3, with prefix `-`.
+        Try,
     }
 }
 
@@ -312,6 +340,17 @@ pub enum ExprKind {
         /// The `else` and its value, if written.
         otherwise: Option<Box<ElseArm<Expr>>>,
     },
+    /// `base.name` with no parentheses: an enum value's column (`problem.say`, RFC-0013
+    /// §12.1). A variant named with its enum is [`ExprKind::Variant`]; records' fields are
+    /// C8's (§11).
+    Field {
+        /// What the dot follows.
+        base: Box<Expr>,
+        /// The word after the dot.
+        name: String,
+        /// Where that word is.
+        name_span: Span,
+    },
     /// Something the parser could not read. Already reported.
     Error,
 }
@@ -330,6 +369,10 @@ pub struct Arm<B> {
     pub last_line: u32,
     /// Whether the case was written after the `else`, where it can never be reached.
     pub after_else: bool,
+    /// The name a result's case binds (RFC-0013 §12.2): `v` in `case ok v` or
+    /// `case error v`. Only a `match` on a result has one; the parser reads a second word
+    /// as a binding only when it names no variant, since no binding may (`MZ0921`).
+    pub binding: Option<(String, Span)>,
 }
 
 /// A `match`'s `else` (RFC-0013 §7.2).
@@ -354,13 +397,16 @@ pub struct Expr {
 
 impl Expr {
     /// RFC-0013 §3.5's level of the expression's outermost operator: 1 for a primary, 2
-    /// for a method.
+    /// for a method or a dotted read.
     pub fn level(&self) -> u8 {
         match &self.kind {
             ExprKind::Binary { op, .. } => op.level(),
-            ExprKind::Unary { op: UnOp::Neg, .. } => 3,
+            ExprKind::Unary {
+                op: UnOp::Neg | UnOp::Try,
+                ..
+            } => 3,
             ExprKind::Unary { op: UnOp::Not, .. } => 7,
-            ExprKind::Method { .. } => 2,
+            ExprKind::Method { .. } | ExprKind::Field { .. } => 2,
             _ => 1,
         }
     }
@@ -378,6 +424,7 @@ impl Expr {
             ExprKind::Method { recv, args, .. } => {
                 recv.has_error() || args.iter().any(Expr::has_error)
             }
+            ExprKind::Field { base, .. } => base.has_error(),
             ExprKind::Unary { operand, .. } => operand.has_error(),
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_error() || rhs.has_error(),
             ExprKind::When { arms, otherwise } => {
@@ -429,6 +476,7 @@ impl Expr {
             ExprKind::Unary { operand, .. } => operand.has_text_literal(),
             ExprKind::Binary { lhs, rhs, .. } => lhs.has_text_literal() || rhs.has_text_literal(),
             ExprKind::When { .. } | ExprKind::Match { .. } => true,
+            ExprKind::Field { base, .. } => base.has_text_literal(),
             _ => false,
         }
     }
@@ -488,6 +536,15 @@ pub fn canonical(e: &Expr) -> String {
                 UnOp::Neg => format!("-{inner}"),
                 UnOp::Not if operand.level() > 7 => format!("not ({inner})"),
                 UnOp::Not => format!("not {inner}"),
+                UnOp::Try if operand.level() > 3 => format!("try ({inner})"),
+                UnOp::Try => format!("try {inner}"),
+            }
+        }
+        ExprKind::Field { base, name, .. } => {
+            if base.level() > 2 {
+                format!("({}).{name}", canonical(base))
+            } else {
+                format!("{}.{name}", canonical(base))
             }
         }
         ExprKind::Binary { op, lhs, rhs, .. } => {

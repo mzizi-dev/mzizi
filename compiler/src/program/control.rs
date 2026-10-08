@@ -89,8 +89,8 @@ pub(super) fn check_enums(
         }
         seen.push(n);
         let mut variants: Vec<&str> = Vec::new();
-        for (v, at) in &e.variants {
-            let v = v.as_str();
+        for variant in &e.variants {
+            let (v, at) = (variant.name.as_str(), &variant.span);
             let why = reserved_name(v).filter(|_| !VARIANT_WORDS.contains(&v));
             if let Some(why) = why {
                 diags.push(Diagnostic::error(
@@ -309,7 +309,7 @@ fn stmt_text(s: &Stmt, indent: usize, out: &mut String) {
             // (`MZ0931`): the canonical text never changes which case runs.
             let (before, after): (Vec<_>, Vec<_>) = arms.iter().partition(|a| !a.after_else);
             for a in before {
-                line(out, format!("  case {}", case_values(&a.values)));
+                line(out, format!("  case {}", arm_values(a)));
                 out.push_str(&canonical_stmts(&a.body, indent + 4));
             }
             if let Some(o) = otherwise {
@@ -317,7 +317,7 @@ fn stmt_text(s: &Stmt, indent: usize, out: &mut String) {
                 out.push_str(&canonical_stmts(&o.body, indent + 4));
             }
             for a in after {
-                line(out, format!("  case {}", case_values(&a.values)));
+                line(out, format!("  case {}", arm_values(a)));
                 out.push_str(&canonical_stmts(&a.body, indent + 4));
             }
             line(out, "end".to_string());
@@ -339,6 +339,28 @@ fn stmt_text(s: &Stmt, indent: usize, out: &mut String) {
 
 fn case_values(values: &[Expr]) -> String {
     values.iter().map(canonical).collect::<Vec<_>>().join(" ")
+}
+
+/// The key of a result's case line, `case ok` or `case error` (its name is the arm's
+/// binding); `None` for any other line.
+fn result_key(values: &[Expr]) -> Option<Key> {
+    match values {
+        [v] => match &v.kind {
+            ExprKind::Name(n) if n == "ok" => Some(Key::Ok),
+            ExprKind::Name(n) if n == "error" => Some(Key::Error),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A `case` line's words: its values, and the name a result's case binds (`ok v`).
+fn arm_values<B>(a: &Arm<B>) -> String {
+    let values = case_values(&a.values);
+    match &a.binding {
+        Some((name, _)) => format!("{values} {name}"),
+        None => values,
+    }
 }
 
 /// A value as it stands after `=` or `return`: a block used as a value spans lines, each
@@ -371,7 +393,7 @@ fn value_text(e: &Expr, indent: usize) -> String {
             let case = |a: &Arm<Expr>| {
                 format!(
                     "{pad}  case {}\n{pad}    {}\n",
-                    case_values(&a.values),
+                    arm_values(a),
                     canonical(&a.body)
                 )
             };
@@ -393,16 +415,19 @@ fn value_text(e: &Expr, indent: usize) -> String {
 
 /// A value a `case` lists, as the checker compares them.
 ///
-/// The one place coverage (`MZ0930`) and reachability (`MZ0931`) are decided. C9's `match`
-/// on a result (#87, `case ok <name>` / `case error <name>`) is meant to become two more
-/// keys here, with `{ok, error}` as the universe in `arms_check`, rather than a
-/// second checker (RFC-0013 §18.6).
+/// The one place coverage (`MZ0930`) and reachability (`MZ0931`) are decided, for every
+/// `match`: over an enum, an `int`, a `text`, a `bool`, or a result (RFC-0013 §12.2), whose
+/// cases are `ok` and `error` and whose universe is those two.
 #[derive(Clone, Debug, PartialEq)]
 enum Key {
     Variant(String),
     Int(i64),
     Text(String),
     Bool(bool),
+    /// `case ok <name>`.
+    Ok,
+    /// `case error <name>`.
+    Error,
 }
 
 impl FnCheck<'_> {
@@ -431,7 +456,10 @@ impl FnCheck<'_> {
                 self.arms_check(t, scrutinee, arms, otherwise.as_ref(), false);
                 self.whens.push(block_at);
                 for a in arms {
-                    self.scoped(&a.body);
+                    self.scopes.push(Vec::new());
+                    self.bind_case(a, t);
+                    self.block(&a.body, None);
+                    self.end_scope();
                 }
                 if let Some(o) = otherwise {
                     self.scoped(&o.body);
@@ -667,9 +695,9 @@ impl FnCheck<'_> {
     fn no_such_variant(&mut self, decl: &EnumDecl, name: &str, at: Span) {
         // Each variant once: one listed twice is `MZ0704` at its declaration already.
         let mut all: Vec<&str> = Vec::new();
-        for (v, _) in &decl.variants {
-            if !all.contains(&v.as_str()) {
-                all.push(v);
+        for v in &decl.variants {
+            if !all.contains(&v.name.as_str()) {
+                all.push(&v.name);
             }
         }
         let say = format!(
@@ -766,7 +794,10 @@ impl FnCheck<'_> {
                 self.arms_check(t, scrutinee, arms, otherwise.as_deref(), true);
                 let mut ty = None;
                 for a in arms {
+                    self.scopes.push(Vec::new());
+                    self.bind_case(a, t);
                     let vt = self.expr_want(&a.body, want);
+                    self.end_scope();
                     self.branch(&mut ty, &a.body, vt, "match");
                 }
                 if let Some(o) = otherwise {
@@ -852,7 +883,59 @@ impl FnCheck<'_> {
         // covers nothing anyone can name, so the coverage verdict would be a second
         // diagnostic for the same mistake: it waits for the next check.
         let mut unresolved = false;
-        for a in arms {
+        let result = scrut.as_result().is_some();
+        if result && let Some(o) = otherwise {
+            // §12: a `match` on a result has no `else`; `case ok` and `case error` are its
+            // cases, so a case written after the `else` still counts.
+            self.err_fix(
+                "MZ0931",
+                o.span,
+                "a `match` on a result takes no `else` — its cases are `case ok <name>` and `case error <name>`; delete it",
+                lines(o.span.start_line, o.last_line),
+                "",
+                Confidence::Exact,
+            );
+        }
+        for a in arms.iter().filter(|_| result) {
+            // A result's case line is `case ok <name>` or `case error <name>`: anything
+            // else is one `MZ0917` for the line (`bind_case` keeps the names it lists quiet).
+            let Some(key) = result_key(&a.values) else {
+                if !a.values.is_empty() && !a.values.iter().any(Expr::has_error) {
+                    self.err(
+                        "MZ0917",
+                        a.span,
+                        format!(
+                            "a `match` on a result has `case ok <name>` and `case error <name>`, and this case reads `case {}`",
+                            arm_values(a)
+                        ),
+                    );
+                }
+                unresolved = true;
+                continue;
+            };
+            if seen.contains(&key) {
+                self.err_fix(
+                    "MZ0931",
+                    a.span,
+                    format!(
+                        "a second `case {}` can never run — delete it",
+                        if key == Key::Ok { "ok" } else { "error" }
+                    ),
+                    lines(a.span.start_line, a.last_line),
+                    "",
+                    Confidence::Exact,
+                );
+            } else {
+                seen.push(key);
+            }
+        }
+        for a in arms.iter().filter(|_| !result) {
+            // A case that binds a name in a `match` that is not on a result is `MZ0917`
+            // (`bind_case`), once: its values say nothing more, and coverage waits.
+            if a.binding.is_some() {
+                unresolved = true;
+                continue;
+            }
             if a.after_else {
                 self.err_fix(
                     "MZ0931",
@@ -932,7 +1015,7 @@ impl FnCheck<'_> {
         let at = (s.span.start_line, s.span.start_col);
         // Coverage that cannot be judged (a case already reported, a value of an unknown
         // type) may miss a case: without `else`, the line after the `match` is reachable.
-        if unresolved || !matches!(scrut, Ty::Enum(_) | Ty::Bool | Ty::Int | Ty::Text) {
+        if unresolved || !(matches!(scrut, Ty::Enum(_) | Ty::Bool | Ty::Int | Ty::Text) || result) {
             if otherwise.is_none() {
                 self.partial.push(at);
             }
@@ -947,11 +1030,12 @@ impl FnCheck<'_> {
                 .map(|d| {
                     d.variants
                         .iter()
-                        .map(|(v, _)| Key::Variant(v.clone()))
+                        .map(|v| Key::Variant(v.name.clone()))
                         .collect()
                 })
                 .unwrap_or_default(),
             Ty::Bool => vec![Key::Bool(true), Key::Bool(false)],
+            Ty::Result(_) => vec![Key::Ok, Key::Error],
             Ty::Int | Ty::Text => {
                 if otherwise.is_none() {
                     self.partial.push(at);
@@ -983,9 +1067,26 @@ impl FnCheck<'_> {
             .map(|k| match k {
                 Key::Variant(v) => format!("`{v}`"),
                 Key::Bool(b) => format!("`{b}`"),
+                Key::Ok => "`case ok`".to_string(),
+                Key::Error => "`case error`".to_string(),
                 Key::Int(_) | Key::Text(_) => String::new(),
             })
             .collect();
+        if result {
+            if !missing.is_empty() {
+                self.partial.push(at);
+                self.err(
+                    code,
+                    s.span,
+                    format!(
+                        "`match {}` misses {} — a `match` on a result handles its success and its error",
+                        canonical(s),
+                        missing.join(" and ")
+                    ),
+                );
+            }
+            return;
+        }
         match otherwise {
             None if !missing.is_empty() => {
                 let more = if as_value {
@@ -1026,6 +1127,7 @@ impl FnCheck<'_> {
         }
         match (&v.kind, scrut) {
             (ExprKind::Error, _) => None,
+
             (ExprKind::Name(n), Ty::Enum(e)) if self.may_be_variant(n) => {
                 let decl = self.enums.iter().find(|d| d.name == e)?;
                 if decl.has(n) {

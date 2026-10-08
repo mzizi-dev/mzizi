@@ -24,6 +24,9 @@ use crate::program::{FnDecl, Param, Program, Stmt, StmtKind, TypeRef};
 use super::MAX_NESTING;
 
 mod control;
+mod errors;
+
+use errors::Known;
 
 /// How deep a program's blocks and expressions may nest, together: the program, the `fn`,
 /// each `when`, `match` and loop (an `else when` is none: the chain is flat), and in an
@@ -91,6 +94,8 @@ pub(super) fn parse(
         pending_skip: false,
         keyword_names: keyword_fns.clone(),
         keyword_fns: keyword_fns.len(),
+        known: std::rc::Rc::new(Known::scan(&tokens)),
+        ret: None,
         toks: tokens,
         pos: 0,
         file: file.to_string(),
@@ -199,6 +204,11 @@ struct P {
     /// `[`, or respelt a type written with symbols (`MZ0105`, `[n]` as `list(n)`): what the
     /// parser reads there is not what was written.
     dropped: Vec<Span>,
+    /// The file's enums and functions, read before parsing (RFC-0013 §12); shared with
+    /// each interpolation's parser.
+    known: std::rc::Rc<Known>,
+    /// The return type of the function being read, for `MZ0952`'s `throw` fix.
+    ret: Option<Ty>,
 }
 
 fn join(a: Span, b: Span) -> Span {
@@ -692,6 +702,7 @@ impl P {
         };
         let params = self.params(&name);
         let ret = self.return_type(&name);
+        self.ret = ret.map(|r| r.ty);
         self.trailing_block_punctuation();
         self.finish_line(&format!("the signature of `fn {name}`"));
         // The program and this `fn` are the first two open blocks.
@@ -927,7 +938,8 @@ impl P {
         Some(self.type_ref("`:`"))
     }
 
-    /// A type: `int`, `float`, `bool` or `text`.
+    /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, or
+    /// `result(T, E)` (RFC-0013 §12.1).
     fn type_ref(&mut self, after: &str) -> TypeRef {
         let at = self.span();
         let Some(name) = word(self.peek()).map(str::to_string) else {
@@ -943,9 +955,12 @@ impl P {
             };
         };
         self.bump();
+        if name == "result" && matches!(self.peek(), Tok::LParen) {
+            return self.result_type(at);
+        }
         let mut span = at;
         if matches!(self.peek(), Tok::LParen) {
-            // `list(int)`, `option(text)`, `result(int, text)`: later waves'.
+            // `list(int)`, `option(text)`: later waves'.
             let mut depth = 0;
             loop {
                 match self.peek() {
@@ -970,12 +985,20 @@ impl P {
         let ty = match name.as_str() {
             _ if surface.is_some() => surface.unwrap_or(Ty::Error),
             n if span == at && self.enum_names.iter().any(|e| e == n) => Ty::Enum(intern(n)),
-            "list" | "option" | "map" | "set" | "result" => {
+            "result" => {
+                self.err(
+                    "MZ0306",
+                    span,
+                    "a result names its success and its error type: `result(<type>, <error type>)`, or `result(none, <error type>)`",
+                );
+                Ty::Error
+            }
+            "list" | "option" | "map" | "set" => {
                 self.err(
                     "MZ0919",
                     span,
                     format!(
-                        "`{name}` is designed (RFC-0013 §2) but not built yet — a program has int, float, bool and text"
+                        "`{name}` is designed (RFC-0013 §2) but not built yet — a program has int, float, bool, text, its enums and `result(T, E)`"
                     ),
                 );
                 Ty::Error
@@ -990,7 +1013,7 @@ impl P {
                     _ => None,
                 };
                 let say = format!(
-                    "`{other}` is not a type here — the types are int, float, bool and text"
+                    "`{other}` is not a type here — the types are int, float, bool, text, the program's enums and `result(T, E)`"
                 );
                 match alias {
                     Some(a) => {
@@ -1003,6 +1026,7 @@ impl P {
                 Ty::Error
             }
         };
+        self.question_after_type();
         TypeRef { ty, span }
     }
 
@@ -1198,6 +1222,11 @@ impl P {
                 StmtKind::Return(value)
             }
             Some("when") => return self.when(at, fn_name),
+            Some("try") if self.at_try_block() => {
+                self.try_block(at);
+                return None;
+            }
+            _ if self.at_throw() => self.throw_stmt(at),
             Some("if") => {
                 self.err_fix(
                     "MZ0407",
@@ -2017,6 +2046,9 @@ impl P {
         if self.is_word("not") || matches!(self.peek(), Tok::Op("!")) {
             return self.not_expr();
         }
+        if self.is_word("try") && !matches!(self.peek_at(1), Tok::Newline | Tok::Eof) {
+            return self.try_prefix();
+        }
         self.primary()
     }
 
@@ -2129,58 +2161,12 @@ impl P {
                 self.error_expr(at)
             }
         };
+        if matches!(e.kind, ExprKind::Error) {
+            return e;
+        }
         let e = self.postfix(e);
         if matches!(self.peek(), Tok::Op("**")) {
             return self.power(e);
-        }
-        e
-    }
-
-    /// RFC-0013 §3.5 level 2: `.method(…)` and `.name`, left to right. Which receivers have
-    /// which methods is the checker's question.
-    fn postfix(&mut self, mut e: Expr) -> Expr {
-        let mut links = 0;
-        while matches!(self.peek(), Tok::Dot) {
-            let dot = self.bump().span;
-            // `x.abs().abs()…` builds a tree as deep as the chain is long, like `1 + 1 + …`.
-            links += 1;
-            if links > MAX_NESTING {
-                return self.too_deep_expr(dot);
-            }
-            let name_at = self.span();
-            let Some(name) = word(self.peek()).map(str::to_string) else {
-                if !self.failed {
-                    let found = describe(self.peek());
-                    self.err(
-                        "MZ0917",
-                        name_at,
-                        format!("expected a method's name after `.`, found {found}"),
-                    );
-                }
-                return self.error_expr(join(e.span, dot));
-            };
-            self.bump();
-            let (args, called, end) = if matches!(self.peek(), Tok::LParen) {
-                if self.nest >= PROGRAM_NESTING {
-                    return self.too_deep_expr(name_at);
-                }
-                self.nest += 1;
-                let (args, close) = self.args();
-                self.nest -= 1;
-                (args, true, close)
-            } else {
-                (Vec::new(), false, name_at)
-            };
-            e = Expr {
-                span: join(e.span, end),
-                kind: ExprKind::Method {
-                    recv: Box::new(e),
-                    name,
-                    name_span: name_at,
-                    args,
-                    called,
-                },
-            };
         }
         e
     }
@@ -2302,6 +2288,9 @@ impl P {
                 kind: ExprKind::Name(name),
                 span: at,
             };
+        }
+        if let Some(e) = self.constructor_idiom(&name, at) {
+            return e;
         }
         // `range(a, to = b)` (RFC-0013 §6.5, §7.3): the one call whose label this slice
         // reads. Labels on other calls wait for §6.5 to be built.
@@ -2608,6 +2597,8 @@ impl P {
             block_value: None,
             pending_skip: false,
             dropped: Vec::new(),
+            known: std::rc::Rc::clone(&self.known),
+            ret: self.ret,
         };
         let e = sub.expr();
         if !sub.at_line_end() && !sub.failed {
@@ -2653,6 +2644,7 @@ fn depth(e: &Expr) -> usize {
                 todo.push((rhs, d + 1));
             }
             ExprKind::Unary { operand, .. } => todo.push((operand, d + 1)),
+            ExprKind::Field { base, .. } => todo.push((base, d + 1)),
             ExprKind::Call { args, .. } => todo.extend(args.iter().map(|a| (a, d + 1))),
             ExprKind::Method { recv, args, .. } => {
                 todo.push((recv, d + 1));

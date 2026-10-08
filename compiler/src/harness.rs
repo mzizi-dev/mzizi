@@ -54,7 +54,7 @@ pub const PROTOCOL: u32 = 1;
 /// The language's version, as the harness reports it. The crates stay at `0.0.0` and
 /// releases are git tags (CLAUDE.md), so the language names its phase and the RFC-0013 waves
 /// that are built. The definition's SHA-256 is what pins exact content.
-pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers and control flow";
+pub const LANGUAGE: &str = "phase-0, RFC-0013 wave 0, wave 1 numbers, control flow and errors";
 
 /// What a [`HarnessEntry`] describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -275,6 +275,12 @@ const LOOPS: &str = "program loops\n\n  fn main\n    var total = 0\n    for each
 const LOOPS_OUT: &str = "25\n111\n8\n";
 const VALUES: &str = "program values\n\n  enum light\n    red\n    amber\n    green\n  end\n\n  fn main\n    let l = amber\n    let action = match l\n      case red\n        \"stop\"\n      case amber\n        \"slow\"\n      case green\n        \"go\"\n    end\n    print(action)\n    print(sign(-3))\n  end fn main\n\n  fn sign(n: int): text\n    return when n < 0\n      \"negative\"\n    else when n is 0\n      \"zero\"\n    else\n      \"positive\"\n    end\n  end fn sign\n\nend program values\n";
 const VALUES_OUT: &str = "slow\nnegative\n";
+const ERRORS: &str = include_str!("../../examples/errors.mz");
+const ERRORS_OUT: &str = include_str!("../../examples/errors.expected");
+const MAIN_RESULT: &str = "program halves\n\n  fn main: result(none, text)\n    let a = try half(8)\n    print(\"half of 8 is {a}\")\n    let b = try half(a)\n    print(\"half of {a} is {b}\")\n  end fn main\n\n  fn half(n: int): result(int, text)\n    when n % 2 is 1\n      return error(\"{n} is odd\")\n    end\n    return n / 2\n  end fn half\n\nend program halves\n";
+const MAIN_RESULT_OUT: &str = "half of 8 is 4\nhalf of 4 is 2\n";
+const COLUMNS: &str = "program columns\n\n  enum level\n    low  say \"fine\"     rank 1\n    high say \"too much\" rank 2\n  end\n\n  fn main\n    let l = high\n    print(\"{l}: {l.say}, rank {l.rank}\")\n    match pick(3)\n      case ok v\n        print(v)\n      case error e\n        print(\"no: {e.say}\")\n    end\n  end fn main\n\n  fn pick(n: int): result(level, level)\n    when n > 2\n      return error(level.high)\n    end\n    return low\n  end fn pick\n\nend program columns\n";
+const COLUMNS_OUT: &str = "high: too much, rank 2\nno: too much\n";
 const COMPONENT: &str = include_str!("../../primitives/badge.mz");
 const SERVICE: &str = "service t\n  route r\n    get \"/r\"\n    respond 200\n  end\n  contract\n    example get \"/r\" status is 200\n  end\nend service t\n";
 
@@ -557,13 +563,77 @@ pub const FEATURES: &[Feature] = &[
         rfc: "RFC-0013 §1, §7.2, §18.6",
         grammar: &[
             "enum <name>\n  <variant>\n  <variant>\nend",
+            "enum <name>\n  <variant> <column> <literal> …\nend",
             "<variant>",
             "<enum>.<variant>",
+            "<value>.<column>",
         ],
-        teach: "A program declares an enum with one snake_case variant name per line, closed by a bare `end`. A variant is written bare (`circle`) where the type expected settles its enum (a comparison's other side, a `case`, an annotated binding, an assignment, a `return`, an argument), and as `<enum>.<variant>` where two enums share it. Variants compare with `is` and order by declaration, and print as their names. A variant with columns is not built.",
-        types: "Each enum is its own type; its variants are its values.",
-        codes: &["MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0919"],
-        examples: &[run(MATCH, MATCH_OUT), run(VALUES, VALUES_OUT)],
+        teach: "A program declares an enum with one snake_case variant name per line, closed by a bare `end`. A variant may carry columns, each a name and a literal (`negative say \"is below zero\"`); every variant has the same columns, each of one type, and `p.say` reads one, with no parentheses. A variant is written bare (`circle`) where the type expected settles its enum (a comparison's other side, a `case`, an annotated binding, an assignment, a `return`, an argument), and as `<enum>.<variant>` where two enums share it. Variants compare with `is` and order by declaration, and print as their names.",
+        types: "Each enum is its own type; its variants are its values. A column has its literals' type.",
+        codes: &["MZ0921", "MZ0904", "MZ0206", "MZ0708", "MZ0711"],
+        examples: &[
+            run(MATCH, MATCH_OUT),
+            run(VALUES, VALUES_OUT),
+            run(COLUMNS, COLUMNS_OUT),
+        ],
+    },
+    Feature {
+        name: "result",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §2, §12.1, §12.3",
+        grammar: &[
+            "fn <name>(…): result(<type>, <error type>)",
+            "fn <name>(…): result(none, <error type>)",
+        ],
+        teach: "A function that can fail says so in its return type, `result(T, E)`, or `result(none, E)` when it produces nothing but can fail. `return v` returns success, `return error(e)` failure, and `return r` passes a result of the function's own type through. A caller matches the result (`match r` with `case ok v` and `case error e`) or propagates its error with `try`; any other use of a result is an error, including discarding it, printing it, comparing it, passing it or storing it in a `var`. A `let` may hold one until it is matched. A result is never a parameter, nor inside another result. There are no exceptions.",
+        types: "`result(T, E)`: `T` any type or `none`, `E` any type with a text form, an enum by preference. Lowers to Rust's `Result<T, E>`.",
+        codes: &["MZ0950", "MZ0306", "MZ0701"],
+        examples: &[run(ERRORS, ERRORS_OUT)],
+    },
+    Feature {
+        name: "main returning a result",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §12.5, §13.1",
+        grammar: &["fn main: result(none, <error type>)"],
+        teach: "`fn main` may return `result(none, E)`, so `try` can be used in it. When it returns an error, the program writes `mz: error MZ0992: main returned an error: <text form>` to standard error and `mz run` exits 1; reaching `end fn main` is success, exit 0.",
+        types: "",
+        codes: &["MZ0902", "MZ0992"],
+        examples: &[run(MAIN_RESULT, MAIN_RESULT_OUT), run(ERRORS, ERRORS_OUT)],
+    },
+    Feature {
+        name: "match on a result",
+        kind: Kind::Statement,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §12.2, §7.2",
+        grammar: &["match <result>\n  case ok <name>\n    …\n  case error <name>\n    …\nend"],
+        teach: "A `match` on a result has exactly two cases, `case ok <name>` binding the success value and `case error <name>` binding the error, each in its own block; both are required, and there is no `else`, whose exact fix deletes it. `case ok` binds no name when the success is `none`. A `match` on a result may also be the value of a `let` or a `return`.",
+        types: "The name `case ok` binds has the success type, and `case error`'s the error type.",
+        codes: &["MZ0930", "MZ0931", "MZ0917", "MZ0921"],
+        examples: &[run(ERRORS, ERRORS_OUT), run(COLUMNS, COLUMNS_OUT)],
+    },
+    Feature {
+        name: "error",
+        kind: Kind::Function,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §12.1, §12.4",
+        grammar: &["return error(<value>)", "let <name> = error(<value>)"],
+        teach: "`error(e)` is a function's failure, of its own result type: `return error(e)` returns it. It is written only in a function that returns `result(T, E)`, with `e` of type `E`. Rust's `Ok(v)` and `Err(e)` get exact fixes (`v` and `error(e)`), and so do `throw e` and `raise e` (`return error(e)`) when `e` visibly has the error type. `.unwrap()` and `.expect(…)` have no fix: an error is never turned into a crash.",
+        types: "`error(E)` → the enclosing function's `result(T, E)`.",
+        codes: &["MZ0953", "MZ0952", "MZ0954", "MZ0908"],
+        examples: &[run(ERRORS, ERRORS_OUT), run(MAIN_RESULT, MAIN_RESULT_OUT)],
+    },
+    Feature {
+        name: "postfix ?",
+        kind: Kind::Lexical,
+        depth: Depth::Full,
+        rfc: "RFC-0013 §12.2",
+        grammar: &["try <result>"],
+        teach: "Rust's postfix `?` is lexed in a program only to be repaired: `f(x)?` is Mzizi's prefix `try f(x)`, and `f(x)?.y` is `(try f(x)).y`, both exact fixes. A chain of them is one diagnostic. After a type (`int?`) it is still `MZ0104`: an optional type is `option(T)`.",
+        types: "",
+        codes: &["MZ0952", "MZ0104"],
+        examples: &[run(MAIN_RESULT, MAIN_RESULT_OUT)],
     },
 ];
 
@@ -1133,6 +1203,46 @@ pub const CODES: &[Code] = &[
         "program t\n  fn main\n    when true:\n      print(1)\n    end\n  end fn main\nend program t\n",
     ),
     code(
+        "MZ0950",
+        "RFC-0013 §12.3, §16",
+        ALL_FIXES,
+        PROGRAM,
+        "a result nothing matches or propagates: discarded, used as its success value, printed, compared, passed, assigned, held by a `var`, returned where the type differs, a parameter, or inside a result; the guess inserts `try`, and `try f(x).y` gets the exact `(try f(x)).y`",
+        "program t\n  fn main\n    f(1)\n  end fn main\n  fn f(n: int): result(int, text)\n    return n\n  end fn f\nend program t\n",
+    ),
+    code(
+        "MZ0951",
+        "RFC-0013 §12.2, §16",
+        NONE,
+        PROGRAM,
+        "a `try` that cannot propagate: on a value that is not a result, in a function that does not return a result, or with another error type",
+        "program t\n  fn main\n    let v = try f(1)\n    print(v)\n  end fn main\n  fn f(n: int): result(int, text)\n    return n\n  end fn f\nend program t\n",
+    ),
+    code(
+        "MZ0952",
+        "RFC-0013 §12.1, §12.2, §16",
+        ALL_FIXES,
+        PROGRAM,
+        "an error idiom from another language: `Ok(v)` (exact `v`), `Err(e)` (exact `error(e)`), postfix `?` (exact prefix `try`), `throw e` or `raise e` (`return error(e)`, exact when `e` visibly has the error type); a `try` block, `.unwrap()` and `.expect()` have no fix",
+        "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(n: int): result(int, text)\n    return Ok(n)\n  end fn f\nend program t\n",
+    ),
+    code(
+        "MZ0953",
+        "RFC-0013 §12.4, §1, §16",
+        NONE_EXACT,
+        PROGRAM,
+        "`error(e)` outside a function that returns a result, or with an `e` of another type; a bare `ok` or `error` variant in a function that returns a result (exact: name its enum)",
+        "program t\n  fn main\n    print(error(1))\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0954",
+        "RFC-0013 §12.1, §16",
+        EXACT,
+        PROGRAM,
+        "`return try r` with `r` of the function's own result type, which unwraps only to wrap again; the exact fix deletes `try`",
+        "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(n: int): result(int, text)\n    return try g(n)\n  end fn f\n  fn g(n: int): result(int, text)\n    return n\n  end fn g\nend program t\n",
+    ),
+    code(
         "MZ0962",
         "RFC-0013 §3.7, §3.8, §4.4, §16",
         ALL_FIXES,
@@ -1164,6 +1274,16 @@ pub const CODES: &[Code] = &[
         severity: Severity::Error,
         tool: "mz run",
         say: "a trap while the program ran: integer overflow (including `pow` and `abs`), `int` division or remainder by zero, a negative `int` exponent, or `to_int()` on a float out of range. The line names the `.mz` position and the expression; exit 101",
+        fixes: NONE,
+        kinds: PROGRAM,
+        trigger: None,
+    },
+    Code {
+        code: "MZ0992",
+        rfc: "RFC-0013 §12.5, §16",
+        severity: Severity::Error,
+        tool: "mz run",
+        say: "`fn main` returned an error: the program writes `mz: error MZ0992: main returned an error: <its text form>` to standard error and exits 1",
         fixes: NONE,
         kinds: PROGRAM,
         trigger: None,
@@ -1302,6 +1422,13 @@ fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static s
             "bool → bool",
             7,
         ),
+        UnOp::Try => (
+            "try",
+            "try <result>",
+            "`try r` is `r`'s success value; when `r` is an error, the enclosing function returns that error at once. The function must return a result with the same error type. It binds tighter than arithmetic and looser than a dot: `try f(a) + 1` is `(try f(a)) + 1`, and a column of the success value is `(try f(a)).say`. `return try r` with `r` of the function's own result type is `return r`.",
+            "result(T, E) → T, in a function returning result(_, E)",
+            3,
+        ),
     }
 }
 
@@ -1330,8 +1457,9 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
             "UTF-8 text. It is built by interpolation, not by `+`, and ordered by Unicode scalar value.",
             "RFC-0013 §3.6, §3.8",
         )),
-        // An enum is the program's own type, registered as the `enum` entry.
-        Ty::Nothing | Ty::Error | Ty::Enum(_) => None,
+        // An enum is the program's own type, registered as the `enum` entry, and a result
+        // is built from two types, registered as the `result` entry.
+        Ty::Nothing | Ty::Error | Ty::Enum(_) | Ty::Result(_) => None,
     }
 }
 
@@ -1513,15 +1641,15 @@ pub fn registry() -> Vec<HarnessEntry> {
             teach: teach.to_string(),
             types: types.to_string(),
             precedence: Some(level),
-            codes: if op == UnOp::Not {
-                vec!["MZ0912", "MZ0910"]
-            } else {
-                vec!["MZ0912", "MZ0915", "MZ0991"]
+            codes: match op {
+                UnOp::Not => vec!["MZ0912", "MZ0910"],
+                UnOp::Neg => vec!["MZ0912", "MZ0915", "MZ0991"],
+                UnOp::Try => vec!["MZ0951", "MZ0950", "MZ0954", "MZ0952"],
             },
-            examples: vec![if op == UnOp::Not {
-                run(LOGIC, LOGIC_OUT)
-            } else {
-                run(ARITH, ARITH_OUT)
+            examples: vec![match op {
+                UnOp::Not => run(LOGIC, LOGIC_OUT),
+                UnOp::Neg => run(ARITH, ARITH_OUT),
+                UnOp::Try => run(ERRORS, ERRORS_OUT),
             }],
             diagnostic: None,
         });
@@ -1627,6 +1755,9 @@ pub fn statement_entry(kind: &crate::program::StmtKind) -> &'static str {
         StmtKind::When { else_whens, .. } if !else_whens.is_empty() => "else when",
         StmtKind::When { .. } => "when",
         StmtKind::Expr(_) => "expression statement",
+        StmtKind::Match { arms, .. } if arms.iter().any(|a| a.binding.is_some()) => {
+            "match on a result"
+        }
         StmtKind::Match { .. } => "match",
         StmtKind::For { .. } => "for each",
         StmtKind::While { .. } => "while",
@@ -1654,10 +1785,11 @@ pub fn expression_entry(kind: &crate::expr::ExprKind) -> &'static str {
             .unwrap_or("MZ0708"),
         ExprKind::Call { name, .. } if name == "print" => "print",
         ExprKind::Call { name, .. } if name == "range" => "for each",
+        ExprKind::Call { name, .. } if name == "error" => "error",
         ExprKind::Call { .. } => "fn",
         ExprKind::Unary { op, .. } => unop_entry(*op).0,
         ExprKind::Binary { op, .. } => op.text(),
-        ExprKind::Variant { .. } => "enum",
+        ExprKind::Variant { .. } | ExprKind::Field { .. } => "enum",
         ExprKind::When { .. } | ExprKind::Match { .. } => "when or match as a value",
         ExprKind::Error => "MZ0917",
     }
@@ -1693,6 +1825,7 @@ pub const LEXED_OPERATORS: &[(&str, &str)] = &[
     ("<", "<"),
     (">", ">"),
     ("!", "MZ0910"),
+    ("?", "postfix ?"),
 ];
 
 /// One entry by name.

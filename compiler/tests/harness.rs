@@ -154,9 +154,10 @@ fn every_trigger_reports_its_code_with_a_declared_fix_kind() {
         assert!(c.say.len() <= 300, "{}'s say is long", c.code);
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
-    // `mz check` cannot report these two: one is a compiler bug, the other a trap at run
-    // time, which `compiler/tests/program.rs` triggers through `mz run`.
-    assert_eq!(untriggered, ["MZ0990", "MZ0991"]);
+    // `mz check` cannot report these three: one is a compiler bug, the others happen at run
+    // time, a trap and a `main` that returned an error, which `compiler/tests/program.rs`
+    // and `compiler/tests/program_errors.rs` trigger through `mz run`.
+    assert_eq!(untriggered, ["MZ0990", "MZ0991", "MZ0992"]);
     let _ = Confidence::Exact;
 }
 
@@ -200,6 +201,7 @@ fn operators_and_types_come_from_the_checker() {
         let name = match op {
             UnOp::Neg => "prefix -",
             UnOp::Not => "not",
+            UnOp::Try => "try",
         };
         assert!(harness::entry(name).is_some(), "{name}");
     }
@@ -382,6 +384,9 @@ fn every_example_checks_clean_and_uses_only_registered_constructs() {
         "continue",
         "when or match as a value",
         "enum",
+        "error",
+        "try",
+        "match on a result",
     ] {
         assert!(used.contains(name), "no example uses `{name}`");
     }
