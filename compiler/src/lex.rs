@@ -443,7 +443,7 @@ fn program_number(
                     "MZ0914",
                     file,
                     span,
-                    format!("`{written}` is too large for a float"),
+                    format!("`{}` is too large for a float", short_literal(&written)),
                 ));
                 (Tok::BadInt, j - i)
             }
@@ -997,6 +997,17 @@ fn lex_with(src: &str, file: &str, program: bool, comments: bool) -> (Vec<Token>
         span: eof,
     });
     (tokens, diags)
+}
+
+/// A number literal as a diagnostic quotes it: whole up to 24 characters, else its first 20
+/// and `…`, so a `say` stays within RFC-0001's 200 characters however long the literal is.
+fn short_literal(written: &str) -> String {
+    if written.chars().count() <= 24 {
+        written.to_string()
+    } else {
+        let head: String = written.chars().take(20).collect();
+        format!("{head}…")
+    }
 }
 
 #[cfg(test)]

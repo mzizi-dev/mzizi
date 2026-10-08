@@ -2066,8 +2066,8 @@ on Wave 0's pull request). Built and tested in `compiler/tests/program_numbers.r
   one implementation. The `int` `pow` rule is not shared that way: the checker's
   `numbers::int_pow` (for `MZ0915`) and the lowering's `mz_pow` (for the trap) are two
   copies, each pinned by its own tests.
-- **Built:** `float` literals, the type and its IEEE 754 arithmetic (§4.2); §4.4 whole, as
-  methods (postfix, §3.5 level 2); §4.3's `pow`, `abs`, negative-exponent and `to_int`
+- **Built:** `float` literals, the type and its IEEE 754 arithmetic (§4.2); §4.4 except the
+  `wrapping_*` methods (the C5 wrapping follow-up, §18.2), as methods (postfix, §3.5 level 2); §4.3's `pow`, `abs`, negative-exponent and `to_int`
   traps; §3.8's float text form; `MZ0912` for `int` with `float`; `MZ0913` for `and` mixed
   with `or`; `MZ0914`; `MZ0911` for `/* … */` and for a comment after code; `MZ0910` for
   `not a is b`; `MZ0962` for `str(x)`, `x.to_string()` and Python's free numeric functions;
@@ -2101,6 +2101,17 @@ on Wave 0's pull request). Built and tested in `compiler/tests/program_numbers.r
     `MZ0101` and `MZ0962`, as `String` as a type already was.
   - A float literal's canonical text (§17) is always plain decimal, never an exponent, so
     it reads back as the same literal: `1000000000000000000000.0`, not `1.0e21`.
+  - §3.8 does not say how a tie breaks. When a float's exact value is halfway between two
+    shortest digit strings, its text form takes the one Rust's `{:e}` gives (the upper);
+    JavaScript and Python take the even one (`608898711247163.25` prints
+    `608898711247163.3` here, `608898711247163.2` there). Both read back as the same
+    value. A diagnostic or trap quotes a float literal in this canonical form, not as
+    written (`0.30000000000000001 + 1` is quoted as `0.3 + 1`).
+  - Python's `round(x)` and `pow(a, b)` are `MZ0962` with a `guess` fix, not an `exact`
+    one, since `.round()` and `int.pow` differ from them (ties to even; a negative
+    exponent). `pow` is `exact` only when the exponent is a non-negative `int` literal.
+    `str(x)` on a value with no text form has no fix. `MZ0914` quotes at most 20 characters
+    of a long literal, so its `say` stays within RFC-0001's 200.
   - `MZ0913`'s fix, and `not a is b`'s, fold the `exact` idiom fixes inside them (`&&`,
     `==`, a nested `MZ0913`) into one fix, so two `exact` fixes never overlap; a `guess`
     inside makes the covering fix a `guess`.
