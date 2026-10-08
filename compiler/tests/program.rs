@@ -346,9 +346,10 @@ fn mz0919_a_designed_form_not_built_yet_is_one_diagnostic() {
     // C4 retired `while`, `for each`, `match`, `else when`, `break`, `continue` and a
     // program's `enum` from this code (`tests/program_control.rs`), C6 the text methods
     // that need no option or list (`tests/program_text.rs`), and C7 lists, maps and sets
-    // (`tests/program_collections.rs`); these are still later waves'.
+    // (`tests/program_collections.rs`), and C8 records and methods (`tests/program_records.rs`);
+    // these are still later waves'.
     one(
-        "program t\n  record point\n    field x: int\n  end\n  fn main\n  end fn main\nend program t\n",
+        "program t\n  use foo\n  fn main\n  end fn main\nend program t\n",
         "MZ0919",
     );
     one(&wrap("let s = \"abc\".split(\",\")"), "MZ0919");

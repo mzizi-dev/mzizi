@@ -91,6 +91,9 @@ pub enum Ty {
     Map(&'static (Ty, Ty)),
     /// `set(K)` (RFC-0013 §2, §9), `K` a key type. Interned.
     Set(&'static Ty),
+    /// A record declared in the program, by name (RFC-0013 §11). Like [`Ty::Enum`], the
+    /// program's own type; its fields and methods are read from its declaration.
+    Record(&'static str),
 }
 
 impl Ty {
@@ -111,9 +114,13 @@ impl Ty {
     pub fn listed(self) -> bool {
         match self {
             Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Nothing | Ty::Error => true,
-            Ty::Enum(_) | Ty::Result(_) | Ty::List(_) | Ty::Option(_) | Ty::Map(_) | Ty::Set(_) => {
-                false
-            }
+            Ty::Enum(_)
+            | Ty::Record(_)
+            | Ty::Result(_)
+            | Ty::List(_)
+            | Ty::Option(_)
+            | Ty::Map(_)
+            | Ty::Set(_) => false,
         }
     }
 
@@ -150,7 +157,7 @@ impl Ty {
             Ty::Bool => "bool",
             Ty::Text => "text",
             Ty::Nothing => "nothing",
-            Ty::Enum(name) => name,
+            Ty::Enum(name) | Ty::Record(name) => name,
             Ty::Error => "unknown",
             Ty::Result((ok, err)) => {
                 let ok = if *ok == Ty::Nothing {
@@ -468,6 +475,24 @@ pub enum ExprKind {
         /// Where that word is.
         name_span: Span,
     },
+    /// `point(x = 1.0, y = 2.0)`: a record built by field name (RFC-0013 §11.1). The fields
+    /// are as written; the checker reports every way they miss the declaration (`MZ0808`).
+    Record {
+        /// The record's name.
+        name: String,
+        /// Where the name is.
+        name_span: Span,
+        /// The fields, in the order written.
+        fields: Vec<FieldInit>,
+    },
+    /// `base with (x = 3.0)`: a copy of a record with the named fields replaced (RFC-0013
+    /// §11.1). `base` is not changed.
+    With {
+        /// The record copied.
+        base: Box<Expr>,
+        /// The fields replaced, in the order written.
+        fields: Vec<FieldInit>,
+    },
     /// `[a, b, c]` or `[]`, a bracket literal of plain elements (RFC-0013 §9.1): a list, or a
     /// set where a `set` is expected.
     List(Vec<Expr>),
@@ -517,6 +542,18 @@ pub struct ElseArm<B> {
     pub last_line: u32,
 }
 
+/// One `name = value` in a record literal or a `with` (RFC-0013 §11.1). A positional value
+/// (`point(1.0, 2.0)`) has an empty `name`, which the checker reports.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FieldInit {
+    /// The field's name, or empty for a positional value.
+    pub name: String,
+    /// Where the name is, or where the value starts when there is none.
+    pub span: Span,
+    /// The value.
+    pub value: Expr,
+}
+
 /// An expression with its source span.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
@@ -533,7 +570,10 @@ impl Expr {
         match &self.kind {
             ExprKind::Binary { op, .. } => op.level(),
             ExprKind::Unary { op, .. } => op.level(),
-            ExprKind::Method { .. } | ExprKind::Field { .. } | ExprKind::Index { .. } => 2,
+            ExprKind::Method { .. }
+            | ExprKind::Field { .. }
+            | ExprKind::Index { .. }
+            | ExprKind::With { .. } => 2,
             _ => 1,
         }
     }
@@ -574,6 +614,10 @@ impl Expr {
                 entries.iter().any(|(k, v)| k.has_error() || v.has_error())
             }
             ExprKind::Index { base, index } => base.has_error() || index.has_error(),
+            ExprKind::Record { fields, .. } => fields.iter().any(|f| f.value.has_error()),
+            ExprKind::With { base, fields } => {
+                base.has_error() || fields.iter().any(|f| f.value.has_error())
+            }
             ExprKind::Int(_)
             | ExprKind::Float(_)
             | ExprKind::Bool(_)
@@ -615,6 +659,10 @@ impl Expr {
                 .iter()
                 .any(|(k, v)| k.has_text_literal() || v.has_text_literal()),
             ExprKind::Index { base, index } => base.has_text_literal() || index.has_text_literal(),
+            ExprKind::Record { fields, .. } => fields.iter().any(|f| f.value.has_text_literal()),
+            ExprKind::With { base, fields } => {
+                base.has_text_literal() || fields.iter().any(|f| f.value.has_text_literal())
+            }
             _ => false,
         }
     }
@@ -751,6 +799,26 @@ pub fn canonical(e: &Expr) -> String {
             };
             format!("{b}[{}]", canonical(index))
         }
+        ExprKind::Record { name, fields, .. } => {
+            let fields: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{} = {}", f.name, canonical(&f.value)))
+                .collect();
+            format!("{name}({})", fields.join(", "))
+        }
+        ExprKind::With { base, fields } => {
+            let b = canonical(base);
+            let b = if base.level() > 2 {
+                format!("({b})")
+            } else {
+                b
+            };
+            let fields: Vec<String> = fields
+                .iter()
+                .map(|f| format!("{} = {}", f.name, canonical(&f.value)))
+                .collect();
+            format!("{b} with ({})", fields.join(", "))
+        }
         ExprKind::None => "none".to_string(),
         ExprKind::Error => "…".to_string(),
     }
@@ -871,7 +939,7 @@ pub fn method_signature(recv: Ty, name: &str) -> Option<(Vec<Ty>, Ty)> {
 /// interpolated.
 pub fn has_text_form(t: Ty) -> bool {
     match t {
-        Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Enum(_) | Ty::Error => true,
+        Ty::Int | Ty::Float | Ty::Bool | Ty::Text | Ty::Enum(_) | Ty::Record(_) | Ty::Error => true,
         Ty::List(e) | Ty::Set(e) => has_inner_text_form(*e),
         Ty::Map((k, v)) => has_inner_text_form(*k) && has_inner_text_form(*v),
         // An option has none at the top level (`MZ0710`), and a result none at all (§3.8).

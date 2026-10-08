@@ -290,6 +290,14 @@ fn stmt_text(s: &Stmt, indent: usize, out: &mut String) {
         StmtKind::Assign { name, value, .. } => {
             line(out, format!("{name} = {}", value_text(value, indent)));
         }
+        StmtKind::FieldAssign {
+            name, field, value, ..
+        } => {
+            line(
+                out,
+                format!("{name}.{field} = {}", value_text(value, indent)),
+            );
+        }
         StmtKind::IndexAssign {
             name, index, value, ..
         } => {

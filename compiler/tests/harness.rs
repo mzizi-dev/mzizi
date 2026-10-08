@@ -260,7 +260,7 @@ fn every_trigger_reports_its_code_with_a_declared_fix_kind() {
 /// agent reads for every form RFC-0013 designs and the compiler does not build.
 const NOT_BUILT: &[(&str, &[&str])] = &[
     (
-        "`option(T)` written as a type, `none` as a value and narrowing an option",
+        "`option(T)` as a type, `none` as a value, narrowing an option",
         &[
             "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(x: option(int)): int\n    return 1\n  end fn f\nend program t\n",
             "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
@@ -280,9 +280,15 @@ const NOT_BUILT: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "a `record`",
+        "a method that changes `self`",
         &[
-            "program t\n  record p\n    x: int\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+            "program t\n  record counter\n    field count: int\n    fn bump changes self\n      self.count = self.count + 1\n    end fn bump\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "a record that holds itself",
+        &[
+            "program t\n  record node\n    field next: option(node)\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
         ],
     ),
     (
@@ -296,7 +302,7 @@ const NOT_BUILT: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "a `contract` block in a program or on a `fn`",
+        "a `contract` block",
         &[
             "program t\n  fn main\n    print(1)\n  end fn main\n  contract\n    example 1\n  end\nend program t\n",
             "program t\n  fn main\n    print(1)\n  end fn main\n  fn f: int\n    contract\n      example 1\n    end\n    return 1\n  end fn f\nend program t\n",
@@ -358,7 +364,7 @@ fn every_form_mz0919_names_is_still_not_built() {
     }
     assert_eq!(
         literals - 1 + calls,
-        10,
+        11,
         "the number of places a program reports MZ0919 changed: name each new form in \
          MZ0919's say and in NOT_BUILT, then update this count"
     );
@@ -467,6 +473,13 @@ fn walk_expr(e: &Expr, out: &mut BTreeSet<&'static str>) {
             walk_expr(base, out);
             walk_expr(index, out);
         }
+        ExprKind::Record { fields, .. } => {
+            fields.iter().for_each(|f| walk_expr(&f.value, out));
+        }
+        ExprKind::With { base, fields } => {
+            walk_expr(base, out);
+            fields.iter().for_each(|f| walk_expr(&f.value, out));
+        }
         ExprKind::When { arms, otherwise } => {
             for (c, v) in arms {
                 walk_expr(c, out);
@@ -499,6 +512,7 @@ fn walk(stmts: &[Stmt], out: &mut BTreeSet<&'static str>) {
                 walk_expr(index, out);
                 walk_expr(value, out);
             }
+            StmtKind::FieldAssign { value, .. } => walk_expr(value, out),
             StmtKind::Return(v) => v.iter().for_each(|v| walk_expr(v, out)),
             StmtKind::When {
                 cond,
@@ -999,7 +1013,7 @@ const PENDING_SNAPSHOT: &[&str] = &[
     "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
     "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
     "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
-    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
+    "MZ0807", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 #[test]
@@ -1030,6 +1044,13 @@ fn every_literal_names_its_own_types_entry() {
     let mut seen = BTreeSet::new();
     for source in examples().keys() {
         if let (Some(Program::Program(p)), _) = parse_program(source, "example.mz") {
+            // A record's method is the program's own: no entry is named for it, and the
+            // checker's `MZ0708` is what an unknown method reads as, so it is not compared.
+            let record_methods: Vec<&str> = p
+                .records
+                .iter()
+                .flat_map(|r| r.methods.iter().map(|m| m.name.as_str()))
+                .collect();
             for f in &p.fns {
                 let mut exprs = Vec::new();
                 collect(&f.body, &mut exprs);
@@ -1040,7 +1061,11 @@ fn every_literal_names_its_own_types_entry() {
                         ExprKind::Bool(_) => Some("bool"),
                         ExprKind::Text(_) => Some("text literal"),
                         ExprKind::Name(_) => Some("names"),
-                        ExprKind::Method { name, .. } => Some(name.as_str()),
+                        ExprKind::Method { name, .. }
+                            if !record_methods.contains(&name.as_str()) =>
+                        {
+                            Some(name.as_str())
+                        }
                         _ => None,
                     };
                     if let Some(want) = want {
@@ -1096,6 +1121,11 @@ fn collect<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Expr>) {
                 expr(base, out);
                 expr(index, out);
             }
+            ExprKind::Record { fields, .. } => fields.iter().for_each(|f| expr(&f.value, out)),
+            ExprKind::With { base, fields } => {
+                expr(base, out);
+                fields.iter().for_each(|f| expr(&f.value, out));
+            }
             ExprKind::When { arms, otherwise } => {
                 for (c, v) in arms {
                     expr(c, out);
@@ -1125,6 +1155,7 @@ fn collect<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a Expr>) {
                 expr(index, out);
                 expr(value, out);
             }
+            StmtKind::FieldAssign { value, .. } => expr(value, out),
             StmtKind::Return(v) => v.iter().for_each(|v| expr(v, out)),
             StmtKind::When {
                 cond,
