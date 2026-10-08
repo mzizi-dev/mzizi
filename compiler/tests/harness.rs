@@ -31,36 +31,102 @@ fn src_dir() -> PathBuf {
 
 /// Every `MZ` + four digits on a line of compiler source that is not a comment.
 fn emitted_codes() -> BTreeMap<String, String> {
+    codes_under(vec![src_dir()], false)
+}
+
+/// [`emitted_codes`] over the given files and directories (searched recursively), each
+/// code with the first file that names it, relative to `compiler/src`. With `skip_tests`,
+/// each file is read only up to its `#[cfg(test)]` module, so a unit test's assertion about
+/// some other code is not taken for a code the file raises.
+fn codes_under(roots: Vec<PathBuf>, skip_tests: bool) -> BTreeMap<String, String> {
+    let src = src_dir();
     let mut out = BTreeMap::new();
-    let mut stack = vec![src_dir()];
-    while let Some(dir) = stack.pop() {
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                stack.push(path);
+    let mut stack = roots;
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                stack.push(entry.unwrap().path());
+            }
+            continue;
+        }
+        // The registry itself is not evidence that a code is emitted.
+        if path.extension().is_none_or(|e| e != "rs") || path.ends_with("harness.rs") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let file = path.strip_prefix(&src).unwrap_or(&path).to_string_lossy();
+        for line in text.lines() {
+            if skip_tests && line.trim_start().starts_with("#[cfg(test)]") {
+                break;
+            }
+            if line.trim_start().starts_with("//") {
                 continue;
             }
-            // The registry itself is not evidence that a code is emitted.
-            if path.extension().is_none_or(|e| e != "rs") || path.ends_with("harness.rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).unwrap();
-            for line in text.lines() {
-                if line.trim_start().starts_with("//") {
-                    continue;
-                }
-                let b = line.as_bytes();
-                for i in 0..b.len().saturating_sub(5) {
-                    if &b[i..i + 2] == b"MZ" && b[i + 2..i + 6].iter().all(u8::is_ascii_digit) {
-                        let code = line[i..i + 6].to_string();
-                        out.entry(code)
-                            .or_insert_with(|| path.file_name().unwrap().to_string_lossy().into());
-                    }
+            let b = line.as_bytes();
+            for i in 0..b.len().saturating_sub(5) {
+                if &b[i..i + 2] == b"MZ" && b[i + 2..i + 6].iter().all(u8::is_ascii_digit) {
+                    let code = line[i..i + 6].to_string();
+                    out.entry(code).or_insert_with(|| file.to_string());
                 }
             }
         }
     }
     out
+}
+
+/// The source a `program` passes through, from `mz check` to `mz run`, relative to
+/// `compiler/src`: the lexer (`parse::parse_program` hands a file that starts `program`
+/// to the program parser straight after it), the program parser, the program checker, the
+/// expression and number modules they share, the lowering, and `main.rs`, where `mz run`
+/// reports `MZ0990`. A code written in any of them, outside its unit tests, is one a
+/// program can raise. `lib.rs` and `parse.rs` are left out: past the lexer, their codes are
+/// the component and service parsers' and resolvers'. `lex.rs` and `main.rs` serve every
+/// kind of file; today every code they write is one a program can raise too, and a
+/// component- or service-only code added to either belongs in a file of its own, not under
+/// a `program` kind it does not have.
+const PROGRAM_SOURCES: &[&str] = &[
+    "lex.rs",
+    "expr.rs",
+    "numbers.rs",
+    "numbers",
+    "parse/program.rs",
+    "parse/program",
+    "program.rs",
+    "program",
+    "run.rs",
+    "run",
+    "main.rs",
+];
+
+/// Every `.rs` file in [`PROGRAM_SOURCES`].
+fn program_files() -> Vec<PathBuf> {
+    let mut stack: Vec<PathBuf> = PROGRAM_SOURCES
+        .iter()
+        .map(|p| {
+            let path = src_dir().join(p);
+            assert!(
+                path.exists(),
+                "{p} is gone: name the program pipeline's files in PROGRAM_SOURCES again"
+            );
+            path
+        })
+        .collect();
+    let mut out = Vec::new();
+    while let Some(path) = stack.pop() {
+        if path.is_dir() {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                stack.push(entry.unwrap().path());
+            }
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            out.push(path);
+        }
+    }
+    out
+}
+
+/// Every code a program can raise, by [`PROGRAM_SOURCES`].
+fn program_codes() -> BTreeMap<String, String> {
+    codes_under(program_files(), true)
 }
 
 #[test]
@@ -114,10 +180,38 @@ fn every_registered_or_pending_code_is_still_emitted() {
 
 #[test]
 fn every_program_code_is_registered_not_pending() {
-    // The brief for this slice: each `MZ09xx` code the program checker emits has an entry.
-    for c in emitted_codes().keys().filter(|c| c.starts_with("MZ09")) {
-        assert!(harness::code_entry(c).is_some(), "{c} has no entry");
+    // Any code a program can raise has a full entry, reported in a program: the `MZ09xx`
+    // codes and the shared ones a program reuses alike. Only the component and service
+    // codes may wait on the pending list. (This test once looked at `MZ09xx` alone, and
+    // `MZ0301`, `MZ0302`, `MZ0303` and `MZ0704`, which a program's enums raise, stayed
+    // pending.)
+    let program = program_codes();
+    // The scan covers the program pipeline: every `MZ09xx` code anywhere in the compiler,
+    // the range RFC-0013 reserves for programs, is in a file it reads.
+    for (c, file) in emitted_codes()
+        .iter()
+        .filter(|(c, _)| c.starts_with("MZ09"))
+    {
+        assert!(
+            program.contains_key(c),
+            "{c} (in {file}) is outside PROGRAM_SOURCES: add its file there"
+        );
     }
+    let mut wrong = Vec::new();
+    for (c, file) in &program {
+        match harness::code_entry(c) {
+            None if PENDING_CODES.contains(&c.as_str()) => wrong.push(format!(
+                "{c} (in {file}) is pending, and a program can raise it: register it in CODES"
+            )),
+            None => wrong.push(format!("{c} (in {file}) has no entry")),
+            Some(e) if !e.kinds.contains(&"program") => wrong.push(format!(
+                "{c} (in {file}) is raised in a program, and its entry's kinds are {:?}",
+                e.kinds
+            )),
+            Some(_) => {}
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
 #[test]
@@ -159,6 +253,117 @@ fn every_trigger_reports_its_code_with_a_declared_fix_kind() {
     // and `compiler/tests/program_errors.rs` trigger through `mz run`.
     assert_eq!(untriggered, ["MZ0990", "MZ0991", "MZ0992"]);
     let _ = Confidence::Exact;
+}
+
+/// The forms `MZ0919`'s `say` names as designed and not built, exactly as it names them and
+/// in its order, each with programs that write it. RFC-0012 §1.1 makes `MZ0919` the entry an
+/// agent reads for every form RFC-0013 designs and the compiler does not build.
+const NOT_BUILT: &[(&str, &[&str])] = &[
+    (
+        "lists, maps, sets and options (`none` among them)",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: list(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: map(text, int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(xs: set(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f(x: option(int)): int\n    return 1\n  end fn f\nend program t\n",
+            "program t\n  fn main\n    let x = none\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "`range` off a `for each` line",
+        &[
+            "program t\n  fn main\n    let r = range(0, to = 3)\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "methods on `text`",
+        &[
+            "program t\n  fn main\n    let s = \"ab\"\n    print(s.len())\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "a `record`",
+        &[
+            "program t\n  record p\n    x: int\n  end\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+        ],
+    ),
+    (
+        "a `use` line",
+        &["program t\n  use foo\n  fn main\n    print(1)\n  end fn main\nend program t\n"],
+    ),
+    (
+        "a `test` block",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  test \"x\"\n    print(1)\n  end\nend program t\n",
+        ],
+    ),
+    (
+        "a `contract` block in a program or on a `fn`",
+        &[
+            "program t\n  fn main\n    print(1)\n  end fn main\n  contract\n    example 1\n  end\nend program t\n",
+            "program t\n  fn main\n    print(1)\n  end fn main\n  fn f: int\n    contract\n      example 1\n    end\n    return 1\n  end fn f\nend program t\n",
+        ],
+    ),
+];
+
+#[test]
+fn every_form_mz0919_names_is_still_not_built() {
+    // `say` and `teach` texts are written by hand, and no test compares them with the
+    // checker in general. This holds the one list that goes stale as each wave lands: when
+    // a form is built, its programs stop reporting `MZ0919` and this fails until the `say`
+    // stops calling it unbuilt (C4 and C9 each left a built form on the list).
+    let say = harness::code_entry("MZ0919").expect("MZ0919").say;
+    let (_, list) = say
+        .split_once(": ")
+        .expect("MZ0919's say lists the forms after `: `");
+    let named: Vec<&str> = list.split("; ").collect();
+    let table: Vec<&str> = NOT_BUILT.iter().map(|(form, _)| *form).collect();
+    assert_eq!(
+        named, table,
+        "MZ0919's say and NOT_BUILT name the same forms, in the same order"
+    );
+    for (form, sources) in NOT_BUILT {
+        for src in *sources {
+            let codes: Vec<&str> = check(src, "t.mz")
+                .diagnostics
+                .iter()
+                .map(|d| d.code)
+                .collect();
+            // Exactly one `MZ0919` and nothing else, so the program cannot pass by reporting
+            // some other unbuilt form.
+            assert_eq!(
+                codes,
+                ["MZ0919"],
+                "MZ0919's say calls {form} not built, and this program reports {codes:?}: if it \
+                 is built, take it out of the say and register its entry\n{src}"
+            );
+        }
+    }
+    // The other direction: a new place that reports `MZ0919` changes this count, and is
+    // named in the say and given a program in NOT_BUILT before the count is raised. Each
+    // `"MZ0919"` written in the program's source is one place, except the one inside the
+    // parser's `not_built`, where each call is one instead.
+    let mut literals = 0;
+    let mut calls = 0;
+    for path in program_files() {
+        let text = std::fs::read_to_string(&path).unwrap();
+        for line in text.lines() {
+            if line.trim_start().starts_with("#[cfg(test)]") {
+                break;
+            }
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            literals += line.matches("\"MZ0919\"").count();
+            calls += line.matches("self.not_built(").count();
+        }
+    }
+    assert_eq!(
+        literals - 1 + calls,
+        9,
+        "the number of places a program reports MZ0919 changed: name each new form in \
+         MZ0919's say and in NOT_BUILT, then update this count"
+    );
 }
 
 #[test]
@@ -734,13 +939,12 @@ fn every_operator_the_lexer_reads_names_an_entry_and_is_reported_so() {
 /// `PENDING_CODES` on 2026-10-08. The list may only shrink: a code leaves it when its entry
 /// is registered, and a new code is registered, never added here.
 const PENDING_SNAPSHOT: &[&str] = &[
-    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0301", "MZ0302", "MZ0303", "MZ0304", "MZ0305",
-    "MZ0307", "MZ0308", "MZ0309", "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404",
-    "MZ0405", "MZ0406", "MZ0408", "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602",
-    "MZ0603", "MZ0605", "MZ0606", "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0704",
-    "MZ0705", "MZ0706", "MZ0709", "MZ0710", "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802",
-    "MZ0803", "MZ0804", "MZ0805", "MZ0806", "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811",
-    "MZ0812",
+    "MZ0201", "MZ0202", "MZ0203", "MZ0209", "MZ0304", "MZ0305", "MZ0307", "MZ0308", "MZ0309",
+    "MZ0312", "MZ0313", "MZ0401", "MZ0402", "MZ0403", "MZ0404", "MZ0405", "MZ0406", "MZ0408",
+    "MZ0409", "MZ0410", "MZ0501", "MZ0502", "MZ0601", "MZ0602", "MZ0603", "MZ0605", "MZ0606",
+    "MZ0611", "MZ0612", "MZ0613", "MZ0702", "MZ0703", "MZ0705", "MZ0706", "MZ0709", "MZ0710",
+    "MZ0713", "MZ0715", "MZ0716", "MZ0801", "MZ0802", "MZ0803", "MZ0804", "MZ0805", "MZ0806",
+    "MZ0807", "MZ0808", "MZ0809", "MZ0810", "MZ0811", "MZ0812",
 ];
 
 #[test]
