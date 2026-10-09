@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security
+
+- **CI: `dtolnay/rust-toolchain` is pinned to a commit on its `master` history (`e2a55d2`, tag `v1`), with `toolchain: stable` passed explicitly.** The old pin, `89b1218` (`# stable`), was a commit on the action's `stable` branch, which its author regenerates by force-push; the 2026-10-08 regeneration orphaned it, and zizmor's `impostor-commit` audit (`workflow audit` job) then failed every pull request with four high findings. `master` is not force-pushed, so its commits stay reachable. The two commits' `action.yml` differ only in `toolchain` being required on `master` (no default), and the new head includes the action's own input-handling hardening (its PR #187). No compiler or test change.
+
 ### Changed — release prep: C6 on `main`, every Tier 1 row ✅, M1 met (2026-10-08)
 
 - **`LANGUAGE-TRACKER.md`:** row C6 (text operations) is ✅. Its "Done when" is the owner's decision of 2026-10-08 (RFC-0013 §20 Q20): the operations exist as built-in methods with tests, each registered in the language harness. The rest of C6 (#106) reaches `main` with this release, and the row says so. With C1–C5 and C7–C10 already ✅, every Tier 1 row is ✅, so M1 ("all of Tier 1 ✅", #69) is met on `main` once this release merges. The public-suites row is still blocked, by the standard library (P2) alone. The comparison table's text row is ✅, and its line about "two ✅ rows" no longer says two.
