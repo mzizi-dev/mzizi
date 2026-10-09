@@ -377,7 +377,7 @@ On a `mz` built from `origin/staging` at `a3f6aba` (2026-10-09), `mz check` on t
 ### 3.3 The tracker and the follow-ups disagree
 
 RFC-0013 §18.2 lists five follow-ups that Tier 1 needs: C3 labels, C2 unused bindings, C4 options, C9
-`via`, and C5 wrapping. §3.2 shows four of them are not built. The tracker still marks C2, C3, C4, C5 and
+`via`, and C5 wrapping. §3.2 shows all five are not built. The tracker still marks C2, C3, C4, C5 and
 C9 ✅, and says in its own evidence column what is not built (for example "Not built: `option(T)` written
 as a type"). A row's ✅ is its "Done when", and C3's "Done when" (a function that calls another with
 arguments and returns a typed value) is met by positional calls. So the tracker is consistent with itself,
@@ -869,7 +869,7 @@ the wave that builds it.**
 12. **`export c` and the C ABI.** Not in M2 (§6.8, this RFC), because it needs `unsafe`. Confirm, or ask for it in M2 with
     its own `unsafe` rule?
 13. **The Tier 1 follow-ups.** The tracker marks C2, C3, C4, C5 and C9 ✅, while RFC-0013 §18.2 lists them as unbuilt and §3.2
-    confirms four are. Should M2 require them, which is Wave 6 (§3.3 option (a), this RFC's recommendation), or should P3's
+    confirms all five are. Should M2 require them, which is Wave 6 (§3.3 option (a), this RFC's recommendation), or should P3's
     "Done when" be narrowed (option (b))? The tracker's wording is the owner's, as RFC-0013 §20 Q20 was.
 14. **Source map.** Markers in the generated Rust (§5.1, this RFC), or a separate map file in the package?
 15. **Time.** UTC only, with `now`, `sleep` and `iso` (§2.1). Time zones need a database and so a crate. Accept UTC only for M2?
