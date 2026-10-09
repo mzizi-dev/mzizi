@@ -244,11 +244,16 @@ digit. Digits followed by `.` and a letter or `_` are an `int` literal and a met
 Digits followed by `.` and anything else (a space, an operator, the end of the line) are
 `MZ0914` with the `exact` fix appending `0`.
 
-**`int`'s minimum has no literal.** `-` is always the unary operator (§3.4), so
-`-9223372036854775808` is `-` applied to `9223372036854775808`, which does not fit and is
-`MZ0103`. The minimum is written `-9223372036854775807 - 1`, as in C. Folding a `-` into the
-literal was rejected, because it would make `-2.pow(2)` read `(-2).pow(2)`, which is `4`,
-where every incumbent reads `-(2.pow(2))`, which is `-4`.
+**`int`'s minimum is the one literal a unary `-` may take.** `-` is the unary operator (§3.4),
+and `-9223372036854775808` is `int`'s minimum: the parser reads a `-` applied directly to the
+literal `9223372036854775808` as the value `i64::MIN`, and lowers it to `i64::MIN`. Only the
+unary `-` before the literal is read so, and only when no postfix method follows the literal. The
+literal alone, after a binary `-` (`x -9223372036854775808`), under a second `-`
+(`- -9223372036854775808`), or before a method (`-9223372036854775808.abs()`) is `MZ0103`,
+because there the literal is not the minimum's sign. Folding a `-` into any other literal was
+rejected, because it would make `-2.pow(2)` read `(-2).pow(2)`, which is `4`, where every
+incumbent reads `-(2.pow(2))`, which is `-4`; the postfix rule is why the minimum keeps its
+`MZ0103` before a method. The minimum can also be written `-9223372036854775807 - 1`, as in C.
 
 ### 3.2 Arithmetic
 
@@ -1835,7 +1840,7 @@ The survey amendment widens `MZ0962` without changing its row: `.get(i)` and `.g
 only when every argument is a literal, a name or a path (§6.5).
 
 **Existing codes reused, so one kind of mistake keeps one code wherever it is made:** `MZ0101`
-(a camelCase name, now also in function bodies), `MZ0103` (an `int` literal too large, including `int`'s minimum written as one, §3.1), `MZ0104`
+(a camelCase name, now also in function bodies), `MZ0103` (an `int` literal too large, other than `int`'s minimum under a unary `-`, §3.1), `MZ0104`
 (a character Mzizi does not use, for what is left after the operators above), `MZ0105` (a type
 spelt with symbols), `MZ0106` (a spread, with the `exact` fix `p with (…)` in a program, §11.1), `MZ0407` (`if`, now also in function bodies), `MZ0701`
 (an unknown type), `MZ0704` (a duplicate record, field or enum), `MZ0207` and `MZ0208` (an `end fn` with the wrong name, or a bare `end` closing a `fn`, §1), `MZ0308` (a record body line that is neither a field nor, in a program, a method), `MZ0707` (a name bound nowhere),
@@ -2051,7 +2056,7 @@ in `compiler/tests/program.rs`; nothing measured.
   the parameter still counts toward the function's arity and the function is still
   declared, so a call is not also `MZ0905`, and a use of the keyword as that name is not
   also `MZ0917`. An `int` literal too large (`MZ0103`) reads as an error value, not as a
-  missing one. `MZ0911` is built for a line that starts with `//` or `#`, with the `exact`
+  missing one, except the minimum under a unary `-` (§3.1), which is a value. `MZ0911` is built for a line that starts with `//` or `#`, with the `exact`
   fix `##` (a `guess` when code follows the marker with no space, as in a `#!` shebang or `#[inline]`), and a file that opens with one is still read as a program; `/* … */` and a
   comment after code on the same line are not built.
 - **Not built:** `mz run --agent` (it exits 2 and says so), a trap or `MZ0990` as NDJSON,

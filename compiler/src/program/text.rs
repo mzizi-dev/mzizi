@@ -59,6 +59,22 @@ fn length_compared(e: &Expr) -> Option<(&Expr, bool)> {
     }
 }
 
+/// The text `span` covers, as the source spells it. A camelCase name is read as its
+/// snake_case form by the parser, so the message names it from the source instead.
+/// `None` when the span is not on one line of `src`.
+pub(super) fn spelled(src: &str, span: Span) -> Option<String> {
+    if span.start_line != span.end_line {
+        return None;
+    }
+    let line = src
+        .lines()
+        .nth((span.start_line as usize).checked_sub(1)?)?;
+    let chars: Vec<char> = line.chars().collect();
+    let from = (span.start_col as usize).checked_sub(1)?;
+    let to = (span.end_col as usize).checked_sub(1)?;
+    chars.get(from..to).map(|c| c.iter().collect())
+}
+
 impl FnCheck<'_> {
     /// Remember that `e` stands where `x is ""` would need parentheses: the operand of a
     /// comparison or of `not`. Only an `is_empty()` call is remembered, so the list stays
@@ -160,11 +176,14 @@ impl FnCheck<'_> {
             return None;
         }
         let r = receiver_text(&args[0]);
+        // The name as the author wrote it (`parseInt`), not the snake_case form the parser
+        // reads (`parse_int`), which is what `name` is.
+        let written = spelled(self.src, name_span).unwrap_or_else(|| name.to_string());
         let method = match name {
             "len" => {
                 let fixed = format!("{r}.length()");
                 let say = format!(
-                    "`len(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
+                    "`{written}(…)` is not a Mzizi function — an operation on a value is a method: `{fixed}`"
                 );
                 if args[0].has_error() {
                     self.err("MZ0962", at, say);
@@ -179,7 +198,7 @@ impl FnCheck<'_> {
         };
         let fixed = format!("{r}.{method}()");
         let say = format!(
-            "`{name}(…)` is not a Mzizi function — text is read by a method that answers `none` when it is no number: `{fixed}`"
+            "`{written}(…)` is not a Mzizi function — text is read by a method that answers `none` when it is no number: `{fixed}`"
         );
         if args[0].has_error() {
             self.err("MZ0962", name_span, say);
@@ -370,7 +389,8 @@ impl FnCheck<'_> {
         } else {
             (name_span, to.to_string())
         };
-        let say = format!("`.{name}` is another language's — Mzizi's text method is `.{to}`");
+        let written = spelled(self.src, name_span).unwrap_or_else(|| name.to_string());
+        let say = format!("`.{written}` is another language's — Mzizi's text method is `.{to}`");
         if fixed.is_empty() || e.has_error() || !fits {
             self.err("MZ0962", name_span, say);
         } else {

@@ -11,7 +11,7 @@
 its compiler (`mz`, written in Rust), a research prototype in Phase 0 of the Mzizi research
 charter. Its one goal is building Mzizi as a language that stands against the best existing
 language for each kind of task ([`CHARTER.md`](./CHARTER.md) §1, v0.4). "Compiles to Rust" is
-the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` in RFC-0013's foundation slice, its numbers, its control flow and its errors (`int`, `float`, `bool` and `text`, enums with columns, functions, `let` / `var`, `when` / `else when`, `match`, `for each` over `range(a, to = b)`, `while`, `break`, `continue`, `result(T, E)`, `return error(e)`, `try`) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
+the design, not the state: `mz build` lowers a `service` to a local Rust + axum package, and `mz build` and `mz run` lower a `program` with Tier 1 as built (C1–C10 in [`LANGUAGE-TRACKER.md`](./LANGUAGE-TRACKER.md): `int`, `float`, `bool` and `text`, `list`, `map` and `set`, `option` read with `otherwise`, records with methods, enums with columns, functions, `let` / `var`, `when` / `else when`, `match`, `for each`, `while`, `break`, `continue`, `result(T, E)`, `return error(e)`, `try`, and the number and text methods; not RFC-0013 §18.2's unbuilt follow-ups, such as `option(T)` written as a type) to a dependency-free Rust package; no component lowers, and there is no Workers, WebAssembly or Containers target. The harness is the core of the language
 ([RFC-0012](./design/RFC-0012-harness.md), a draft). `benchmarks/harness/` is a different
 thing, always called "the benchmark harness". It is **not** the component registry
 (`mzizi-dev/mzizi-registry`) and does not depend on it or any other repo in the org: this
@@ -51,7 +51,7 @@ for it in the commit message against that standing decision.
 
 ```bash
 cd compiler
-cargo test                                                              # 629 tests (760 in the workspace)
+cargo test                                                              # 634 tests (765 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
@@ -124,6 +124,15 @@ an agent consuming this compiler should target: whole-program NDJSON, determinis
 one diagnostic per real error, fixes tagged `exact` or `guess` — see RFC-0001 §4. `mz fix`
 applies every `exact` fix in one pass. The `file` key is the path `mz` was given; the benchmark
 runner normalises it to the bare file name before a model sees it.
+
+**Exit status is the interface.** `mz check`, `mz contract` and the other subcommands exit 0
+clean (warnings allowed), 1 for errors or a failed contract assertion, and 2 for a usage or I/O
+problem. `mz` takes exactly one file. `mz run` is the exception, because 1 belongs to the program
+it runs: it exits with the program's own status, which is 0, 101 for a trap (`MZ0991`) or a panic
+on `main`'s thread, 141 when standard output is closed, or 128 plus the signal that ended it; 1
+when `main` returns an error (`MZ0992`); 3 when the check failed and nothing ran, or the lowered
+Rust did not compile (`MZ0990`); and 2 for a usage, environment or I/O problem (`--agent`, a file
+that is not a `program`, a `cargo` failure that is not `rustc` rejecting the lowered code).
 
 The benchmark's kill-criterion driver (`benchmarks/kill-criterion/run.sh`) needs a model
 endpoint, and CI does not run it. `benchmarks/kill-criterion/check-task.sh <task dir>` is
