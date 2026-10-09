@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0014, Tier 2 design, a draft (2026-10-09, Refs #110)
+
+- **`design/RFC-0014-tier2.md`** designs Tier 2 of `LANGUAGE-TRACKER.md` (P1–P6 in full, the M2 goal; P7–P12 reserved). It covers modules and imports across files (`module`, `import`, `public`), the standard library as a closed list with std-only modules and one crate for HTTP, lowering and runnable builds, errors mapped back to `.mz` by markers in the generated Rust, and Rust crates through an exact pin and a hand-written companion checked by `rustc`. It opens the `MZ1001`–`MZ1099` family and proposes six waves with their tests. **Draft design: nothing in it is implemented.** `mz check` does not accept `import`, `module`, `public` or `extern` today, and no test reads it. It asks the owner nineteen questions, among them the import word (RFC-0007 D7), the standard-library list (RFC-0007 G2.10 and the tracker's P2 row differ), and whether M2 requires the Tier 1 follow-ups that RFC-0013 §18.2 lists as unbuilt.
+- **`LANGUAGE-TRACKER.md`:** rows P1–P6 name RFC-0014 as their design, as drafts. No mark changed; P1–P6 remain ❌, 🟡 or 📝 as they were.
+- **`README.md` and `design/ROADMAP.md`:** RFC-0014 is listed beside RFC-0013.
+
 ### Security
 
 - **CI: `dtolnay/rust-toolchain` is pinned to a commit on its `master` history (`e2a55d2`, tag `v1`), with `toolchain: stable` passed explicitly.** The old pin, `89b1218` (`# stable`), was a commit on the action's `stable` branch, which its author regenerates by force-push; the 2026-10-08 regeneration orphaned it, and zizmor's `impostor-commit` audit (`workflow audit` job) then failed every pull request with four high findings. `master` is not force-pushed, so its commits stay reachable. The two commits' `action.yml` differ only in `toolchain` being required on `master` (no default), and the new head includes the action's own input-handling hardening (its PR #187). No compiler or test change.
