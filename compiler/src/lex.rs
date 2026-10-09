@@ -29,6 +29,10 @@ pub enum Tok {
     /// the line gets no second diagnostic. A component or a service drops the literal, as
     /// before.
     BadInt,
+    /// An integer literal too large for `int` in a program, with its digits as written and
+    /// underscores dropped. The lexer reports `MZ0103` for it. The parser reads the one that
+    /// is `int`'s minimum, under a unary `-` (RFC-0013 §3.1), and cancels that report.
+    TooBig(String),
     /// A doc comment's text, `##` stripped.
     Doc(String),
     /// `:`
@@ -464,7 +468,7 @@ fn program_number(
                     span,
                     format!("`{written}` does not fit in an int"),
                 ));
-                (Tok::BadInt, j - i)
+                (Tok::TooBig(fixed), j - i)
             }
         }
     }
