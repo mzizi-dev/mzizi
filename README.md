@@ -19,7 +19,7 @@ component model, the way React is JavaScript's.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 760 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 765 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 **What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
 
@@ -76,7 +76,7 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (760 tests in 27 suites, gated in CI; 629 of them in the compiler crate):**
+**Built and tested (765 tests in 29 suites, gated in CI; 634 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
@@ -93,7 +93,7 @@ returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-00
 option read with `otherwise`, `in`, `for each` over a list, and the named folds, lowered to
 `Vec`, `BTreeMap` and `BTreeSet`), its text (RFC-0013 §10, C6: the text methods, `s[i]`, `slice`, `find`, `split`, `chars`, `parse_int` and `parse_float`, lowered to Rust), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is 33,438 lines.
+task, B1. `compiler/src` is 33,518 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
@@ -147,7 +147,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 629 tests; the compiler crate has zero dependencies
+cargo test                                                           # 634 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check

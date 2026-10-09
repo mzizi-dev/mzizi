@@ -93,6 +93,7 @@ pub fn check_records(
     enums: &[EnumDecl],
     fns: &BTreeMap<&str, &FnDecl>,
     file: &str,
+    src: &str,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut seen: Vec<&str> = Vec::new();
@@ -214,12 +215,12 @@ pub fn check_records(
     }
     for r in records {
         for m in &r.methods {
-            let mut cx = FnCheck::new(m, fns, enums, records, file);
+            let mut cx = FnCheck::new(m, fns, enums, records, file, src);
             cx.receiver = Some(intern(&r.name));
             cx.run();
             diags.append(&mut cx.diags);
         }
-        diags.extend(check_invariants(r, fns, enums, records, file));
+        diags.extend(check_invariants(r, fns, enums, records, file, src));
     }
     diags
 }
@@ -266,6 +267,7 @@ fn check_invariants(
     enums: &[EnumDecl],
     records: &[RecordDecl],
     file: &str,
+    src: &str,
 ) -> Vec<Diagnostic> {
     if r.always.is_empty() {
         return Vec::new();
@@ -287,7 +289,7 @@ fn check_invariants(
         end_span: r.name_span,
         skipped: false,
     };
-    let mut cx = FnCheck::new(&shape, fns, enums, records, file);
+    let mut cx = FnCheck::new(&shape, fns, enums, records, file, src);
     cx.in_always = true;
     for p in &shape.params {
         cx.bind(&p.name, Kind::Param, p.ty.ty, None);

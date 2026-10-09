@@ -504,6 +504,49 @@ fn float_conditions_types_and_the_bindings_they_repair() {
 
 // ------------------------------------------------------------------- lowering
 
+// ------------------------------------------------------------- int's minimum
+
+/// RFC-0013 §3.1: `-9223372036854775808` is `int`'s minimum, read under a unary `-` and
+/// nowhere else. A postfix method on it, a binary minus, a second minus and a bare literal all
+/// stay `MZ0103`.
+#[test]
+fn the_int_minimum_is_read_under_a_unary_minus_and_nowhere_else() {
+    clean(&wrap(
+        "let m: int = -9223372036854775808\nprint(m)\nprint(-9223372036854775808)\nprint(-9223372036854775808 + 1)\nprint(\"{-9223372036854775808}\")\nprint(-9223372036854775808 is -9223372036854775808)",
+    ));
+    for body in [
+        "print(9223372036854775808)",
+        "let x = 1\nprint(x -9223372036854775808)",
+        "let x = 1\nprint(x - -9223372036854775808)",
+        "print(-9223372036854775808.abs())",
+        "print(- -9223372036854775808)",
+        "print(\"{9223372036854775808}\")",
+    ] {
+        one(&wrap(body), "MZ0103");
+    }
+}
+
+/// The minimum lowers to `i64::MIN`, a `match` on it is an arm of that path, and `mz run`
+/// prints it, with the trap on the next `int` operation that overflows.
+#[test]
+fn the_int_minimum_lowers_to_i64_min_and_runs() {
+    let src = "program t\n\n  fn main\n    let m: int = -9223372036854775808\n    print(m)\n    print(\"{-9223372036854775808}\")\n    print(-9223372036854775808 + 1)\n    print(kind(m))\n    print(kind(5))\n  end fn main\n\n  fn kind(n: int): text\n    match n\n      case -9223372036854775808\n        return \"min\"\n      else\n        return \"other\"\n    end\n  end fn kind\n\nend program t\n";
+    let main = main_rs(src);
+    assert!(main.contains("let m: i64 = i64::MIN;"), "{main}");
+    assert!(main.contains("i64::MIN => {"), "{main}");
+    assert!(!main.contains("9223372036854775808i64"), "{main}");
+    let Some((stdout, stderr, status)) = run_program("int_minimum.mz", src) else {
+        return;
+    };
+    assert_eq!(status, Some(0), "stderr: {stderr}");
+    assert_eq!(
+        stdout,
+        "-9223372036854775808\n-9223372036854775808\n-9223372036854775807\nmin\nother\n"
+    );
+}
+
+// ------------------------------------------------------------------- lowering
+
 fn main_rs(src: &str) -> String {
     let p = program(src);
     mzizi_lang_compiler::run::lower(&p, "t.mz").files[1]
