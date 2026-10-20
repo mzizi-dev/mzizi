@@ -2301,7 +2301,7 @@ fn describe(tok: &Tok) -> String {
         Tok::Str(s) => format!("string `\"{s}\"`"),
         Tok::Int(v) => format!("`{v}`"),
         Tok::Float(v) => format!("`{}`", crate::numbers::mz_float_layout(*v, true)),
-        Tok::BadInt => "a number already reported".to_string(),
+        Tok::BadInt | Tok::TooBig(_) => "a number already reported".to_string(),
         Tok::Doc(_) => "a doc comment".to_string(),
         Tok::Colon => "`:`".to_string(),
         Tok::Equals => "`=`".to_string(),

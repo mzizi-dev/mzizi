@@ -19,7 +19,7 @@ component model, the way React is JavaScript's.
 ![Compiler dependencies](https://img.shields.io/badge/compiler_dependencies-none-informational?style=flat-square)
 
 **Crate:** `mzizi-lang-compiler` 0.0.0 (`publish = false`, no release) | **Binary:** `mz` |
-**Tests:** 760 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
+**Tests:** 765 (`cargo test --workspace`) | **Phase:** 0, two pilots, kill criterion not yet run
 
 **What still has to be built:** [LANGUAGE-TRACKER.md](./LANGUAGE-TRACKER.md), the tracker of every capability Mzizi needs, against Python, Go, C++, TypeScript and Rust.
 
@@ -27,8 +27,7 @@ component model, the way React is JavaScript's.
 
 Every language or framework that won, won by being unmistakably better at one thing first — not by
 matching every incumbent's feature set on day one. TypeScript made JavaScript better and still
-runs as JavaScript. React was Facebook's fix for one rendering problem. Svelte bet on a single contrarian idea years before anyone else took it
-seriously. Mzizi's bet: **the actual bottleneck of 2026-and-beyond development is an agent
+runs as JavaScript. React was Facebook's fix for one rendering problem. Mzizi's bet: **the actual bottleneck of 2026-and-beyond development is an agent
 iterating against a compiler in a tight loop, thousands of times a session** — and no
 existing language, Rust included, was designed with that reader in mind. Every syntax
 decision, every error message, every unit of the intermediate representation is aimed at a
@@ -76,7 +75,7 @@ which Mzizi also owns, and which holds the components that support the language.
 Here is exactly what exists, what doesn't, and what would have to be true for the bet above
 to pay off.
 
-**Built and tested (760 tests in 27 suites, gated in CI; 629 of them in the compiler crate):**
+**Built and tested (765 tests in 29 suites, gated in CI; 634 of them in the compiler crate):**
 the lexer, the recovering parser, the name and type resolver, the agent diagnostic protocol
 (`mz check --agent`), `mz fix` (every `exact` fix in one pass), the content-addressed IR,
 `mz outline`, contract evaluation (`mz contract`), nine primitives written in Mzizi itself,
@@ -93,7 +92,7 @@ returning a result, lowered to Rust's `Result` and `?`), its collections (RFC-00
 option read with `otherwise`, `in`, `for each` over a list, and the named folds, lowered to
 `Vec`, `BTreeMap` and `BTreeSet`), its text (RFC-0013 §10, C6: the text methods, `s[i]`, `slice`, `find`, `split`, `chars`, `parse_int` and `parse_float`, lowered to Rust), and the Phase 0 benchmark harness,
 runner, pilot tasks, a `mzizi-be` arm, the backend probe crate (`mzprobe`) and one backend
-task, B1. `compiler/src` is 33,438 lines.
+task, B1. `compiler/src` is 33,518 lines.
 
 **What contract evaluation does and doesn't do:** `mz contract <file>` evaluates a
 component's own `contract` block against its own declarations and exits 1 if an assertion
@@ -147,7 +146,7 @@ narrower claim that replaced it.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
-cargo test                                                           # 629 tests; the compiler crate has zero dependencies
+cargo test                                                           # 634 tests; the compiler crate has zero dependencies
 cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
 cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
 cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check
@@ -177,19 +176,20 @@ mzizi/
 
 ## The RFCs
 
-| RFC                                                                            | What it settles                                                                                                                                            |
-| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [0001 — syntax](./design/RFC-0001-syntax.md)                                   | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.                                                               |
-| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md)     | The design-target correction: small models, not frontier ones. Why the runtime is the product.                                                             |
-| [0003 — IR](./design/RFC-0003-ir.md)                                           | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them.                                                     |
-| [0004 — test topology](./design/RFC-0004-test-topology.md)                     | What testing is public vs. held-out, and the dependency rule that keeps forks working.                                                                     |
-| [0006 — contracts](./design/RFC-0006-contracts.md)                             | The contract clause grammar, what `mz contract` proves, and what it can't.                                                                                 |
-| [0007 — gap register](./design/RFC-0007-gap-register.md)                       | What the charter's scope needs that the language and compiler lack, checked against the code, and the order to build it in. Draft.                         |
-| [0008 — types, lists, records](./design/RFC-0008-types-collections-records.md) | Types, lists, records, options and `for each`, with a resolver that can say no.                                                                            |
-| [0009 — comparison benchmark](./design/RFC-0009-comparison-benchmark.md)       | The arms, the task families, the best-incumbent kill criterion and the publication rules.                                                                  |
-| [0010 — contracts everywhere](./design/RFC-0010-contracts-everywhere.md)       | Contracts on functions, handlers, services and the standard library. Draft; nothing implemented.                                                           |
-| [0012 — the language harness](./design/RFC-0012-harness.md)                    | The language harness, the spine of the language: one entry per feature, what an agent reads, the agent protocol and the plugin host. Draft; mostly design. |
-| [0013 — the core language](./design/RFC-0013-core-language.md)                 | Tier 1 (C1–C10): a `program` file kind, expressions, bindings, functions, control flow, errors and `mz run`. Draft; Wave 0, C1, C4, C5 and C9 implemented. |
+| RFC                                                                            | What it settles                                                                                                                                                                                         |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [0001 — syntax](./design/RFC-0001-syntax.md)                                   | The nine failure modes an agent hits writing Rust UI code, and the syntax that answers each.                                                                                                            |
+| [0002 — runtime and prior art](./design/RFC-0002-runtime-and-prior-art.md)     | The design-target correction: small models, not frontier ones. Why the runtime is the product.                                                                                                          |
+| [0003 — IR](./design/RFC-0003-ir.md)                                           | The eight barriers an agent hits _reading_ a codebase, and the content-addressed IR that answers them.                                                                                                  |
+| [0004 — test topology](./design/RFC-0004-test-topology.md)                     | What testing is public vs. held-out, and the dependency rule that keeps forks working.                                                                                                                  |
+| [0006 — contracts](./design/RFC-0006-contracts.md)                             | The contract clause grammar, what `mz contract` proves, and what it can't.                                                                                                                              |
+| [0007 — gap register](./design/RFC-0007-gap-register.md)                       | What the charter's scope needs that the language and compiler lack, checked against the code, and the order to build it in. Draft.                                                                      |
+| [0008 — types, lists, records](./design/RFC-0008-types-collections-records.md) | Types, lists, records, options and `for each`, with a resolver that can say no.                                                                                                                         |
+| [0009 — comparison benchmark](./design/RFC-0009-comparison-benchmark.md)       | The arms, the task families, the best-incumbent kill criterion and the publication rules.                                                                                                               |
+| [0010 — contracts everywhere](./design/RFC-0010-contracts-everywhere.md)       | Contracts on functions, handlers, services and the standard library. Draft; nothing implemented.                                                                                                        |
+| [0012 — the language harness](./design/RFC-0012-harness.md)                    | The language harness, the spine of the language: one entry per feature, what an agent reads, the agent protocol and the plugin host. Draft; mostly design.                                              |
+| [0013 — the core language](./design/RFC-0013-core-language.md)                 | Tier 1 (C1–C10): a `program` file kind, expressions, bindings, functions, control flow, errors and `mz run`. Draft; Wave 0, C1, C4, C5 and C9 implemented.                                              |
+| [0014 — Tier 2](./design/RFC-0014-tier2.md)                                    | Tier 2 (P1–P6, the M2 goal): modules and imports, the standard library as a closed list, lowering, runnable builds, errors mapped to `.mz`, and Rust crates and companions. Draft; nothing implemented. |
 
 RFC-0005 is reserved (`mzizi-dev/agent-tools#76`, private — not linked, since a link to a
 private repo 404s for anyone without access) but not yet written. RFC-0011 is claimed by the

@@ -268,9 +268,9 @@ impl Lower<'_> {
                 },
                 _,
             ) => self.path(enum_name, name),
-            (ExprKind::Int(i), _) => format!("{i}i64"),
+            (ExprKind::Int(i), _) => super::int_literal(*i),
             (ExprKind::Unary { op: UnOp::Neg, .. }, _) => match fold(v) {
-                Some(Ok(i)) => format!("{i}i64"),
+                Some(Ok(i)) => super::int_literal(i),
                 _ => "_".to_string(),
             },
             (ExprKind::Text(parts), _) => {

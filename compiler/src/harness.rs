@@ -919,7 +919,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §3.1",
         NONE,
         ALL_KINDS,
-        "an integer literal that does not fit in an `int`",
+        "an integer literal that does not fit in an `int`. The one that is the minimum, `9223372036854775808`, is read as the value only under a unary `-` (`-9223372036854775808`); any other use of it is this code",
         "program t\n  fn main\n    print(99999999999999999999)\n  end fn main\nend program t\n",
     ),
     code(
@@ -1702,8 +1702,8 @@ fn unop_entry(op: UnOp) -> (&'static str, &'static str, &'static str, &'static s
 fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static str)> {
     match t {
         Ty::Int => Some((
-            &["int", "42", "-7"],
-            "A signed 64-bit integer. Overflow and division by zero trap when the program runs (exit 101, a line naming the `.mz` position); a constant one is an error at check time. An `int` never mixes with a `float`: `i.to_float()` converts.",
+            &["int", "42", "-7", "-9223372036854775808"],
+            "A signed 64-bit integer. Overflow and division by zero trap when the program runs (exit 101, a line naming the `.mz` position); a constant one is an error at check time. An `int` never mixes with a `float`: `i.to_float()` converts. The minimum is written `-9223372036854775808`: a unary `-` on that literal is its value, and the literal alone or under any other operator or method is `MZ0103` (RFC-0013 §3.1).",
             "RFC-0013 §4.1, §4.3",
         )),
         Ty::Float => Some((

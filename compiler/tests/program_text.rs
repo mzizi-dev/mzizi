@@ -273,6 +273,41 @@ fn text_conversions_and_arrays_from_other_languages_are_guesses() {
     );
 }
 
+/// A method spelt in another language's case is named as written too: `.toUpperCase`, not
+/// the lexer's `.to_upper_case`, and the fix kind is unchanged (exact for `toUpperCase`, a
+/// guess for `indexOf`, whose `-1` is Mzizi's `none`).
+#[test]
+fn an_other_languages_method_is_named_as_written() {
+    let d = one(&wrap("let s = \"abc\"\nprint(s.toUpperCase())"), "MZ0962");
+    assert!(d.say.contains("`.toUpperCase`"), "{d:#?}");
+    assert!(!d.say.contains("to_upper_case"), "{d:#?}");
+    let d = one(
+        &wrap("let s = \"abc\"\nprint(s.indexOf(\"b\") otherwise 0)"),
+        "MZ0962",
+    );
+    assert!(d.say.contains("`.indexOf`"), "{d:#?}");
+    assert!(!d.say.contains("index_of"), "{d:#?}");
+}
+
+/// The other languages' spelling is named as the author wrote it (RFC-0013 §16): the lexer
+/// reads `parseInt` as `parse_int`, and the message keeps `parseInt(…)`, not `parse_int(…)`.
+#[test]
+fn an_other_languages_spelling_is_named_as_written() {
+    let d = one(
+        &wrap("let s = \"12\"\nprint(parseInt(s) otherwise 0)"),
+        "MZ0962",
+    );
+    assert!(d.say.contains("`parseInt(…)`"), "{d:#?}");
+    assert!(!d.say.contains("parse_int(…)"), "{d:#?}");
+    let d = one(
+        &wrap("let s = \"1.5\"\nprint(parseFloat(s) otherwise 0.0)"),
+        "MZ0962",
+    );
+    assert!(d.say.contains("`parseFloat(…)`"), "{d:#?}");
+    let d = one(&wrap("let s = \"12\"\nprint(int(s) otherwise 0)"), "MZ0962");
+    assert!(d.say.contains("`int(…)`"), "{d:#?}");
+}
+
 /// The spellings of the option methods (`indexOf`, `substring`) get their guesses, one
 /// diagnostic each: the Mzizi form answers an option, so the spelling is not reported again
 /// at every use of its answer.

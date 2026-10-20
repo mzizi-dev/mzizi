@@ -256,7 +256,7 @@ pub const CONTEXTUAL_WORDS: &[&str] = &[
 pub const BUILT_IN_NAMES: &[&str] = &["int", "bool", "text", "list", "option", "print", "range"];
 
 /// Check a program. Every diagnostic it finds, in no particular order (the report sorts).
-pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
+pub fn check(p: &Program, file: &str, src: &str) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let mut fns: BTreeMap<&str, &FnDecl> = BTreeMap::new();
     let mut mains = Vec::new();
@@ -363,9 +363,11 @@ pub fn check(p: &Program, file: &str) -> Vec<Diagnostic> {
     for e in &p.enums {
         errors::check_columns(e, file, &mut diags);
     }
-    diags.extend(records::check_records(&p.records, &p.enums, &fns, file));
+    diags.extend(records::check_records(
+        &p.records, &p.enums, &fns, file, src,
+    ));
     for f in &p.fns {
-        let mut cx = FnCheck::new(f, &fns, &p.enums, &p.records, file);
+        let mut cx = FnCheck::new(f, &fns, &p.enums, &p.records, file, src);
         cx.run();
         diags.append(&mut cx.diags);
     }
@@ -422,6 +424,8 @@ struct Site {
 struct FnCheck<'a> {
     f: &'a FnDecl,
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
+    /// The source text, for the spelling a name was written in (`MZ0962`'s `parseInt(…)`).
+    src: &'a str,
     /// The program's enums, whose variants a bare name may be (RFC-0008 §5).
     enums: &'a [EnumDecl],
     /// The program's records, whose fields and methods a value of their type has (§11).
@@ -463,11 +467,13 @@ impl<'a> FnCheck<'a> {
         enums: &'a [EnumDecl],
         records: &'a [RecordDecl],
         file: &'a str,
+        src: &'a str,
     ) -> Self {
         let mut cx = FnCheck {
             f,
             fns,
             enums,
+            src,
             records,
             receiver: None,
             in_always: false,
@@ -1089,7 +1095,12 @@ impl<'a> FnCheck<'a> {
                     (Some(v), Some(r)) => {
                         let t = self.expr_want(v, r.ty);
                         let how = || format!("`{}` returns {}", f.signature(), r.ty.name());
-                        if self.unhandled(v, t, how) {
+                        if r.ty.has_error() {
+                            // A return type the signature could not build is reported there:
+                            // `option(T)` (`MZ0919`), or a type naming an unknown type (`MZ0701`).
+                            // The value is not held to it, so no `MZ0710` advises a default for a
+                            // type that cannot be written; it is checked once the signature builds.
+                        } else if self.unhandled(v, t, how) {
                             // Reported: a result returned where its type does not fit.
                         } else if !t.has_error() && !r.ty.has_error() && t != r.ty {
                             self.err(

@@ -65,7 +65,7 @@ cd compiler
 
 cargo fmt -- --check                        # formatting, not negotiable
 cargo clippy --all-targets -- -D warnings   # every lint is an error, including in tests
-cargo test                                  # 629 tests in the compiler crate
+cargo test                                  # 634 tests in the compiler crate
 
 # The ones that are the point — the shipped binary, not the test harness:
 cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz

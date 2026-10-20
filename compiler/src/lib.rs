@@ -63,7 +63,7 @@ fn front_end_program(
     let resolved = match &program {
         Some(parse::Program::Component(component)) => resolve::resolve(component, file),
         Some(parse::Program::Service(s)) => service::check(s, file),
-        Some(parse::Program::Program(p)) => program::check(p, file),
+        Some(parse::Program::Program(p)) => program::check(p, file, src),
         None => Vec::new(),
     };
     // The lexer reports a camelCase word as MZ0101 and hands on its snake_case form.

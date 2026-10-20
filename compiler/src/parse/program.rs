@@ -106,18 +106,25 @@ pub(super) fn parse(
         diags: Vec::new(),
         skipped: Vec::new(),
         suppress: Vec::new(),
+        folded: Vec::new(),
         failed: false,
         skipped_stray: false,
         nest: 0,
         too_deep: false,
     };
     let program = p.program();
+    // The minimum read under a unary `-` (§3.1) is no error, so its `MZ0103` goes, wherever
+    // the literal was lexed: the program's own lexer, or an interpolation's.
+    let folded = std::mem::take(&mut p.folded);
+    let is_folded = |d: &Diagnostic| d.code == "MZ0103" && folded.contains(&d.span);
     lex_diags.retain(|d| {
         !p.skipped
             .iter()
             .any(|&(from, to)| (from..=to).contains(&d.span.start_line))
             && !p.suppress.contains(&d.span)
+            && !is_folded(d)
     });
+    p.diags.retain(|d| !is_folded(d));
     lex_diags.append(&mut p.diags);
     program
 }
@@ -172,6 +179,8 @@ struct P {
     skipped: Vec<(u32, u32)>,
     /// Lexer diagnostics a repair here supersedes (`fmt.Println`'s `MZ0101`).
     suppress: Vec<Span>,
+    /// The literals read as `int`'s minimum under a unary `-` (§3.1): their `MZ0103` goes.
+    folded: Vec<Span>,
     /// Set when the current line already has a diagnostic, so its leftovers are not a
     /// second one.
     failed: bool,
@@ -2162,6 +2171,24 @@ impl P {
     fn unary_expr(&mut self) -> Expr {
         let at = self.span();
         if matches!(self.peek(), Tok::Op("-")) {
+            // `-9223372036854775808` is `int`'s minimum (RFC-0013 §3.1). It folds only where
+            // the `-` is unary and nothing postfix follows (a method binds tighter than the
+            // `-`, so `-2.pow(2)` is `-(2.pow(2))`), and never under a second `-`.
+            let after_minus = self.pos > 0 && matches!(self.toks[self.pos - 1].kind, Tok::Op("-"));
+            if let Tok::TooBig(digits) = self.peek_at(1)
+                && digits == "9223372036854775808"
+                && !after_minus
+                && !matches!(self.peek_at(2), Tok::Dot)
+            {
+                self.bump();
+                let lit = self.span();
+                self.bump();
+                self.folded.push(lit);
+                return Expr {
+                    kind: ExprKind::Int(i64::MIN),
+                    span: join(at, lit),
+                };
+            }
             self.bump();
             if self.nest >= PROGRAM_NESTING {
                 return self.too_deep_expr(at);
@@ -2227,7 +2254,7 @@ impl P {
                 }
                 self.error_expr(at)
             }
-            Tok::BadInt => {
+            Tok::BadInt | Tok::TooBig(_) => {
                 // Already `MZ0103`: an error value, and nothing more on this line.
                 self.bump();
                 self.failed = true;
@@ -2764,6 +2791,7 @@ impl P {
             diags: Vec::new(),
             skipped: Vec::new(),
             suppress: Vec::new(),
+            folded: Vec::new(),
             failed: false,
             skipped_stray: false,
             nest: self.nest,
@@ -2801,6 +2829,7 @@ impl P {
         self.skipped.append(&mut sub.skipped);
         self.diags.append(&mut sub.diags);
         self.suppress.append(&mut sub.suppress);
+        self.folded.append(&mut sub.folded);
         if failed {
             self.failed = true;
             return Some(Expr {
