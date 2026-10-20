@@ -190,6 +190,7 @@ mzizi/
 | [0012 — the language harness](./design/RFC-0012-harness.md)                    | The language harness, the spine of the language: one entry per feature, what an agent reads, the agent protocol and the plugin host. Draft; mostly design.                                              |
 | [0013 — the core language](./design/RFC-0013-core-language.md)                 | Tier 1 (C1–C10): a `program` file kind, expressions, bindings, functions, control flow, errors and `mz run`. Draft; Wave 0, C1, C4, C5 and C9 implemented.                                              |
 | [0014 — Tier 2](./design/RFC-0014-tier2.md)                                    | Tier 2 (P1–P6, the M2 goal): modules and imports, the standard library as a closed list, lowering, runnable builds, errors mapped to `.mz`, and Rust crates and companions. Draft; nothing implemented. |
+| [0015 — performance teardown](./design/RFC-0015-performance-teardown.md)       | What each stack costs (rustc, tokio, mio, the WebAssembly output, Dioxus) and what Mzizi's lowering takes from each. Draft; nothing implemented.                                                        |
 
 RFC-0005 is reserved (`mzizi-dev/agent-tools#76`, private — not linked, since a link to a
 private repo 404s for anyone without access) but not yet written. RFC-0011 is claimed by the

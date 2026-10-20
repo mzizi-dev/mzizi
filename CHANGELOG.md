@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0015, performance teardown, a draft (2026-10-20, Refs #117)
+
+- **`design/RFC-0015-performance-teardown.md`, a draft.** It takes the owner's request of 2026-10-20: find what makes rustc, tokio, mio, the WebAssembly output and Dioxus slow, and say what Mzizi's lowering, its runtime, the edit-check loop and its contracts should adopt, avoid or remove. The RFC gives the method, one teardown per subject, the harness and contracts as optimisation inputs, the development loop, a measurement plan and the open questions. It is design. Nothing in it is implemented, no language construct changes, and nothing in it says Mzizi is faster or slower than any stack it names.
+- **Measured on one machine, at commit `eed51a1`, with the commands in RFC-0015 §11.** `mz check` over the 20 corpus files: median 7.90 ms per file. A cold release build of the lowered registry service: 34.3 s. A cold release build of the B1 reference: 24.6 s. A `wasm32-unknown-unknown` build of the lowered `fib` program: 48,263 bytes, with the allocator the largest single function. The generated service does not build for `wasm32-unknown-unknown`, because mio has no backend for that target.
+- **Read from the code, cited in the RFC, and not changed here.** `mz hash` covers components only, and it refuses a program with a message that says so. `mz run` keys its cached package by the source path, not by content. An `always` clause in a program is checked at every construction, including a construction of constants (`examples/records.mz`).
+- **Changes nothing else.** No RFC is amended and no lowering changes. The open questions in RFC-0015 §14 need the owner's decisions before any change the RFC names is proposed.
+
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
 
 - **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
