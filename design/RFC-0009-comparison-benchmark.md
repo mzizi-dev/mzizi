@@ -40,18 +40,18 @@ An **arm** is one language with one framework, a pinned toolchain, a sandbox, a 
 guide and a scorer extractor. Today three exist: `mzizi`, `dioxus` and `leptos`
 (`benchmarks/arms/`, `benchmarks/runner/src/prompt.rs`). This RFC adds seven.
 
-| Arm        | Family  | Language and framework                              | Pin comes from                                            | Status                          |
-| ---------- | ------- | --------------------------------------------------- | --------------------------------------------------------- | ------------------------------- |
-| `mzizi`    | UI      | Mzizi                                               | this repo                                                 | exists                          |
-| `dioxus`   | UI      | Rust, Dioxus `=0.7.10`                              | `mzizi-registry`'s lockfile (`arms/dioxus/README.md`)     | exists                          |
-| `leptos`   | UI      | Rust, Leptos `=0.8.21`                              | `arms/leptos/README.md` (never ported in the registry)    | exists                          |
-| `react`    | UI      | TypeScript, React, `class-variance-authority`       | `mzizi-registry`'s lockfile at the task commit            | new                             |
-| `mzizi-be` | backend | Mzizi                                               | this repo                                                 | exists, unscored (RFC-0011 §12) |
-| `ts`       | backend | TypeScript, Hono on Node                            | `mzizi-api-gateway`'s lockfile at `2468b2a`               | new                             |
-| `python`   | backend | Python, FastAPI with pydantic v2, served by uvicorn | exact pins, chosen when the arm lands, lockfile committed | new                             |
-| `go`       | backend | Go, `net/http` from the standard library            | exact Go toolchain version                                | new                             |
-| `cpp`      | backend | C++20, `cpp-httplib` + `nlohmann/json` (both MIT)   | vendored single headers, recorded in a NOTICE             | new                             |
-| `rust`     | backend | Rust, axum on tokio, serde                          | exact pins, lockfile committed                            | new                             |
+| Arm        | Family  | Language and framework                              | Pin comes from                                                     | Status                          |
+| ---------- | ------- | --------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------- |
+| `mzizi`    | UI      | Mzizi                                               | this repo                                                          | exists                          |
+| `dioxus`   | UI      | Rust, Dioxus `=0.7.10`                              | `mzizi-registry`'s lockfile (`arms/dioxus/README.md`)              | exists                          |
+| `leptos`   | UI      | Rust, Leptos `=0.8.21`                              | `arms/leptos/README.md` (never ported in the registry)             | exists                          |
+| `react`    | UI      | TypeScript, React, `class-variance-authority`       | `mzizi-registry`'s lockfile at the task commit                     | new                             |
+| `mzizi-be` | backend | Mzizi                                               | this repo                                                          | exists, unscored (RFC-0011 §12) |
+| `ts`       | backend | TypeScript, Hono on Node                            | `mzizi-api` (formerly `mzizi-api-gateway`)'s lockfile at `2468b2a` | new                             |
+| `python`   | backend | Python, FastAPI with pydantic v2, served by uvicorn | exact pins, chosen when the arm lands, lockfile committed          | new                             |
+| `go`       | backend | Go, `net/http` from the standard library            | exact Go toolchain version                                         | new                             |
+| `cpp`      | backend | C++20, `cpp-httplib` + `nlohmann/json` (both MIT)   | vendored single headers, recorded in a NOTICE                      | new                             |
+| `rust`     | backend | Rust, axum on tokio, serde                          | exact pins, lockfile committed                                     | new                             |
 
 Decisions, and why:
 
@@ -126,7 +126,7 @@ benchmarks/tasks/<name>/
 A **probe** is one HTTP request and the facts expected of its response. Every fact is
 observable at the HTTP boundary, so it is independent of the language by construction (BM-3).
 The example uses the gateway's real method handling, as its own test asserts
-(`mzizi-api-gateway` `test/api.test.ts` at `2468b2a`):
+(`mzizi-api` `test/api.test.ts` at `2468b2a`):
 
 ```toml
 [[probe]]

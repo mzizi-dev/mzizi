@@ -30,6 +30,24 @@ carry no pull request number.
 
 - **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
 
+### Changed — gateway names, four API gateways and build targets (2026-10-20)
+
+- **Docs only; no code, test or behaviour changed.** The Mzizi API repository is now named
+  `mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`) in `AGENTS.md`, `README.md`,
+  `design/ROADMAP.md`, `design/RFC-0009-comparison-benchmark.md` and `design/RFC-0010-contracts-everywhere.md`.
+  The three other API gateways are named in `AGENTS.md`, `README.md` and `MIGRATION.md` §7.2c with their
+  new repository names: `nyuchi/nyuchi-api`, `mukoko-dev/mukoko-api` (unchanged) and `nyuchi/nyuchi-servers-api`.
+  `AGENTS.md` says there are four API gateways, and the console's database is Supabase today, decided to move to Cloudflare D1.
+- **`LANGUAGE-TRACKER.md`, row P11 (targets)** corrected: a `program` lowers to native Rust as well as a
+  `service` (`compiler/src/run.rs`). Built today: a native axum package bound to `127.0.0.1`, and a native
+  program built with Cargo. No Workers (wasm32) target and no container image exists. The owner's decision of
+  2026-10-20 is recorded as direction, not as built: three targets, Cloudflare Workers, containers on any OCI
+  host and bare metal.
+- **`design/ROADMAP.md`** records the 2026-10-20 target decision and that the charter's §2 Worker-to-Container
+  wording is to be amended by an RFC. `CHARTER.md` is unchanged.
+- The owner renames the four API gateway repositories on GitHub after this change merges. Until then the new
+  names 404.
+
 ## 2026-10-20
 
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
