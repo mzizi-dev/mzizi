@@ -264,8 +264,7 @@ the clone's shared config, which is one more reason each agent works in a clone 
     (formerly `nyuchi/data-gateway`). Internal only, and not built yet.
 
   `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds no database; its files are
-  the data layer. Only the console uses a database outside the registry: Supabase today, decided
-  to move to Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
+  the data layer. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from the public `api.mzizi.dev` and sign-in is WorkOS AuthKit. It is decided that any state the console keeps goes in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
 
 - Security reports: GitHub private reporting first, then `security@nyuchi.com` (see
   [`SECURITY.md`](./SECURITY.md)), the same address as the console's.

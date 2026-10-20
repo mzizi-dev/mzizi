@@ -37,7 +37,7 @@ carry no pull request number.
   `design/ROADMAP.md`, `design/RFC-0009-comparison-benchmark.md` and `design/RFC-0010-contracts-everywhere.md`.
   The three other API gateways are named in `AGENTS.md`, `README.md` and `MIGRATION.md` §7.2c with their
   new repository names: `nyuchi/nyuchi-api`, `mukoko-dev/mukoko-api` (unchanged) and `nyuchi/nyuchi-servers-api`.
-  `AGENTS.md` says there are four API gateways, and the console's database is Supabase today, decided to move to Cloudflare D1.
+  `AGENTS.md` says there are four API gateways. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from `api.mzizi.dev` and sign-in is WorkOS AuthKit. Any state it keeps is decided to go in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
 - **`LANGUAGE-TRACKER.md`, row P11 (targets)** corrected: a `program` lowers to native Rust as well as a
   `service` (`compiler/src/run.rs`). Built today: a native axum package bound to `127.0.0.1`, and a native
   program built with Cargo. No Workers (wasm32) target and no container image exists. The owner's decision of
