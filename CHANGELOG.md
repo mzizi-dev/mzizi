@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — release prep for 2026-10-20
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
+
+## 2026-10-20
+
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
 
 - **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
@@ -47,6 +53,8 @@ carry no pull request number.
 
 - **CI: `dtolnay/rust-toolchain` is pinned to a commit on its `master` history (`e2a55d2`, tag `v1`), with `toolchain: stable` passed explicitly.** The old pin, `89b1218` (`# stable`), was a commit on the action's `stable` branch, which its author regenerates by force-push; the 2026-10-08 regeneration orphaned it, and zizmor's `impostor-commit` audit (`workflow audit` job) then failed every pull request with four high findings. `master` is not force-pushed, so its commits stay reachable. The two commits' `action.yml` differ only in `toolchain` being required on `master` (no default), and the new head includes the action's own input-handling hardening (its PR #187). No compiler or test change.
 
+## 2026-10-08
+
 ### Changed — release prep: C6 on `main`, every Tier 1 row ✅, M1 met (2026-10-08)
 
 - **`LANGUAGE-TRACKER.md`:** row C6 (text operations) is ✅. Its "Done when" is the owner's decision of 2026-10-08 (RFC-0013 §20 Q20): the operations exist as built-in methods with tests, each registered in the language harness. The rest of C6 (#106) reaches `main` with this release, and the row says so. With C1–C5 and C7–C10 already ✅, every Tier 1 row is ✅, so M1 ("all of Tier 1 ✅", #69) is met on `main` once this release merges. The public-suites row is still blocked, by the standard library (P2) alone. The comparison table's text row is ✅, and its line about "two ✅ rows" no longer says two.
@@ -54,8 +62,6 @@ carry no pull request number.
 - **`README.md` and `CONTRIBUTING.md`:** C6 and C7 are on `main`, not on `staging`. `compiler/src` is 33,438 lines, and `CONTRIBUTING.md`'s compiler-crate test count is 629 (it said 613).
 - **`AGENTS.md`:** the honesty rule no longer says "most of Tier 1 does not exist", which stopped being true with C6. It now says a `service` and a `program` lower, a program only in Tier 1's narrow form; no component lowers; and most of Tier 2 and Tier 3 (modules, a standard library, concurrency) does not exist. The rule itself is unchanged.
 - **Measured on this branch, cut from `staging` at `a8e3710`, not on `main`:** `cargo test --workspace` passes 760 tests in 27 suites (629 in the compiler crate); `mz harness definition` has 197 entries (80 diagnostic entries and 49 pending codes, both unchanged); `git ls-files compiler/src | xargs cat | wc -l` is 33,438. Nothing here is measured against the charter's kill criterion.
-
-## 2026-10-08
 
 ### Fixed — stale prose in the tracker and README after v0.7.0 (2026-10-08)
 
