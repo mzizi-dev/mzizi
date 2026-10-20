@@ -19,7 +19,7 @@ carry no pull request number.
 
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
 
-- **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example now says "One framework" and keeps the same claim: an early bet on a contrarian idea, compiling the framework away, that others later took seriously. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
+- **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
 
 ### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
 

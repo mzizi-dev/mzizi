@@ -27,8 +27,7 @@ component model, the way React is JavaScript's.
 
 Every language or framework that won, won by being unmistakably better at one thing first — not by
 matching every incumbent's feature set on day one. TypeScript made JavaScript better and still
-runs as JavaScript. React was Facebook's fix for one rendering problem. One framework bet on a single contrarian idea years before anyone else took it
-seriously. Mzizi's bet: **the actual bottleneck of 2026-and-beyond development is an agent
+runs as JavaScript. React was Facebook's fix for one rendering problem. Mzizi's bet: **the actual bottleneck of 2026-and-beyond development is an agent
 iterating against a compiler in a tight loop, thousands of times a session** — and no
 existing language, Rust included, was designed with that reader in mind. Every syntax
 decision, every error message, every unit of the intermediate representation is aimed at a
