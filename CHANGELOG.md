@@ -17,6 +17,44 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — release prep for 2026-10-20
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
+
+## 2026-10-20
+
+### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
+
+- **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
+
+### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
+
+- **The `workflow audit` job failed on every pull request** with zizmor's `ref-version-mismatch`: `dtolnay/rust-toolchain`'s `v1` tag moved to `683b588`, so the pin to `e2a55d2` no longer matched its `# v1` comment. The four uses in `ci.yml` and `supply-chain.yml` now pin `683b588c487a69d01f6c6ddf40f036ff682cc2c8`, which `git ls-remote` reports for both `refs/tags/v1` and `master` on 2026-10-20. `zizmor --offline .github/workflows/` reports no findings.
+
+### Fixed — the follow-ups from the C6 review (#107)
+
+- **`MZ0710` on a return of an option type the signature cannot build.** `fn f(t: text): option(int)` with `return t.parse_int()` reported `MZ0919` at the signature and then `MZ0710` at the `return`, whose advice (`give it a default`) named a default for a type that cannot be written yet. A `return` is now not checked against a declared return type that is not built, so the one diagnostic is the signature's `MZ0919`. Tested in `compiler/tests/program_collections.rs`, with a `return` of `t.parse_int()` and of `xs[0]`.
+- **`MZ0962` names an other language's spelling as written.** `parseInt(s)` is reported as `` `parseInt(…)` ``, not `` `parse_int(…)` ``, and `parseFloat(s)` and `int(s)` likewise: the checker now reads the name from the source (`program::check` takes the source text). The `guess` fix is unchanged (`s.parse_int()`). Tested in `compiler/tests/program_text.rs`.
+- **`int`'s minimum, `-9223372036854775808`, is a literal under a unary `-`.** The parser reads a `-` applied directly to `9223372036854775808` as the value `i64::MIN`, when no postfix method follows the literal, so the minimum checks, runs and lowers to `i64::MIN` in Rust (`run.rs`). Every other use of the literal stays `MZ0103`: bare, after a binary `-` (`x -9223372036854775808`), after another `-` (`- -9223372036854775808`), and before a method (`-9223372036854775808.abs()`), since a method binds tighter than the `-`. The rule is RFC-0013 §3.1, which now states it; the `int` entry in the language harness takes the minimum as an example and the `MZ0103` entry says what is excepted. Tested in `compiler/tests/program_numbers.rs`.
+- **`mz run`'s exit statuses in `AGENTS.md`.** `AGENTS.md` did not state the exit contract. It now states it as `CLAUDE.md` does, with `mz run`'s statuses (0, 101, 141, 128 plus a signal, 1 for `MZ0992`, 3 when the check fails, 2 for a usage, environment or I/O problem). No code changed.
+- **`LANGUAGE-TRACKER.md`'s comparison table** now follows its rows. The expressions, numbers, user types and error handling cells are ✅ (C1–C5, C7–C9 are ✅), where they were 🟡, and the collections cell stays ✅; the user types cell says records with methods (C8), not "no methods"; the expressions cell no longer says "over a list (C7)" as a gap; the formatter cell is 📝 (T2), not ❌. The compiles-to cell stays 🟡 (P3, P4), and P3's sentence that the rest of Tier 1 does not lower is corrected. `AGENTS.md`'s "What this repo is" lists the Tier 1 rows that lower, from the tracker.
+- **`parse_float` in RFC-0013 §10** already says that a `.` counts only when a digit follows it, so `"1."` and `".5"` are `none` (#108). Nothing changed here.
+- **`MZ0962` names a method spelt in another language's case as written, too.** `s.toUpperCase()` is reported as `` `.toUpperCase` ``, not the lexer's `.to_upper_case`, and `s.indexOf(t)` and a collection's `xs.sortedBy(f)` likewise; the fix kinds are unchanged (exact for `toUpperCase` and `sortedBy`, a guess for `indexOf`). One new test, in `compiler/tests/program_text.rs`.
+- **`LANGUAGE-TRACKER.md` P3 and `AGENTS.md` say what lowers without overclaiming:** a `program` lowers for every built feature of C1–C10, and RFC-0013 §18.2's unbuilt follow-ups (labelled arguments, `option(T)` written as a type, `try … via`, wrapping arithmetic) are named as not lowered.
+- **Measured.** `cargo test` in the compiler crate passes 634 tests (629 before) and `cargo test --workspace` passes 765 (760 before), in 29 suites that hold tests (27 before). `compiler/src` is 33,518 lines (`git ls-files compiler/src | xargs cat | wc -l`). The CI block in `AGENTS.md` passes under `bash -e`. `mz run` on each `examples/*.mz` with a `.expected` file matches it. `mz fix` run twice on a file with foreign spellings changes nothing on the second run.
+
+### Added — RFC-0014, Tier 2 design, a draft (2026-10-09, Refs #110)
+
+- **`design/RFC-0014-tier2.md`** designs Tier 2 of `LANGUAGE-TRACKER.md` (P1–P6 in full, the M2 goal; P7–P12 reserved). It covers modules and imports across files (`module`, `import`, `public`), the standard library as a closed list with std-only modules and one crate for HTTP, lowering and runnable builds, errors mapped back to `.mz` by markers in the generated Rust, and Rust crates through an exact pin and a hand-written companion checked by `rustc`. It opens the `MZ1001`–`MZ1099` family and proposes six waves with their tests. **Draft design: nothing in it is implemented.** `mz check` does not accept `import`, `module`, `public` or `extern` today, and no test reads it. It asks the owner nineteen questions, among them the import word (RFC-0007 D7), the standard-library list (RFC-0007 G2.10 and the tracker's P2 row differ), and whether M2 requires the Tier 1 follow-ups that RFC-0013 §18.2 lists as unbuilt.
+- **`LANGUAGE-TRACKER.md`:** rows P1–P6 name RFC-0014 as their design, as drafts. No mark changed; P1–P6 remain ❌, 🟡 or 📝 as they were.
+- **`README.md` and `design/ROADMAP.md`:** RFC-0014 is listed beside RFC-0013.
+
+### Security
+
+- **CI: `dtolnay/rust-toolchain` is pinned to a commit on its `master` history (`e2a55d2`, tag `v1`), with `toolchain: stable` passed explicitly.** The old pin, `89b1218` (`# stable`), was a commit on the action's `stable` branch, which its author regenerates by force-push; the 2026-10-08 regeneration orphaned it, and zizmor's `impostor-commit` audit (`workflow audit` job) then failed every pull request with four high findings. `master` is not force-pushed, so its commits stay reachable. The two commits' `action.yml` differ only in `toolchain` being required on `master` (no default), and the new head includes the action's own input-handling hardening (its PR #187). No compiler or test change.
+
+## 2026-10-08
+
 ### Changed — release prep: C6 on `main`, every Tier 1 row ✅, M1 met (2026-10-08)
 
 - **`LANGUAGE-TRACKER.md`:** row C6 (text operations) is ✅. Its "Done when" is the owner's decision of 2026-10-08 (RFC-0013 §20 Q20): the operations exist as built-in methods with tests, each registered in the language harness. The rest of C6 (#106) reaches `main` with this release, and the row says so. With C1–C5 and C7–C10 already ✅, every Tier 1 row is ✅, so M1 ("all of Tier 1 ✅", #69) is met on `main` once this release merges. The public-suites row is still blocked, by the standard library (P2) alone. The comparison table's text row is ✅, and its line about "two ✅ rows" no longer says two.
@@ -24,8 +62,6 @@ carry no pull request number.
 - **`README.md` and `CONTRIBUTING.md`:** C6 and C7 are on `main`, not on `staging`. `compiler/src` is 33,438 lines, and `CONTRIBUTING.md`'s compiler-crate test count is 629 (it said 613).
 - **`AGENTS.md`:** the honesty rule no longer says "most of Tier 1 does not exist", which stopped being true with C6. It now says a `service` and a `program` lower, a program only in Tier 1's narrow form; no component lowers; and most of Tier 2 and Tier 3 (modules, a standard library, concurrency) does not exist. The rule itself is unchanged.
 - **Measured on this branch, cut from `staging` at `a8e3710`, not on `main`:** `cargo test --workspace` passes 760 tests in 27 suites (629 in the compiler crate); `mz harness definition` has 197 entries (80 diagnostic entries and 49 pending codes, both unchanged); `git ls-files compiler/src | xargs cat | wc -l` is 33,438. Nothing here is measured against the charter's kill criterion.
-
-## 2026-10-08
 
 ### Fixed — stale prose in the tracker and README after v0.7.0 (2026-10-08)
 

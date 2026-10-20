@@ -222,6 +222,26 @@ fn mz0710_an_option_used_as_its_value() {
     }
 }
 
+/// An `option(T)` written as a return type is not built (`MZ0919`), reported once at the
+/// signature. Its `return` is not also `MZ0710`, which would advise a default for a type that
+/// cannot be written (RFC-0013 §8, §18.2): `one` holds the program to exactly that one error.
+#[test]
+fn an_unbuilt_option_return_type_is_reported_once_at_the_signature() {
+    for (src, line) in [
+        (
+            "program t\n\n  fn f(t: text): option(int)\n    return t.parse_int()\n  end fn f\n\n  fn main\n    print(\"x\")\n  end fn main\n\nend program t\n",
+            3,
+        ),
+        (
+            "program t\n\n  fn g(xs: list(int)): option(int)\n    return xs[0]\n  end fn g\n\n  fn main\n    print(\"x\")\n  end fn main\n\nend program t\n",
+            3,
+        ),
+    ] {
+        let d = one(src, "MZ0919");
+        assert_eq!(d.span.start_line, line, "{d:#?}");
+    }
+}
+
 // ------------------------------------------------------------------- MZ0909
 
 #[test]

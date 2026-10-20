@@ -1254,7 +1254,11 @@ impl<'a> FnCheck<'a> {
                     )
                 } else {
                     (
-                        format!("`.{name}` is another language's — Mzizi's is `.{to}`"),
+                        format!(
+                            "`.{}` is another language's — Mzizi's is `.{to}`",
+                            super::text::spelled(self.src, name_span)
+                                .unwrap_or_else(|| name.to_string())
+                        ),
                         Confidence::Exact,
                     )
                 };

@@ -47,7 +47,7 @@ pub(super) fn none_result_tail(f: &FnDecl) -> Option<&'static str> {
 /// A column's literal value as Rust: an `int`, a `bool` or a `text` with no interpolation.
 fn column_value(e: &Expr) -> String {
     match &e.kind {
-        ExprKind::Int(v) => format!("{v}i64"),
+        ExprKind::Int(v) => super::int_literal(*v),
         ExprKind::Bool(b) => b.to_string(),
         ExprKind::Text(parts) => {
             let lit: String = parts

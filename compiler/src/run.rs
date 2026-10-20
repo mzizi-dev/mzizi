@@ -418,6 +418,16 @@ fn fn_ident(name: &str) -> String {
     }
 }
 
+/// An `int` as Rust. The minimum is spelled `i64::MIN`, so the generated code never relies on
+/// rustc accepting the negated digits of a literal that does not fit (RFC-0013 §3.1).
+fn int_literal(v: i64) -> String {
+    if v == i64::MIN {
+        "i64::MIN".to_string()
+    } else {
+        format!("{v}i64")
+    }
+}
+
 struct Lower<'a> {
     fns: &'a BTreeMap<&'a str, &'a FnDecl>,
     /// The program's enums, which a bare variant name resolves against.
@@ -694,10 +704,10 @@ impl Lower<'_> {
 
     fn expr(&mut self, e: &Expr) -> String {
         if let Some(Ok(v)) = fold(e) {
-            return format!("{v}i64");
+            return int_literal(v);
         }
         match &e.kind {
-            ExprKind::Int(v) => format!("{v}i64"),
+            ExprKind::Int(v) => int_literal(*v),
             ExprKind::Float(v) => format!("{v:?}f64"),
             ExprKind::Bool(b) => b.to_string(),
             ExprKind::Text(parts) => self.text(parts),

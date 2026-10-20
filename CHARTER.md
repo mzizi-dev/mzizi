@@ -62,7 +62,7 @@
 
 ## 1. The thesis
 
-Every language and framework that won did so by being unmistakably better at one thing first, not by matching every incumbent's full feature set on day one. TypeScript did not replace JavaScript: it made JavaScript better to write, and it still compiles to JavaScript and runs wherever JavaScript runs. React was Facebook's internal fix for one rendering problem before it was a framework. Svelte bet on a single contrarian idea — compile the framework away instead of shipping it — years before anyone else took that seriously.
+Every language and framework that won did so by being unmistakably better at one thing first, not by matching every incumbent's full feature set on day one. TypeScript did not replace JavaScript: it made JavaScript better to write, and it still compiles to JavaScript and runs wherever JavaScript runs. React was Facebook's internal fix for one rendering problem before it was a framework.
 
 **What Mzizi is** _(owner-directed 2026-09-30)_**: a general-purpose programming language, with Rust as its platform, the way JavaScript is TypeScript's.** Mzizi is designed to lower to Rust ([RFC-0001](./design/RFC-0001-syntax.md) §5, [RFC-0010](./design/RFC-0010-contracts-everywhere.md)), with no borrow, lifetime or ownership concept at the surface (RFC-0001 §1.8): the compiler is to own that plumbing in the Rust it emits, so an agent never has to. The aim is that Mzizi does Rust better: you write Mzizi instead of TypeScript, Python or C++, and get Rust underneath. **That is the design and the goal, not the state.** Today the compiler, `mz` (itself written in Rust), checks a Mzizi file, applies its exact fixes, evaluates its contract and lowers it to Mzizi's own content-addressed IR. It emits no Rust yet.
 
