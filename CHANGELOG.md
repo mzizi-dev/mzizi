@@ -17,6 +17,14 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0016, three deployment targets (design only)
+
+- **`design/RFC-0016-three-targets.md`, a draft, design only** (tracking issue [#122](https://github.com/mzizi-dev/mzizi/issues/122)). It sets out three deployment targets for a `service`: Cloudflare Workers (wasm32), containers on any OCI host (for example Fly Machines), and bare metal (a native Linux binary, glibc or static musl, on x86_64 and aarch64). Each is a plan. None is built, and no command, flag, generated file, CI job or harness entry in the RFC exists yet.
+- **The charter amendment is proposed, not applied.** RFC-0016 §3 gives the replacement text for CHARTER §1, §2 and §4 and the v0.5 changelog. CHARTER.md is unchanged and waits for the owner.
+- **Proposed, not built:** `mz build --target native|container|workers` (RFC-0016 §4.1), a `HOST` setting beside `PORT` with a loopback default, graceful shutdown on SIGTERM, the `GET /_mz/health` route, and `MZ0813` for a route under the reserved `/_mz/` prefix (RFC-0016 §4.2 to §4.5).
+- **`LANGUAGE-TRACKER.md` P11** now says what the code on `main` does: a `program` lowers to a native package as well as a `service`, and the only build made is the x86_64 glibc one, in CI. Its "done when" is split by target. P13 to P16 are added as designs (📝), not as capabilities, and no status in the tracker's Status column changes.
+- **`README.md` and `design/ROADMAP.md`** point to the RFC.
+
 ### Changed — release prep for 2026-10-20
 
 - **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
