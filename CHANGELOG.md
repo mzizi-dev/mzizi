@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
+
+- **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example now says "One framework" and keeps the same claim: an early bet on a contrarian idea, compiling the framework away, that others later took seriously. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
+
 ### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
 
 - **The `workflow audit` job failed on every pull request** with zizmor's `ref-version-mismatch`: `dtolnay/rust-toolchain`'s `v1` tag moved to `683b588`, so the pin to `e2a55d2` no longer matched its `# v1` comment. The four uses in `ci.yml` and `supply-chain.yml` now pin `683b588c487a69d01f6c6ddf40f036ff682cc2c8`, which `git ls-remote` reports for both `refs/tags/v1` and `master` on 2026-10-20. `zizmor --offline .github/workflows/` reports no findings.
