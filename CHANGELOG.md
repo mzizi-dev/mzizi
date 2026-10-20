@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
+
+- **The `workflow audit` job failed on every pull request** with zizmor's `ref-version-mismatch`: `dtolnay/rust-toolchain`'s `v1` tag moved to `683b588`, so the pin to `e2a55d2` no longer matched its `# v1` comment. The four uses in `ci.yml` and `supply-chain.yml` now pin `683b588c487a69d01f6c6ddf40f036ff682cc2c8`, which `git ls-remote` reports for both `refs/tags/v1` and `master` on 2026-10-20. `zizmor --offline .github/workflows/` reports no findings.
+
 ### Fixed — the follow-ups from the C6 review (#107)
 
 - **`MZ0710` on a return of an option type the signature cannot build.** `fn f(t: text): option(int)` with `return t.parse_int()` reported `MZ0919` at the signature and then `MZ0710` at the `return`, whose advice (`give it a default`) named a default for a type that cannot be written yet. A `return` is now not checked against a declared return type that is not built, so the one diagnostic is the signature's `MZ0919`. Tested in `compiler/tests/program_collections.rs`, with a `return` of `t.parse_int()` and of `xs[0]`.
