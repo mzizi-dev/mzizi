@@ -45,8 +45,12 @@ carry no pull request number.
   host and bare metal.
 - **`design/ROADMAP.md`** records the 2026-10-20 target decision and that the charter's §2 Worker-to-Container
   wording is to be amended by an RFC. `CHARTER.md` is unchanged.
-- The owner renames the four API gateway repositories on GitHub after this change merges. Until then the new
-  names 404.
+- The owner renamed the three API gateway repositories that change name (`mukoko-dev/mukoko-api` keeps its
+  name); the new names are live, and GitHub redirects the old ones.
+- **Targets (`LANGUAGE-TRACKER.md` P11, `design/ROADMAP.md`):** RFC-0016 (three targets, a draft in #123) is approved as
+  design only (owner, 2026-10-21). The `CHARTER.md` amendment and every build wave wait for the Phase 0 gate; no container
+  or bare-metal build work has started. The container target is a standard OCI image, built with Docker by default and
+  run by any OCI runtime.
 
 ## 2026-10-20
 

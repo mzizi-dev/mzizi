@@ -478,9 +478,9 @@ exists, the generated output is compared against them; it does not replace them 
 
 ### 7.2c Gateway repository renames, 2026-10-20
 
-The owner is renaming the four API gateway repositories, decided on 2026-10-20. Use the new
-names. The old name is kept once, here, for lookups. The renames land on GitHub after the docs
-change that names them merges; until then the new names 404. Live hostnames do not change.
+The owner decided on 2026-10-20 to rename the API gateway repositories, and renamed three of
+them (the fourth, `mukoko-dev/mukoko-api`, already had its name). Use the new names. The old
+name is kept once, here, for lookups; GitHub redirects it. Live hostnames do not change.
 
 | Gateway                       | Old repository                | New repository              | Host                          |
 | ----------------------------- | ----------------------------- | --------------------------- | ----------------------------- |
