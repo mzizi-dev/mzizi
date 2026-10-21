@@ -143,17 +143,15 @@ the offline check a task author runs.
 - **Write commit messages for a future reader, not a changelog.** State what you measured —
   which command you ran, which number came back — not just what you changed. This repo's
   commit history is the research record; a vague message throws that away.
-- **Pull requests are rebase-merged**, one commit at a time, message intact:
-  `gh pr merge <n> --rebase --auto`. Never `--admin`, never squash.
-  [`CONTRIBUTING.md`](./CONTRIBUTING.md) already says this ("Rebase merges only, never
-  squash"). Only [`MIGRATION.md`](./MIGRATION.md) §1.1 differs: its settings table is the
-  original _plan_ ("merge commits only, squash and rebase both disabled"), and the live
-  GitHub settings replaced it (`allow_rebase_merge: true`, `allow_merge_commit: false`,
-  `allow_squash_merge: false`, read off the API on 2026-09-12, org-wide). A note under that
-  table points to CONTRIBUTING.md. The argument behind the plan still holds: squashing would
-  throw away the per-commit reasoning this project depends on. Only the mechanism changed,
-  from merge commits to rebase. Rebase merging cannot replay merge commits, so keep branches
-  linear.
+- **Squash merges through the merge queue**: `gh pr merge <n> --squash --auto`. Never
+  `--admin`. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`),
+  so the per-commit reasoning this project depends on is preserved. Rebase and merge commits
+  are disabled (repo settings and rulesets, 2026-10-21). [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+  says why the reasoning matters. [`MIGRATION.md`](./MIGRATION.md) §1.1's settings table is
+  the original _plan_ ("merge commits only, squash and rebase both disabled"), and a note
+  under it points to CONTRIBUTING.md. Updating a branch with the base (GitHub's "Update
+  branch") is fine; the squash makes `main` linear. The merge queue tests each PR against the
+  latest base.
 - Proposing a language change means writing an RFC. Read the existing RFCs in
   [`design/`](./design/) before you draft one. RFC-0005's number is reserved (drafted as
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
@@ -253,10 +251,21 @@ the clone's shared config, which is one more reason each agent works in a clone 
   says the artifact is built from the folder, file for file, and is never edited on the
   artifact page, so change the design system there, not in the artifact or in this repo.
   Nothing in this repository reads it (see "Repo boundaries").
-- The rest of the ecosystem, for reference: `api.mzizi.dev` is `mzizi-api-gateway`, a Hono
-  Worker in TypeScript that serves the registry's files bundled at a pinned commit (no
-  database, no origin). `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds
-  no database; its files are the data layer. Only the console uses Supabase.
+- The rest of the ecosystem, for reference. There are four API gateways, and they are separate
+  services:
+  - **Mzizi API**, `api.mzizi.dev`: `mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`), the free,
+    public registry API. A Hono Worker in TypeScript today, it serves the registry's files bundled
+    at a pinned commit, with no origin and no database.
+  - **Nyuchi API (B2B)**, `api.nyuchi.com`: `nyuchi/nyuchi-api` (formerly `nyuchi/api-gateway`),
+    for external customers with scoped `nyk_` keys. FastAPI on Fly today; decided: rebuilt in Rust.
+  - **Mukoko API (consumer)**, `api.mukoko.com` (no DNS yet): `mukoko-dev/mukoko-api`, the
+    person-facing app surfaces. Being built on Workers; decided: a switch to a Rust build.
+  - **Nyuchi Servers API (internal)**, `api.nyuchiservers.com`: `nyuchi/nyuchi-servers-api`
+    (formerly `nyuchi/data-gateway`). Internal only, and not built yet.
+
+  `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds no database; its files are
+  the data layer. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from the public `api.mzizi.dev` and sign-in is WorkOS AuthKit. It is decided that any state the console keeps goes in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
+
 - Security reports: GitHub private reporting first, then `security@nyuchi.com` (see
   [`SECURITY.md`](./SECURITY.md)), the same address as the console's.
 
