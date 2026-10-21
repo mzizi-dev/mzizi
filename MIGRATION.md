@@ -112,9 +112,11 @@ Matching the four existing Mzizi-ecosystem repos:
 | Wiki                      | off                 | RFCs are the design record, in-repo and checkable                        |
 | Forking                   | allowed             | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
 
-> **Superseded for the merge rows.** This table is the original plan. The live settings are
-> the reverse for merges: rebase merging on, merge commits and squash off. See
-> [`CONTRIBUTING.md`](./CONTRIBUTING.md), "Rebase merges only, never squash".
+> **Superseded for the merge rows.** This table is the original plan. Since 2026-10-21 the
+> live settings are squash merging through a merge queue, with the squash commit keeping every
+> commit message in its body (`COMMIT_MESSAGES`); merge commits and rebase are off. See
+> [`CONTRIBUTING.md`](./CONTRIBUTING.md), "Squash merges through the merge queue, every commit
+> message kept".
 
 #### On the licence
 

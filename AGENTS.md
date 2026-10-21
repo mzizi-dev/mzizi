@@ -143,17 +143,15 @@ the offline check a task author runs.
 - **Write commit messages for a future reader, not a changelog.** State what you measured —
   which command you ran, which number came back — not just what you changed. This repo's
   commit history is the research record; a vague message throws that away.
-- **Pull requests are rebase-merged**, one commit at a time, message intact:
-  `gh pr merge <n> --rebase --auto`. Never `--admin`, never squash.
-  [`CONTRIBUTING.md`](./CONTRIBUTING.md) already says this ("Rebase merges only, never
-  squash"). Only [`MIGRATION.md`](./MIGRATION.md) §1.1 differs: its settings table is the
-  original _plan_ ("merge commits only, squash and rebase both disabled"), and the live
-  GitHub settings replaced it (`allow_rebase_merge: true`, `allow_merge_commit: false`,
-  `allow_squash_merge: false`, read off the API on 2026-09-12, org-wide). A note under that
-  table points to CONTRIBUTING.md. The argument behind the plan still holds: squashing would
-  throw away the per-commit reasoning this project depends on. Only the mechanism changed,
-  from merge commits to rebase. Rebase merging cannot replay merge commits, so keep branches
-  linear.
+- **Squash merges through the merge queue**: `gh pr merge <n> --squash --auto`. Never
+  `--admin`. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`),
+  so the per-commit reasoning this project depends on is preserved. Rebase and merge commits
+  are disabled (repo settings and rulesets, 2026-10-21). [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+  says why the reasoning matters. [`MIGRATION.md`](./MIGRATION.md) §1.1's settings table is
+  the original _plan_ ("merge commits only, squash and rebase both disabled"), and a note
+  under it points to CONTRIBUTING.md. Updating a branch with the base (GitHub's "Update
+  branch") is fine; the squash makes `main` linear. The merge queue tests each PR against the
+  latest base.
 - Proposing a language change means writing an RFC. Read the existing RFCs in
   [`design/`](./design/) before you draft one. RFC-0005's number is reserved (drafted as
   `mzizi-dev/agent-tools#76`, private) and is not in this repo. Take the next number that is
