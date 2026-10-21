@@ -20,11 +20,15 @@ carry no pull request number.
 ### Added — RFC-0016, three deployment targets (design only)
 
 - **`design/RFC-0016-three-targets.md`, a draft, design only** (tracking issue [#122](https://github.com/mzizi-dev/mzizi/issues/122)). It sets out three deployment targets for a `service`: Cloudflare Workers (wasm32), containers on any OCI host (for example Fly Machines), and bare metal (a native Linux binary, glibc or static musl, on x86_64 and aarch64). Each is a plan. None is built, and no command, flag, generated file, CI job or harness entry in the RFC exists yet.
-- **The charter amendment is proposed, not applied.** RFC-0016 §3 gives the replacement text for CHARTER §1, §2 and §4 and the v0.5 changelog. CHARTER.md is unchanged and waits for the owner.
+- **The charter amendment** is RFC-0016 §3, applied in this PR as CHARTER.md v0.5 (below).
 - **Proposed, not built:** `mz build --target native|container|workers` (RFC-0016 §4.1), a `HOST` setting beside `PORT` with a loopback default, graceful shutdown on SIGTERM, the `GET /_mz/health` route, and `MZ0813` for a route under the reserved `/_mz/` prefix (RFC-0016 §4.2 to §4.5).
 - **`LANGUAGE-TRACKER.md` P11** now says what the code on `main` does: a `program` lowers to a native package as well as a `service`, and the only build made is the x86_64 glibc one, in CI. Its "done when" is split by target. P13 to P16 are added as designs (📝), not as capabilities, and no status in the tracker's Status column changes.
 - **`README.md` and `design/ROADMAP.md`** point to the RFC.
-- **Q1 decided, design only** (owner, 2026-10-21: "approve RFC-0016 design only"). The design is approved as design. No exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts, and CHARTER.md is unchanged; the §3 charter text stays a proposal.
+- **Q1 decided: the container and bare-metal targets are built now** (owner, 2026-10-21, an exception to the Phase 0 gate). A first answer the same day, "design only", was superseded by "you have to do the bare metal and container work". RFC-0016 W2 to W4 (the native package changes, an OCI image built with Docker by default and runnable by any OCI runtime, static musl and aarch64 binaries) are built in their own PRs; W5 (Workers) and W6 (connectivity adapters) wait for the gate. None of it is built by this PR.
+
+### Changed — CHARTER.md v0.5
+
+- **`CHARTER.md` moves to v0.5** with RFC-0016 §3's text: three deployment targets (Workers, containers on any OCI host, bare metal), backends behind interfaces with one adapter per platform, regions as deployment configuration, and the owner's 2026-10-21 exception for the container and bare-metal targets. The kill criterion and the backend port gate are unchanged, and nothing in the amendment is a measured result. The version also moves in `LANGUAGE-TRACKER.md`, `AGENTS.md`, `benchmarks/READINESS.md` and `design/ROADMAP.md`.
 
 ### Changed — release prep for 2026-10-20
 

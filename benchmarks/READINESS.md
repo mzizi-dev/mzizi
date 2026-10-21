@@ -7,7 +7,7 @@ indistinguishable on compile rate and defects, and Mzizi used about 8% fewer tra
 tokens. On the ~7B open-weight model, Mzizi did worse on all three metrics
 ([`results/2026-09-27-pilot-2/RUN.md`](results/2026-09-27-pilot-2/RUN.md)).
 
-Phase 0's goal (charter v0.4, §4) is to show that Mzizi can stand against the best existing
+Phase 0's goal (charter v0.5, §4) is to show that Mzizi can stand against the best existing
 language for each kind of task. The kill-criterion run is how that goal is measured, and the
 pilots' component tasks are tests within it, not the goal.
 

@@ -6,7 +6,7 @@ the ultimate tracker. If a capability is not ✅ here, Mzizi does not have it, w
 other page says.
 
 Mzizi is a general-purpose programming language, built to make Rust better, the way
-TypeScript makes JavaScript better ([CHARTER.md](./CHARTER.md) v0.4). You write `.mz`; the
+TypeScript makes JavaScript better ([CHARTER.md](./CHARTER.md) v0.5). You write `.mz`; the
 compiler is designed to lower it to Rust. Phase 0 has one goal: build Mzizi as a programming
 language, measured against the best existing language for each kind of task
 ([RFC-0009](./design/RFC-0009-comparison-benchmark.md)). This tracker is how that goal is
