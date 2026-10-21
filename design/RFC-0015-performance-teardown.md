@@ -34,7 +34,8 @@ for each kind of task, and that is measured against the kill criterion, not assu
 "Best optimal" is the owner's goal. No result in this repository shows Mzizi is the best, and this
 RFC does not write one.
 
-The owner names four places where the leverage is. Each already has a home in this repository:
+The request points at four places where the leverage is (this list is the RFC's reading of it, not
+the owner's words). Each already has a home in this repository:
 
 1. **What `mz` lowers to**: `compiler/src/lower.rs` (a service, to an axum package) and
    `compiler/src/run.rs` and `compiler/src/run/` (a program, to a dependency-free Rust package).
@@ -51,13 +52,13 @@ The owner names four places where the leverage is. Each already has a home in th
 This RFC uses a `PT-` prefix (performance teardown), because `FM-`, `CL-`, `T2-` and the other
 prefixes belong to other RFCs. The evidence column says what was measured, and where.
 
-| ID   | Failure mode                                                                                                                                                                                | Evidence                                                                                                                                                                                                                   |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PT-1 | **The unmeasured speed claim.** A design decision justified by a cost nobody measured, or a result written as a claim.                                                                      | [AGENTS.md](../AGENTS.md) "The one rule"; the two pilots in [`benchmarks/results/`](../benchmarks/results/), neither of which showed an advantage.                                                                         |
-| PT-2 | **A cost every binary pays for code it never runs.** The allocator and the formatting path are in every WebAssembly build that prints a number.                                             | Measured (§11.3). The allocator's `malloc` is the largest single function in the lowered `fib` build, at 5,099 bytes, 10.6% of the file.                                                                                   |
-| PT-3 | **A runtime for a host the program is not on.** A multi-thread server runtime where the handler never waits, and which cannot build for WebAssembly at all.                                 | Read (§4.1): `dispatch` in `lower.rs` is synchronous; `#[tokio::main]` is the multi-thread runtime. Measured (§11.4): the generated service fails to build for `wasm32-unknown-unknown`, because mio has no backend there. |
-| PT-4 | **A check the compiler already knows cannot fire, that runs at every use.** Every `int` operator calls a checked helper, and every record construction runs `mz_check`, even on constants.  | Read (§8): `run.rs` lines 84–158 and `run/records.rs` lines 193–249. Measured that the emitted check is present (§8.1). Not measured for speed.                                                                            |
-| PT-5 | **An edit loop that rebuilds more than it changed.** A cold build of a lowered service takes tens of seconds, and the package cache keys on the source path, not on what the program means. | Measured (§11.2): 34.3 s cold for the registry service. Read: `run.rs` keys the package by a hash of the absolute source path (line 1015). `mz hash` does not cover programs (measured, §9.2).                             |
+| ID   | Failure mode                                                                                                                                                                                                                | Evidence                                                                                                                                                                                                                   |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PT-1 | **The unmeasured speed claim.** A design decision justified by a cost nobody measured, or a result written as a claim.                                                                                                      | [AGENTS.md](../AGENTS.md) "The one rule"; the two pilots in [`benchmarks/results/`](../benchmarks/results/), neither of which showed an advantage.                                                                         |
+| PT-2 | **A cost every binary pays for code it never runs.** The allocator and the formatting path are in both WebAssembly program builds measured (§11.3).                                                                         | Measured (§11.3). The allocator's `malloc` is the largest single function in the lowered `fib` build, at 5,099 bytes, 10.6% of the file.                                                                                   |
+| PT-3 | **A runtime for a host the program is not on.** A multi-thread server runtime where the handler never waits, and which cannot build for WebAssembly at all.                                                                 | Read (§4.1): `dispatch` in `lower.rs` is synchronous; `#[tokio::main]` is the multi-thread runtime. Measured (§11.4): the generated service fails to build for `wasm32-unknown-unknown`, because mio has no backend there. |
+| PT-4 | **A check the compiler already knows cannot fire, that runs at every use.** Every `int` operator calls a checked helper, and every construction of a record that has an `always` clause runs `mz_check`, even on constants. | Read (§8): `run.rs` lines 84–158 and `run/records.rs` lines 193–249 (the check is emitted only when the record `has_always`, line 249). Measured that the emitted check is present (§8.1). Not measured for speed.         |
+| PT-5 | **An edit loop that rebuilds more than it changed.** A cold build of a lowered service took tens of seconds here, and the package cache keys on the source path, not on what the program means.                             | Measured (§11.2): 34.3 s cold for the registry service. Read: `run.rs` keys the package by a hash of the absolute source path (line 1015). `mz hash` does not cover programs (measured, §9.2).                             |
 
 Each design choice below names the row it answers. A choice that answers none of them is not in
 this RFC.
@@ -98,7 +99,9 @@ For each subject, one teardown, in the same order:
    [`benchmarks/tasks/b1-routing/reference-rust/`](../benchmarks/tasks/b1-routing/reference-rust/).
    Not the upstream project's own benchmarks, which measure a different program.
 3. **Adopt or avoid.** One decision per cost centre, traced to a `PT-` row.
-4. **The change.** A lowering or runtime change, named and numbered (`C-1` and so on), not written.
+4. **The change.** A lowering or runtime change, named and numbered (`PC-1` and so on), not written.
+   The `PC-` prefix is used because `C-` names RFC-0010's contract failure modes and `C1`–`C10`
+   name the tracker's Tier 1 rows.
 5. **The gate.** The benchmark that must show the change before it lands. Correctness is gated in
    CI, through `benchmarks/perf/run.sh --check-only`, which CI runs and which times nothing. Size
    is deterministic for one toolchain, so a size budget may be gated (§10). Timing is measured on
@@ -133,7 +136,7 @@ LLVM (§12).
 | Linking             | The final link, and the binary's size.                                                                                                                                          | Not split out. The perf suite records `binary_bytes` and `build_ms` per variant; it was not run for this RFC (§11.6).                                                                                                                                                                                                |
 | Incremental rebuild | The time after a one-line change to a `.mz` file.                                                                                                                               | Not measured. `mz run` keeps one package per source path and rewrites only the files whose text changed (`run.rs` `write`), so an unchanged program costs nothing to rebuild, but a changed one rebuilds the package.                                                                                                |
 | Overflow checks     | Every `int` operator is a call to a checked helper (`run.rs` lines 84–158). The package also sets `overflow-checks = true` as a second net (`run.rs` line 317).                 | Measured: the profile setting does not change the size of the lowered `fib` WebAssembly (48,263 bytes with it and without it; the override was checked with `cargo build -v`, which shows `overflow-checks=on` by default and no flag under the override). The run-time cost of the helpers is not measured (§11.6). |
-| Panic and unwinding | Unwind tables and panic-message code in the binary; the exit status a panic produces.                                                                                           | `run.rs` line 80 ends a trap with `process::exit(101)` rather than unwinding, so a trap does not depend on unwinding. A panic on the program's thread does (§3.3, C-1).                                                                                                                                              |
+| Panic and unwinding | Unwind tables and panic-message code in the binary; the exit status a panic produces.                                                                                           | `run.rs` line 80 ends a trap with `process::exit(101)` rather than unwinding, so a trap does not depend on unwinding. A panic on the program's thread does (§3.3, PC-1).                                                                                                                                             |
 
 ### 3.3 What Mzizi adopts and avoids
 
@@ -155,12 +158,13 @@ LLVM (§12).
 
 ### 3.4 The changes that follow
 
-- **C-1, panic strategy for a lowered program.** `panic = "abort"` in the generated profile.
+- **PC-1, panic strategy for a lowered program.** `panic = "abort"` in the generated profile.
   Behaviour changes only for a panic on `main`'s thread, so it waits for §14 Q2. Gate:
   `benchmarks/perf/run.sh --check-only` for correctness, and the size of `mz-fib` in §10 M4 for
   the size effect. Status: not started; the size effect is to be measured.
-- **C-2, a package cache keyed by content.** See §9.2. Gate: a test that an edit which changes
-  only a comment reuses the package, and a cold-to-warm timing on the timing machine.
+- **PC-2, a package cache keyed by content.** See §9.2. Gate: a test that an edit which changes
+  only a comment, including one that moves lines, reuses the package (§9.2 says why moving lines is
+  the hard case), and a cold-to-warm timing on the timing machine.
 
 ---
 
@@ -217,16 +221,18 @@ perf suite covers programs and not services, and the repository has no load driv
 
 ### 4.4 The change that follows
 
-- **C-3, a current-thread runtime for a service whose handlers never wait.** `lower.rs` builds the
+- **PC-3, a current-thread runtime for a service whose handlers never wait.** `lower.rs` builds the
   runtime with `tokio::runtime::Builder::new_current_thread` when the service has no await point
   in its dispatch path. Gate: `mzprobe verify` for B1 (correctness against the Mzizi and axum
   references, which CI runs), and the request latency and throughput of B1 on the timing machine
   (§10 M9). It changes the `PINS` features, which must stay in step with B1's manifest (`CLAUDE.md`).
+  RFC-0016 Q13 would also change the tokio features (adding `signal`, for graceful shutdown), so the
+  two changes touch the same line and should be decided together.
   Status: not started; §14 Q8 decides whether to measure first.
 
 ### 4.5 Single-threaded hosts
 
-A WebAssembly host that runs one thread (the Workers model, if it is built) cannot run tokio's
+A WebAssembly host that runs one thread (the Workers model; RFC-0016 §4.4 designs that target, and it is not built) cannot run tokio's
 multi-thread runtime. For such a target, a lowered service needs no tokio: the synchronous
 `dispatch` is the whole handler, and the host's event loop supplies the I/O. This is a design. No
 such target exists (`AGENTS.md`: "no Workers, WebAssembly or Containers target"). §5.3 gives the
@@ -262,19 +268,22 @@ Not measured here. The cost of a server's I/O needs a load driver (§10 M9).
 calls an interface that the host implements: a native host implements it over the operating system,
 a single-threaded host implements it over its own event loop, and a test host implements it over a
 fixture. This is the direction the owner cites in registry #502, which this repository does not read
-(Repo boundaries, [AGENTS.md](../AGENTS.md)), and it is the open question RFC-0014 §2.6 leaves for
-capabilities, which is on branch `claude/rfc-0014-tier2` and not yet on `staging`.
+(Repo boundaries, [AGENTS.md](../AGENTS.md)), and it is the open question [RFC-0014](./RFC-0014-tier2.md) §2.6 (a draft, on `staging`) leaves
+for capabilities. RFC-0016 (three deployment targets, a draft in #123, design approved by the owner
+on 2026-10-21) takes a related but different route for Workers: it keeps the target-neutral core
+(`dispatch` and the reply type) and replaces the tokio and axum glue per target (RFC-0016 §4.4), and it
+says what the I/O adapters must provide (RFC-0016 §5.4). §14 Q13 asks how the two fit.
 
 **Avoids:** a socket type in the language's surface, and mio in any generated package that targets
 WebAssembly.
 
 ### 5.4 The change that follows
 
-- **C-4, the listener behind a trait.** `lower.rs` puts the listener behind a `Listener` trait with
+- **PC-4, the listener behind a trait.** `lower.rs` puts the listener behind a `Listener` trait with
   one native implementation (tokio and mio, the current behaviour), and the generated tests keep
   using `tower::oneshot`, which needs no socket at all. Gate: the generated `#[tokio::test]`s and
   `mzprobe verify` for B1 pass unchanged, and the generated package builds for `wasm32` with the
-  native implementation removed (§10 M7). Status: blocked on RFC-0014 §2.6 (§14 Q11).
+  native implementation removed (§10 M7). Status: blocked on RFC-0014 §2.6 (§14 Q11), and its shape on §14 Q13.
 
 ---
 
@@ -304,8 +313,7 @@ section. It was used because `wasm-opt` and `twiggy` are not installed here (§1
 The largest functions, lowered `fib` (§11.3): dlmalloc's `malloc` at 5,099 bytes (10.6% of the
 file), `__rdl_realloc` at 949, `core::str::count::do_count_chars` at 875, dlmalloc's `free` at
 870, `Formatter::pad_integral` at 793, `Formatter::pad` at 670, `core::fmt::write` at 628, and
-`Once::call` at 613. The allocator and the formatting path together are the costliest named code
-in a program that prints a few lines.
+`Once::call` at 613. In this build, the allocator and the formatting path together are the costliest named code.
 
 ### 6.2 Cost centres
 
@@ -329,8 +337,13 @@ in a program that prints a few lines.
 
 **Avoids:**
 
-- **`wasm-bindgen` as a dependency of a generated package.** It adds a second runtime, the glue, to
-  every output. Not adopted unless a measurement shows the ABI costs more.
+- **`wasm-bindgen` as a dependency of a generated program package.** The glue would be a second layer
+  in every output; its size is not measured here. Not adopted unless a measurement shows the ABI costs
+  more. **This conflicts, for services, with the charter and RFC-0016:** CHARTER.md §2 and §4 name
+  `workers-rs` for the Workers target, and RFC-0016 §4.4 (design approved by the owner) lowers a service
+  for Workers to a `workers-rs` crate. `workers-rs` is built on `wasm-bindgen` (to be confirmed from
+  its pinned manifest, RFC-0016 Q8). So this avoidance can hold for a program and for a raw module, not
+  for a service on the Workers target as approved. §14 Q12 asks the owner which applies.
 - **An allocator swap in the first iteration.** This RFC does not choose one. An alternative
   allocator is a separate decision, measured when it is proposed.
 - **Debug formatting in generated code.** The reference's `Debug::fmt` path is in its binary, and
@@ -343,10 +356,10 @@ default there.
 
 ### 6.4 The changes that follow
 
-- **C-5, a `wasm32` build mode for a program.** `mz build` writes a release profile that strips the
+- **PC-5, a `wasm32` build mode for a program.** `mz build` writes a release profile that strips the
   symbols for the wasm target, and it reports both sizes (§6.3). Gate: the size budget in §10 M4 and
   M5, which is deterministic for one toolchain.
-- **C-6, integer text without `core::fmt`.** A small writer for `int` in the generated runtime, if
+- **PC-6, integer text without `core::fmt`.** A small writer for `int` in the generated runtime, if
   the top functions above are confirmed to come from `int` text. Gate: `benchmarks/perf` output
   identical to `programs/interpolate.expected` (a correctness gate), and the size of
   `mz-interpolate` lower than the figure in the table (a size gate). §14 Q6 decides whether the
@@ -356,15 +369,23 @@ default there.
 
 ## 7. Dioxus
 
-### 7.1 What Mzizi already decided
+### 7.1 What is decided, and where it conflicts
 
 Dioxus is a Rust UI framework. It builds a virtual DOM, tracks state through a signals runtime, and
-hydrates server-rendered markup on the client. Mzizi's position is server render plus attach, not a
-client framework. The owner's brief cites registry #506 for that decision, which this repository does
-not read. The site repository's rule is no UI framework in the browser ([`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)
-`AGENTS.md`; cited from that repository's own rules). A Roots component is a contract and a rendered element tree, and
-no component lowers today (`AGENTS.md`, "no component lowers"). So Dioxus is the comparison for the
-component model, not a path Mzizi takes in this repository.
+hydrates server-rendered markup on the client. A Roots component is a contract and a rendered element
+tree, and no component lowers today (`AGENTS.md`, "no component lowers").
+
+The decided position is in [CHARTER.md](../CHARTER.md): §2 makes Mzizi Roots the component model and
+names Dioxus "a compatible third-party rendering target", one of the two frontend paths ("pure Rust end
+to end"), and §4's Phase 1 renders `mzizi-ui` "through a compatible third-party engine (Dioxus today)".
+So under the charter Dioxus is a path a Roots component may be rendered through, not only a comparison.
+
+The owner's brief for this RFC cites registry #506 for a position of server render plus attach, not a
+client framework. This repository does not read the registry (Repo boundaries), so that is cited, not
+verified. The site repository's rule is no UI framework in the browser ([`mzizi-site`](https://github.com/mzizi-dev/mzizi-site)
+`AGENTS.md`), which is a rule for that site, not for every Mzizi page. The "avoids" in §7.4 are
+therefore a proposal for the server-render path only, and they do not remove Dioxus as a rendering
+target, which only a charter amendment could do (§14 Q15).
 
 ### 7.2 Cost centres (the project's design)
 
@@ -389,12 +410,12 @@ measurement, and it is deferred (§10).
 **Adopts:** static rendering of a component to HTML at build time, with the client doing nothing it
 does not have to. The Roots model is already close: a rendered tree is data.
 
-**Avoids:** a client-side diff engine, a signals runtime in the page, and hydration as a required
-step.
+**Avoids, on the server-render path only (§7.1):** a client-side diff engine, a signals runtime in the
+page, and hydration as a required step. The charter's Dioxus rendering target is unchanged.
 
 ### 7.5 The change that follows
 
-- **C-7, none in this repository.** The render path for Roots components lives in the registry and
+- **PC-7, none in this repository.** The render path for Roots components lives in the registry and
   its crates, which this repository does not build (Repo boundaries). The RFC names it and changes
   nothing here. Gate, when it is proposed: the crates' own tests and the site's rendered-content gate.
 
@@ -426,7 +447,8 @@ built. A constant `always` that **fails** is a different case: the program is wr
 
 Every `int` operator in a lowered program is a checked helper. The `fib` program
 ([`benchmarks/perf/programs/fib.mz`](../benchmarks/perf/programs/fib.mz)) lowers to these calls
-(generated `src/main.rs`, lines 37, 64, 550, 560 and 568, from `mz build`):
+(generated `src/main.rs` from `mz build`: the calls are at lines 560 and 568, and the helpers
+`mz_add`, `mz_sub` and `mz_rem` are defined at lines 30, 37 and 64):
 
 - `fib(mz_sub(n, 1i64, &MZ_AT_2))` and `fib(mz_sub(n, 2i64, &MZ_AT_3))`, in the recursive branch.
 - `mz_add(…)` for the sum of the two calls.
@@ -491,25 +513,32 @@ From §11.1, §11.2 and §11.5, on one machine:
 - `mz run benchmarks/perf/programs/fib.mz`, the default debug profile: 2.2 s cold, 1.2 to 1.4 s warm.
   The warm figure includes running `fib(38)` in a debug build, so it is not a build time.
 
-The front end is cheap, and the back end is the cost. The loop an agent runs most is `mz check` and
-then `mz run`. The part that costs is cargo's, and the remedy is to rebuild less, not to make the
-front end faster.
+On this machine the front end took milliseconds and the back end took seconds. The loop an agent runs most is `mz check` and
+then `mz run`. In these figures the part that costs is cargo's, which points at rebuilding less rather than at the
+front end.
 
 ### 9.2 A content-hash cache of the IR: partly exists, not used by build or run
 
 **Exists:** `ir.rs` gives each node a SHA-256 identity over its canonical form (`ir.rs` line 81,
 `sha256(&self.canonical())`), and `mz hash` prints the root hash (`main.rs` line 273). **It covers
-components only.** Measured: `mz hash` on a program stops with `hash does not cover programs yet;
-check, fix and contract do`, and on a component prints the root hash (`mz hash primitives/button.mz`
+components only.** Measured: `mz hash` on a program exits 2 with ``mz: `hash` does not cover programs yet;
+`check`, `fix` and `contract` do``, and on a component prints the root hash (`mz hash primitives/button.mz`
 gives `6a1550cae374  button  27 nodes`).
 
 **Today:** `run.rs` line 1015 keys the package by a hash of the absolute source path, and `write`
-rewrites only the files whose text changed. So a comment-only edit rebuilds the package, and a
-second copy of the same program in another directory builds again.
+rewrites only the files whose text changed. Checked on 2026-10-21 with `mz build` on
+`benchmarks/perf/programs/fib.mz`: an edit to the text of an existing comment line writes a
+byte-identical package, so `write` changes nothing and cargo rebuilds nothing. A comment that adds or
+removes a line does change the package, because every trap site carries its source line and column
+(the `MZ_AT_*` constants, for example `MzAt { file: "fib.mz", line: 17, col: 16, text: "n - 1" }`),
+and those move. A second copy of the same program in another directory builds again, because the key
+is the path.
 
 **Designed:** key the lowered package by the root hash of the checked program, so that two sources
-with the same meaning share one package, and a comment-only edit reuses it. This needs an IR that
-covers programs (RFC-0003 §1 names the properties; the program IR is not built). It is C-2 (§3.4).
+with the same meaning share one package, and an edit that moves no meaning reuses it. Two things stand
+in the way. The trap sites' lines and columns are part of what a trapping program prints, so either
+they stay in the key or they move out of the generated code into a table the package reads at run time
+(§14 Q14). And it needs an IR that covers programs (RFC-0003 §1 names the properties; the program IR is not built). It is PC-2 (§3.4).
 
 ### 9.3 The development backend against LLVM: designed
 
@@ -550,7 +579,7 @@ only in the pull request that changes the toolchain (§14 Q4).
 | M2  | Cold `cargo build` of a lowered service                        | `mz build examples/registry.mz`, then `cargo build --release` in an empty target directory (§11.2)         | Taken.                                                   |
 | M3  | Cold `cargo build` of the B1 reference                         | `cargo build --release` in an empty target directory (§11.2)                                               | Taken.                                                   |
 | M4  | WebAssembly size breakdown of a lowered program                | `cargo build --release --target wasm32-unknown-unknown`, then the section reader (§11.3)                   | Taken for `fib` and `interpolate`.                       |
-| M5  | WebAssembly size, stripped                                     | As M4, with symbols stripped for the target (C-5)                                                          | Not taken.                                               |
+| M5  | WebAssembly size, stripped                                     | As M4, with symbols stripped for the target (PC-5)                                                         | Not taken.                                               |
 | M6  | `wasm-opt` size and `twiggy` breakdown                         | Binaryen's `wasm-opt -Oz` and `twiggy top` on the M4 files                                                 | Not taken. Needs §14 Q1.                                 |
 | M7  | Whether the generated service builds for WebAssembly           | `cargo build --release --target wasm32-unknown-unknown` in the generated package (§11.4)                   | Taken. Fails, as §5.1 says.                              |
 | M8  | Native binary size and cold build, programs                    | The perf suite's `binary_bytes` and `build_ms`, from `benchmarks/perf/run.sh`                              | Not run for this RFC. The suite is the gate.             |
@@ -559,9 +588,9 @@ only in the pull request that changes the toolchain (§14 Q4).
 | M11 | Run time with and without the constant-divisor and range rules | The perf suite's `fib` and `collatz`, timed on the timing machine, before and after the rule (§8.2)        | Not taken. The rule is not built.                        |
 | M12 | Edit-to-run time for an agent                                  | A fixed set of edits, each followed by `mz check --agent` and `mz run`, timed on the timing machine (§9.3) | Not taken. The set does not exist yet.                   |
 
-**The gate for each change in §3 to §8:** C-1 by M4 (size) and the perf suite's correctness; C-2 by
-a cache test and M10 on the timing machine; C-3 by M9 and `mzprobe verify`; C-4 by M7 and the
-generated tests; C-5 by M4 and M5; C-6 by the `interpolate` output and M4; C-7 is outside this
+**The gate for each change in §3 to §8:** PC-1 by M4 (size) and the perf suite's correctness; PC-2 by
+a cache test and M10 on the timing machine; PC-3 by M9 and `mzprobe verify`; PC-4 by M7 and the
+generated tests; PC-5 by M4 and M5; PC-6 by the `interpolate` output and M4; PC-7 is outside this
 repository.
 
 ---
@@ -682,7 +711,7 @@ Each has a recommendation. The owner decides.
 yes, on the timing machine, pinned there. Neither goes into the compiler crate, which has no dependencies
 (`AGENTS.md`).
 
-**Q2. Panic strategy for a lowered program (C-1).** `panic = "abort"` would change a panic on `main`'s
+**Q2. Panic strategy for a lowered program (PC-1).** `panic = "abort"` would change a panic on `main`'s
 thread from exit 101 to a signal, 128 plus 6. Recommendation: keep unwinding until the owner amends
 `mz run`'s exit contract (`CLAUDE.md`), and record the size effect now, so the decision has a figure.
 
@@ -698,7 +727,7 @@ budget only in the pull request that changes the toolchain. This adds a CI job, 
 `mzizi-benchmarks` repository, which the perf README already names, checking this one out. CI stays
 correctness-only. The owner names who runs that machine.
 
-**Q6. A hand-written integer writer in the generated runtime (C-6).** Recommendation: measure the top
+**Q6. A hand-written integer writer in the generated runtime (PC-6).** Recommendation: measure the top
 functions' source first. The gain is bytes, and the output must stay byte-identical to the `.expected`
 files. The owner decides whether the generated runtime grows.
 
@@ -706,7 +735,7 @@ files. The owner decides whether the generated runtime grows.
 every run. A trap stays for a value that depends on input. This is a language decision that RFC-0013 §11.4
 would need to amend.
 
-**Q8. A current-thread runtime for a service (C-3, M9).** The change alters the `PINS` features, which
+**Q8. A current-thread runtime for a service (PC-3, M9).** The change alters the `PINS` features, which
 must stay in step with B1's manifest (`CLAUDE.md`). Recommendation: approve a load driver first (M9), and
 measure before the runtime changes. A driver is new code and needs the owner's approval.
 
@@ -717,19 +746,48 @@ measured loop requires it. The owner decides the order.
 measurements beyond one machine, then split it into `design/teardown/<subject>.md`. The acceptance
 criterion of #117 ("a teardown doc per subject") is met by the sections now, and by files later.
 
-**Q11. The I/O capability.** The host trait in §5.3 depends on RFC-0014 §2.6, which is open and on branch
-`claude/rfc-0014-tier2`. Recommendation: decide the capability design there first, then C-4.
+**Q11. The I/O capability.** The host trait in §5.3 depends on RFC-0014 §2.6, which is an open question
+in that draft. Recommendation: decide the capability design there first, then PC-4.
+
+**Q12. `wasm-bindgen` and the Workers target (§6.3).** RFC-0016 §4.4, approved as design, lowers a
+service for Workers to `workers-rs`, which is built on `wasm-bindgen`; §6.3 avoids `wasm-bindgen` in a
+generated package. Recommendation: scope §6.3's avoidance to programs and raw modules, and keep
+RFC-0016's `workers-rs` path for services, measuring its glue's size when that wave is built. The owner
+decides.
+
+**Q13. One I/O seam or two (§5.3, PC-4).** PC-4 puts the listener behind a `Listener` trait in one
+generated package; RFC-0016 §4.4 keeps `dispatch` target-neutral and emits different glue per
+`--target`, and RFC-0016 §5.4 sets what adapters must provide. Recommendation: follow RFC-0016's
+per-target glue, and drop PC-4 or restate it as a check that the core stays free of tokio, axum and
+mio symbols. The owner decides.
+
+**Q14. Trap locations and a content-keyed cache (§9.2, PC-2).** Every trap site embeds its line and
+column, so a comment that moves lines changes the generated code. Recommendation: decide whether
+locations stay in the generated code (and in the cache key) or move to a table, before PC-2 is
+designed further. The owner decides.
+
+**Q15. The Dioxus rendering target (§7).** The charter names Dioxus a compatible rendering target and
+Phase 1's engine; the brief's registry #506 points at server render plus attach. Recommendation: keep
+the charter's text, and treat §7.4 as a proposal for the server-render path only, unless the owner
+amends the charter. The owner decides.
 
 ---
 
 ## 15. Reconciliation with the other RFCs
 
-- **RFC-0011 §8 and §6.** The service lowering. C-3 and C-4 change `lower.rs`, and the routing semantics
+- **RFC-0011 §8 and §6.** The service lowering. PC-3 and PC-4 change `lower.rs`, and the routing semantics
   stay as RFC-0011 §6 defines them.
-- **RFC-0013 §11.4, §13.1 and §14.** `always` and `mz run`. C-1, C-2 and §8.1 change how a program lowers and
+- **RFC-0013 §11.4, §13.1 and §14.** `always` and `mz run`. PC-1, PC-2 and §8.1 change how a program lowers and
   caches, and Q2 and Q7 are decided against those sections.
 - **RFC-0006.** The contract proofs §8.1 would reuse are the same kind `contract.rs` gives components.
 - **RFC-0012.** The harness's single operator table (§8.5) is the source a lowering rule would read.
 - **RFC-0003 §1.** The content-addressed identity that §9.2 needs for programs, which is not built.
+- **RFC-0014 §2.6.** The capability question that §5.3 and PC-4 depend on (Q11).
+- **RFC-0016 §4.4, §5.4 and Q13** (a draft in #123, design approved by the owner, nothing built). §4.5
+  agrees with its Workers design (no tokio, `dispatch` as the handler). §6.3's `wasm-bindgen` avoidance
+  conflicts with its `workers-rs` lowering for services (Q12), PC-4 overlaps its per-target glue (Q13),
+  and PC-3 and its Q13 both change the tokio features.
+- **CHARTER.md §2 and §4.** `workers-rs` for Workers (Q12) and Dioxus as a rendering target (§7.1, Q15).
+  This RFC proposes no charter change.
 
 Nothing in this list is amended by this RFC.
