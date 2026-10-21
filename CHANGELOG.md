@@ -17,6 +17,11 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — CI reports on merge queue runs, and the release pins match the org's version check
+
+- **`ci.yml`, `supply-chain.yml` and `changelog.yml` also run on `merge_group`**, so their checks report on a merge queue's `gh-readonly-queue/**` ref and a queued pull request does not wait until the queue times it out (part of the org-wide merge-queue rollout, nyuchi/.github#100 and nyuchi/.github#101). `changelog / entry required` reads only pull request metadata (base, head, labels, author), so on a merge queue run the job is skipped, which counts as passed; its concurrency group falls back to the ref when there is no pull request number. Nothing changes where no queue is configured.
+- **`staging-version.yml` and `main-release.yml` pin `nyuchi/.github` at `32eabdb`** (main, 2026-10-19), for `reusable-staging-release.yml` and the `next-version` action, the commit the enterprise release version check uses. The only interface change is a new optional `next-version` input, `current-from-files`, which neither workflow passes. CI configuration only: no compiler or test change.
+
 ### Changed — release prep for 2026-10-20
 
 - **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
