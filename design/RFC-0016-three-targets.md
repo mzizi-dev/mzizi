@@ -1,6 +1,6 @@
 # RFC-0016 — Three deployment targets: Workers, containers and bare metal, and the lowering each one needs
 
-**Status:** draft; approved by the owner, with W2 to W4 built now by owner exception (2026-10-21, Q1). **Nothing in this RFC is implemented.** No command, flag, generated file,
+**Status:** draft; the design is approved by the owner, design only (2026-10-21, Q1). **Nothing in this RFC is implemented.** No command, flag, generated file,
 CI job or charter passage described here exists yet. The charter text in §3 is a proposal: it takes
 effect only when the owner approves it, and CHARTER.md is not edited by this document. Each wave in §9
 names the tests that would make its part true, and until those tests are on `main`, the tracker rows in
@@ -523,7 +523,7 @@ in §8.1 is #121's, so the two rows should differ only in the evidence and "done
 
 ## 9. Build order: a plan, not a charter decision
 
-Each wave is a separate PR, with its own tests and its own CHANGELOG entry. None starts before the owner decides Q1. Q1 is decided (§11): W2 to W4 are built now by owner exception; W5 and W6 wait for the gate.
+Each wave is a separate PR, with its own tests and its own CHANGELOG entry. None starts before the owner decides Q1. Q1 is decided (§11): design only, so no wave after W1 has started.
 
 | Wave | What it builds                                                                                                                                                                                  | Its test                                                                                                                                     |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -568,12 +568,11 @@ _Decided (owner, 2026-10-21):_ "approve RFC-0016 design only". The design in thi
 exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts on this decision; each waits for the
 gate or for a later owner decision that names it. CHARTER.md is not edited by this decision, and §3 stays a
 proposal.
-_Superseded the same day (owner, 2026-10-21):_ "you have to do the bare metal and container work, we should be
-scoping and building or any container type docker is the default, but standard linux containers etc as well". This
-is the explicit owner exception the recommendation names. §3 is applied to CHARTER.md as v0.5, with the exception
-recorded in its changelog. W2, W3 and W4 are built now. W5 (Workers) and W6 (connectivity adapters) still wait for the
-gate. The image is built with Docker by default, and it is a standard OCI image, so W3 also checks that a second OCI
-tool (Podman) builds and runs it.
+_Confirmed the same day (owner, 2026-10-21):_ "wait for phase 0 gate and with the build waves". The charter text (§3)
+and every build wave wait for the Phase 0 gate together. The owner's scoping direction for the container target is
+part of the design now: "any container type docker is the default, but standard linux containers etc as well". So
+the image is a standard OCI image, Docker is the default tool that builds it, and W3's test, when it runs, also
+builds and runs it with a second OCI tool (Podman).
 
 **Q2. Programs on the container target.** A `program` in a container would be a one-shot job, and its exit status
 would follow RFC-0013 §13. _Recommendation:_ not in this RFC. A `program` is native, and its bare-metal form is its
