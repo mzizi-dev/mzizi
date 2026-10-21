@@ -17,6 +17,16 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0016, three deployment targets (design only)
+
+- **`design/RFC-0016-three-targets.md`, a draft, design only** (tracking issue [#122](https://github.com/mzizi-dev/mzizi/issues/122)). It sets out three deployment targets for a `service`: Cloudflare Workers (wasm32), containers on any OCI host (for example Fly Machines), and bare metal (a native Linux binary, glibc or static musl, on x86_64 and aarch64). Each is a plan. None is built, and no command, flag, generated file, CI job or harness entry in the RFC exists yet.
+- **The charter amendment is proposed, not applied.** RFC-0016 §3 gives the replacement text for CHARTER §1, §2 and §4 and the v0.5 changelog. CHARTER.md is unchanged and waits for the owner.
+- **Proposed, not built:** `mz build --target native|container|workers` (RFC-0016 §4.1), a `HOST` setting beside `PORT` with a loopback default, graceful shutdown on SIGTERM, the `GET /_mz/health` route, and `MZ0813` for a route under the reserved `/_mz/` prefix (RFC-0016 §4.2 to §4.5).
+- **`LANGUAGE-TRACKER.md` P11** now says what the code on `main` does: a `program` lowers to a native package as well as a `service`, and the only build made is the x86_64 glibc one, in CI. Its "done when" is split by target. P13 to P16 are added as designs (📝), not as capabilities, and no status in the tracker's Status column changes.
+- **`README.md` and `design/ROADMAP.md`** point to the RFC.
+- **Q1 decided, design only** (owner, 2026-10-21: "approve RFC-0016 design only"). The design is approved as design. No exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts, and CHARTER.md is unchanged; the §3 charter text stays a proposal. Confirmed the same day: the charter text and the build waves wait for the Phase 0 gate together. The container target's scope is recorded: a standard OCI image, built with Docker by default and run by any OCI runtime (W3 would also check it with Podman).
+- **Brought up to date with `staging` (2026-10-21).** The `LANGUAGE-TRACKER.md` P11 row keeps this PR's evidence and "done when" and adds #121's record of the owner's 2026-10-20 target decision; RFC-0016 §8.1 quotes the same row. RFC-0016's note on the overlap with #121 now says #121 is on `staging`, and the cargo-deny musl citation moves from `supply-chain.yml:62` to line 65, where #124 left it. No design change.
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
