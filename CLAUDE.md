@@ -15,8 +15,9 @@ missing there or specific to Claude Code. Where an RFC and the code disagree, th
   (`chore(release): staging to main`). Dependabot also targets `staging`.
 - CI (`ci.yml`, `changelog.yml`, `supply-chain.yml`) runs on pull requests into `main`,
   `staging` and `claude/**`, so a PR stacked on another `claude/` branch still gets checks.
-- Keep branches linear (rebase or cherry-pick, never merge a base branch in): PRs are
-  rebase-merged one commit at a time.
+- PRs are squash-merged through the merge queue (`gh pr merge <n> --squash --auto`), and the
+  squash commit keeps every commit message in its body. Updating a branch with the base
+  (GitHub's "Update branch") is fine; the squash makes `main` linear.
 - Every PR body that changes something user-visible needs a **Site/docs impact** heading
   (`None.` when nothing changed). A PR that changes behaviour, diagnostics, the language, an
   RFC, the charter or the benchmarks adds a `CHANGELOG.md` entry under `## [Unreleased]`, or

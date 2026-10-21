@@ -158,30 +158,32 @@ repo's `.mz` files lex, parse, lower to IR, keep their own promises, and the shi
 agrees_ — it does not mean any component matches the ground truth the benchmark will score
 against.
 
-## Rebase merges only, never squash — and why that is a research decision, not a style preference
+## Squash merges through the merge queue, every commit message kept — and why that is a research decision, not a style preference
 
-**Squash merging and merge commits are disabled, org-wide and on this repository; rebase
-merging is the only method.** Merge the pull request:
+**Squash merging through the merge queue is the only method. Rebase and merge commits are
+disabled (repo settings and rulesets, 2026-10-21).** Add the pull request to the queue:
 
 ```bash
-gh pr merge <n> --rebase --delete-branch
+gh pr merge <n> --squash --auto
 ```
 
-This section previously said the opposite — merge commits only, rebase disabled — and the
-API disagreed. Measured on 2026-09-12 (commit `c52a7d8`, which corrected the README but not
-this file) and again on 2026-09-27, when `--merge` on PR #10 was refused with "Merge commits
-are not allowed on this repository": `allow_rebase_merge` is true, merge commits and squash
-are both false. Because rebase merging cannot replay merge commits, **keep branches linear**
-— cherry-pick or rebase, never merge `main` into a PR branch.
+Never `--admin`. The squash commit message is the PR title plus the commit details
+(`COMMIT_MESSAGES`), so **the squash commit keeps every commit message in its body** and the
+per-commit reasoning is preserved. Merged branches are deleted. Updating a branch with the
+base (GitHub's "Update branch") is fine; the squash makes `main` linear. The merge queue
+tests each PR against the latest base.
 
-The settings table [`MIGRATION.md`](./MIGRATION.md) §1.1 planned for every repository in the
-org read:
+This section has said two other things before. The settings table
+[`MIGRATION.md`](./MIGRATION.md) §1.1 planned for every repository in the org was merge
+commits only. Measured on 2026-09-12 (commit `c52a7d8`) and again on 2026-09-27, when
+`--merge` on PR #10 was refused, the live settings were rebase only. The org moved to squash
+through a merge queue on 2026-10-21:
 
-| Setting              | Planned | Actual  | Why the part that survived matters                               |
-| -------------------- | ------- | ------- | ---------------------------------------------------------------- |
-| Allow merge commits  | yes     | **no**  | —                                                                |
-| Allow squash merging | no      | **no**  | Squash discards the per-commit reasoning this project depends on |
-| Allow rebase merging | no      | **yes** | Rebase keeps every commit and its message                        |
+| Setting              | Planned | 2026-09-12 | Since 2026-10-21 | Why the part that matters survived                             |
+| -------------------- | ------- | ---------- | ---------------- | -------------------------------------------------------------- |
+| Allow merge commits  | yes     | no         | **no**           | —                                                              |
+| Allow squash merging | no      | no         | **yes**          | The squash body keeps every commit message (`COMMIT_MESSAGES`) |
+| Allow rebase merging | no      | yes        | **no**           | The merge queue squashes; `main` stays linear without a rebase |
 
 Read the squash row literally. **The commit messages in this repository are the research
 record.** This is a project whose entire output so far is a set of design decisions and the
@@ -189,16 +191,17 @@ reasoning behind them; the RFCs carry the large decisions and the commit log car
 smaller one — why a lint was allowed, why a filter was removed, why a claim in an RFC was
 narrowed, which of two defensible options was taken and what it cost.
 
-A squash replaces six such messages with one, keeps the diff, and throws the reasoning away.
-The diff survives anyway — `git diff` can always reconstruct it — so squash trades the only
-irreplaceable half of a commit for tidiness in `git log --oneline`. For a project whose
-value is currently the reasoning rather than the code, that is a bad trade, and it is the
-one this convention exists to prevent.
+A squash that kept only the PR title would replace six such messages with one, keep the
+diff, and throw the reasoning away. The diff survives anyway — `git diff` can always
+reconstruct it — so that kind of squash trades the only irreplaceable half of a commit for
+tidiness in `git log --oneline`. That is why the squash message is set to the commit
+details: every message lands in the squash commit's body, in order.
 
-A rebase merge loses something smaller: the branch point, so a sequence of commits that only
-makes sense as a unit of work lands in `main` without a merge commit saying what it was. The
-per-commit reasoning — the part this convention exists to protect — survives intact. Say
-what the unit of work was in the PR description, which GitHub keeps linked to every commit.
+A squash loses something smaller: the individual commits as separate objects on `main`, so
+`git bisect` stops at the pull request rather than the commit inside it. The per-commit
+reasoning — the part this convention exists to protect — survives intact. Say what the unit
+of work was in the PR title and description, which become the squash commit's subject and
+stay linked to it.
 
 Practical consequences:
 
@@ -353,8 +356,8 @@ a design document by pretending it is complete is not the convention here.
 the same branch — RFC-0003 and RFC-0004 were both written alongside the code that
 implements part of them, which is what lets `Status` say "implemented in this PR" and what
 keeps the RFC from drifting into fiction. An RFC that is pure design is fine too; say so in
-`Status`. Either way the branch is merged, not squashed, so the RFC's review history stays
-readable.
+`Status`. Either way the squash commit keeps every commit message in its body, so the RFC's
+review history stays readable.
 
 ## The language harness
 
