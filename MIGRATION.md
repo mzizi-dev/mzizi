@@ -112,9 +112,11 @@ Matching the four existing Mzizi-ecosystem repos:
 | Wiki                      | off                 | RFCs are the design record, in-repo and checkable                        |
 | Forking                   | allowed             | Non-negotiable — RFC-0004 §3's forkability rule is meaningless otherwise |
 
-> **Superseded for the merge rows.** This table is the original plan. The live settings are
-> the reverse for merges: rebase merging on, merge commits and squash off. See
-> [`CONTRIBUTING.md`](./CONTRIBUTING.md), "Rebase merges only, never squash".
+> **Superseded for the merge rows.** This table is the original plan. Since 2026-10-21 the
+> live settings are squash merging through a merge queue, with the squash commit keeping every
+> commit message in its body (`COMMIT_MESSAGES`); merge commits and rebase are off. See
+> [`CONTRIBUTING.md`](./CONTRIBUTING.md), "Squash merges through the merge queue, every commit
+> message kept".
 
 #### On the licence
 
@@ -473,6 +475,19 @@ authors components in Mzizi "against the existing `.tsx`/`.rs` implementations a
 truth". That is why they are worth keeping hand-written and eventually **frozen** rather than
 maintained — a reference implementation that keeps changing is not a reference. When lowering
 exists, the generated output is compared against them; it does not replace them in place.
+
+### 7.2c Gateway repository renames, 2026-10-20
+
+The owner decided on 2026-10-20 to rename the API gateway repositories, and renamed three of
+them (the fourth, `mukoko-dev/mukoko-api`, already had its name). Use the new names. The old
+name is kept once, here, for lookups; GitHub redirects it. Live hostnames do not change.
+
+| Gateway                       | Old repository                | New repository              | Host                          |
+| ----------------------------- | ----------------------------- | --------------------------- | ----------------------------- |
+| Mzizi API                     | `mzizi-dev/mzizi-api-gateway` | `mzizi-dev/mzizi-api`       | `api.mzizi.dev`               |
+| Nyuchi API (B2B)              | `nyuchi/api-gateway`          | `nyuchi/nyuchi-api`         | `api.nyuchi.com`              |
+| Mukoko API (consumer)         | `mukoko-dev/mukoko-api`       | unchanged                   | `api.mukoko.com` (no DNS yet) |
+| Nyuchi Servers API (internal) | `nyuchi/data-gateway`         | `nyuchi/nyuchi-servers-api` | `api.nyuchiservers.com`       |
 
 ### 7.3 Package mapping
 

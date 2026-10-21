@@ -24,6 +24,43 @@ carry no pull request number.
 - **Read from the code, cited in the RFC, and not changed here.** `mz hash` covers components only, and it refuses a program with a message that says so. `mz run` keys its cached package by the source path, not by content. An `always` clause in a program is checked at every construction, including a construction of constants (`examples/records.mz`).
 - **Changes nothing else.** No RFC is amended and no lowering changes. The open questions in RFC-0015 §14 need the owner's decisions before any change the RFC names is proposed.
 
+### Changed — merging is squash through the merge queue; docs updated
+
+- **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
+
+### Changed — CI reports on merge queue runs, and the release pins match the org's version check
+
+- **`ci.yml`, `supply-chain.yml` and `changelog.yml` also run on `merge_group`**, so their checks report on a merge queue's `gh-readonly-queue/**` ref and a queued pull request does not wait until the queue times it out (part of the org-wide merge-queue rollout, nyuchi/.github#100 and nyuchi/.github#101). `changelog / entry required` reads only pull request metadata (base, head, labels, author), so on a merge queue run the job is skipped, which counts as passed; its concurrency group falls back to the ref when there is no pull request number. Nothing changes where no queue is configured.
+- **`staging-version.yml` and `main-release.yml` pin `nyuchi/.github` at `32eabdb`** (main, 2026-10-19), for `reusable-staging-release.yml` and the `next-version` action, the commit the enterprise release version check uses. The only interface change is a new optional `next-version` input, `current-from-files`, which neither workflow passes. CI configuration only: no compiler or test change.
+
+### Changed — release prep for 2026-10-20
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
+
+### Changed — gateway names, four API gateways and build targets (2026-10-20)
+
+- **Docs only; no code, test or behaviour changed.** The Mzizi API repository is now named
+  `mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`) in `AGENTS.md`, `README.md`,
+  `design/ROADMAP.md`, `design/RFC-0009-comparison-benchmark.md` and `design/RFC-0010-contracts-everywhere.md`.
+  The three other API gateways are named in `AGENTS.md`, `README.md` and `MIGRATION.md` §7.2c with their
+  new repository names: `nyuchi/nyuchi-api`, `mukoko-dev/mukoko-api` (unchanged) and `nyuchi/nyuchi-servers-api`.
+  `AGENTS.md` says there are four API gateways. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from `api.mzizi.dev` and sign-in is WorkOS AuthKit. Any state it keeps is decided to go in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
+- **`LANGUAGE-TRACKER.md`, row P11 (targets)** corrected: a `program` lowers to native Rust as well as a
+  `service` (`compiler/src/run.rs`). Built today: a native axum package bound to `127.0.0.1`, and a native
+  program built with Cargo. No Workers (wasm32) target and no container image exists. The owner's decision of
+  2026-10-20 is recorded as direction, not as built: three targets, Cloudflare Workers, containers on any OCI
+  host and bare metal.
+- **`design/ROADMAP.md`** records the 2026-10-20 target decision and that the charter's §2 Worker-to-Container
+  wording is to be amended by an RFC. `CHARTER.md` is unchanged.
+- The owner renamed the three API gateway repositories that change name (`mukoko-dev/mukoko-api` keeps its
+  name); the new names are live, and GitHub redirects the old ones.
+- **Targets (`LANGUAGE-TRACKER.md` P11, `design/ROADMAP.md`):** RFC-0016 (three targets, a draft in #123) is approved as
+  design only (owner, 2026-10-21). The `CHARTER.md` amendment and every build wave wait for the Phase 0 gate; no container
+  or bare-metal build work has started. The container target is a standard OCI image, built with Docker by default and
+  run by any OCI runtime.
+
+## 2026-10-20
+
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
 
 - **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
@@ -54,6 +91,8 @@ carry no pull request number.
 
 - **CI: `dtolnay/rust-toolchain` is pinned to a commit on its `master` history (`e2a55d2`, tag `v1`), with `toolchain: stable` passed explicitly.** The old pin, `89b1218` (`# stable`), was a commit on the action's `stable` branch, which its author regenerates by force-push; the 2026-10-08 regeneration orphaned it, and zizmor's `impostor-commit` audit (`workflow audit` job) then failed every pull request with four high findings. `master` is not force-pushed, so its commits stay reachable. The two commits' `action.yml` differ only in `toolchain` being required on `master` (no default), and the new head includes the action's own input-handling hardening (its PR #187). No compiler or test change.
 
+## 2026-10-08
+
 ### Changed — release prep: C6 on `main`, every Tier 1 row ✅, M1 met (2026-10-08)
 
 - **`LANGUAGE-TRACKER.md`:** row C6 (text operations) is ✅. Its "Done when" is the owner's decision of 2026-10-08 (RFC-0013 §20 Q20): the operations exist as built-in methods with tests, each registered in the language harness. The rest of C6 (#106) reaches `main` with this release, and the row says so. With C1–C5 and C7–C10 already ✅, every Tier 1 row is ✅, so M1 ("all of Tier 1 ✅", #69) is met on `main` once this release merges. The public-suites row is still blocked, by the standard library (P2) alone. The comparison table's text row is ✅, and its line about "two ✅ rows" no longer says two.
@@ -61,8 +100,6 @@ carry no pull request number.
 - **`README.md` and `CONTRIBUTING.md`:** C6 and C7 are on `main`, not on `staging`. `compiler/src` is 33,438 lines, and `CONTRIBUTING.md`'s compiler-crate test count is 629 (it said 613).
 - **`AGENTS.md`:** the honesty rule no longer says "most of Tier 1 does not exist", which stopped being true with C6. It now says a `service` and a `program` lower, a program only in Tier 1's narrow form; no component lowers; and most of Tier 2 and Tier 3 (modules, a standard library, concurrency) does not exist. The rule itself is unchanged.
 - **Measured on this branch, cut from `staging` at `a8e3710`, not on `main`:** `cargo test --workspace` passes 760 tests in 27 suites (629 in the compiler crate); `mz harness definition` has 197 entries (80 diagnostic entries and 49 pending codes, both unchanged); `git ls-files compiler/src | xargs cat | wc -l` is 33,438. Nothing here is measured against the charter's kill criterion.
-
-## 2026-10-08
 
 ### Fixed — stale prose in the tracker and README after v0.7.0 (2026-10-08)
 
