@@ -21,7 +21,8 @@ questions (§11). It does not design the standard library (RFC-0014 §2), state 
 > - **RFC-0011 §8.1**: `mz build` gains `--target`, and a generated service reads `HOST` beside `PORT`. The
 >   default stays `127.0.0.1`, so a native build behaves as it does today except where §4.2 says so.
 > - **LANGUAGE-TRACKER.md P11**: its evidence is corrected in this PR, because it says a service is the only
->   thing that lowers, and a `program` lowers too (`compiler/src/run.rs`). Rows P13–P16 are added as designs
+>   thing that lowers, and a `program` lowers too (`compiler/src/run.rs`). (#121, now on `staging`, made the
+>   same correction; this PR adds the build that CI makes and splits "done when" by target.) Rows P13–P16 are added as designs
 >   (§8). This is the one edit to a fact file that this RFC makes now, since it corrects a stated fact and
 >   builds nothing.
 
@@ -37,7 +38,7 @@ platform.
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **D-1** | **The host lock-in.** The only deployment the charter names is Cloudflare, so a backend that must run on Fly, or on a machine the operator owns, needs a rewrite.                          | Owner, 2026-10-20 (verbatim in §1). Not measured.                                                                                                                                                                  |
 | **D-2** | **The loopback bind.** A generated service binds `127.0.0.1`, so nothing outside its own network namespace can reach it. A container that binds loopback answers no request from the host. | `compiler/src/lower.rs:894` binds `("127.0.0.1", port)`; the CI serve step reaches it over loopback (`.github/workflows/ci.yml`, the `lowering` job).                                                              |
-| **D-3** | **The untested artifact.** No image is built or run in CI, so a fault in packaging appears at deploy time.                                                                                 | `ci.yml` has no image job. The compiler emits no Dockerfile, and no workflow builds a `wasm32`, `aarch64` or musl target. The one musl reference is a downloaded cargo-deny release asset (`supply-chain.yml:62`). |
+| **D-3** | **The untested artifact.** No image is built or run in CI, so a fault in packaging appears at deploy time.                                                                                 | `ci.yml` has no image job. The compiler emits no Dockerfile, and no workflow builds a `wasm32`, `aarch64` or musl target. The one musl reference is a downloaded cargo-deny release asset (`supply-chain.yml:65`). |
 | **D-4** | **The silent fallback.** A `PORT` that does not parse is replaced by 8080 with no message, so an operator's typo runs on the wrong port.                                                   | `compiler/src/lower.rs:890–893`: `.ok().and_then(parse).unwrap_or(8080)`.                                                                                                                                          |
 | **D-5** | **The region in source.** A region or host written into a `.mz` file would make one program hash differently in each deployment, and would tie a service to one platform.                  | A design argument from the content-addressed IR (RFC-0003). Not measured.                                                                                                                                          |
 | **D-6** | **The abrupt stop.** The generated server has no shutdown handling, so a platform's stop signal ends in-flight requests without a response.                                                | `lower.rs:888–906`: `axum::serve(listener, app())` with no `with_graceful_shutdown`, and the `tokio` pin enables no `signal` feature (`lower.rs:109–129`).                                                         |
@@ -502,7 +503,7 @@ runs `docker push`. Publishing an image is a later owner decision and not part o
 P11 is the deployment row. Its status stays 🟡. The evidence is corrected to the code on `main`, and the
 "done when" is split by target:
 
-> | P11 | Targets: Cloudflare Workers, containers, bare metal | 🟡 | Native today: `mz build` lowers a `service` to a local axum package that binds `127.0.0.1` (#32), and a `program` to a dependency-free Rust package that `mz build` and `mz run` build with Cargo (`compiler/src/run.rs`). Only the x86_64 glibc build is made, in CI on `ubuntu-latest`. No container image, no musl or aarch64 build and no WebAssembly or Workers target exist. Designed in [RFC-0016], a draft. | Each target builds and answers one request on its own platform: bare metal (P14), containers (P13) and Workers (P15). A `program` runs natively on each triple it is built for. ([CHARTER.md] §2) |
+> | P11 | Targets: Cloudflare Workers, containers, bare metal | 🟡 | Native today: `mz build` lowers a `service` to a local axum package that binds `127.0.0.1` (#32), and a `program` to a dependency-free Rust package that `mz build` and `mz run` build with Cargo (`compiler/src/run.rs`). Only the x86_64 glibc build is made, in CI on `ubuntu-latest`. No container image, no musl or aarch64 build, and no WebAssembly or Workers target exist. **Decided 2026-10-20 by the owner, not built:** three targets, Cloudflare Workers (wasm32), containers (a standard OCI image, Docker the default build tool, any OCI runtime, for example Fly machines) and bare metal (a native Linux binary); every backend sits behind a trait with an adapter for each side. Designed in [RFC-0016], a draft; approved as design only (owner, 2026-10-21), and its build waits for the Phase 0 gate. | Each target builds and answers one request on its own platform: bare metal (P14), containers (P13) and Workers (P15). A `program` runs natively on each triple it is built for. ([CHARTER.md] §2) |
 
 ### 8.2 New rows
 
@@ -515,9 +516,10 @@ Each row is 📝 (designed in an RFC, not implemented). None changes what the la
 | P15 | Workers target: a `service` as a wasm32 Worker                              | 📝     | [RFC-0016] §4.4 (a later wave)                                      | `wasm32-check` passes, and one request is answered under the Workers runtime                                  |
 | P16 | Connectivity: each backend behind an interface, with one adapter per target | 📝     | [RFC-0016] §5 (the principle; the registry's `Io` trait as context) | A service reaches one store on Cloudflare and one on Fly through the same interface. Depends on P2, P7 and P8 |
 
-**The overlap with #121.** PR #121 (the docs pass) also edits the P11 row, the README, the CHANGELOG and
-`design/ROADMAP.md`. On a rebase, the P11 row should keep this PR's evidence and the name #121 gives it. The name
-in §8.1 is #121's, so the two rows should differ only in the evidence and "done when" text.
+**The overlap with #121.** PR #121 (the docs pass, on `staging` since 2026-10-20) also edited the P11 row, the
+README, the CHANGELOG and `design/ROADMAP.md`. The merge of `staging` into this branch kept this PR's evidence and
+"done when", #121's name, and #121's record of the owner's 2026-10-20 decision, so the row in §8.1 is the row in
+`LANGUAGE-TRACKER.md`.
 
 ---
 
@@ -597,7 +599,7 @@ change its path.
 default stays loopback for every other target, and a bare-metal operator who forgets `HOST` gets a loopback bind, not an
 exposed one.
 
-**Q7. The aarch64 runner.** The `lowering` job runs on `ubuntu-latest`, which is x86_64. _Recommendation:_ a hosted arm64
+**Q7. The aarch64 runner.** The `lowering` job runs on `ubuntu-latest`, which is x86*64. \_Recommendation:* a hosted arm64
 Linux runner, if the organisation has one. The alternative is QEMU through a third-party action, which AGENTS.md would
 have to allow, and which runs a native build under emulation, so a slow job is the likely result. The owner confirms the
 runner label.

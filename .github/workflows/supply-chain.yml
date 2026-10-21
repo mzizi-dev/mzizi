@@ -26,6 +26,9 @@ on:
     branches: [main, staging]
   pull_request:
     branches: [main, staging, "claude/**"]
+  # Required checks must also report on a merge queue's gh-readonly-queue/** ref, or a queued
+  # PR waits until the queue times it out. Harmless where no queue is configured.
+  merge_group:
   schedule:
     - cron: "17 6 * * 1"
   workflow_dispatch:

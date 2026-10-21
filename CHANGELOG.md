@@ -25,10 +25,42 @@ carry no pull request number.
 - **`LANGUAGE-TRACKER.md` P11** now says what the code on `main` does: a `program` lowers to a native package as well as a `service`, and the only build made is the x86_64 glibc one, in CI. Its "done when" is split by target. P13 to P16 are added as designs (📝), not as capabilities, and no status in the tracker's Status column changes.
 - **`README.md` and `design/ROADMAP.md`** point to the RFC.
 - **Q1 decided, design only** (owner, 2026-10-21: "approve RFC-0016 design only"). The design is approved as design. No exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts, and CHARTER.md is unchanged; the §3 charter text stays a proposal. Confirmed the same day: the charter text and the build waves wait for the Phase 0 gate together. The container target's scope is recorded: a standard OCI image, built with Docker by default and run by any OCI runtime (W3 would also check it with Podman).
+- **Brought up to date with `staging` (2026-10-21).** The `LANGUAGE-TRACKER.md` P11 row keeps this PR's evidence and "done when" and adds #121's record of the owner's 2026-10-20 target decision; RFC-0016 §8.1 quotes the same row. RFC-0016's note on the overlap with #121 now says #121 is on `staging`, and the cargo-deny musl citation moves from `supply-chain.yml:62` to line 65, where #124 left it. No design change.
+
+### Changed — merging is squash through the merge queue; docs updated
+
+- **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
+
+### Changed — CI reports on merge queue runs, and the release pins match the org's version check
+
+- **`ci.yml`, `supply-chain.yml` and `changelog.yml` also run on `merge_group`**, so their checks report on a merge queue's `gh-readonly-queue/**` ref and a queued pull request does not wait until the queue times it out (part of the org-wide merge-queue rollout, nyuchi/.github#100 and nyuchi/.github#101). `changelog / entry required` reads only pull request metadata (base, head, labels, author), so on a merge queue run the job is skipped, which counts as passed; its concurrency group falls back to the ref when there is no pull request number. Nothing changes where no queue is configured.
+- **`staging-version.yml` and `main-release.yml` pin `nyuchi/.github` at `32eabdb`** (main, 2026-10-19), for `reusable-staging-release.yml` and the `next-version` action, the commit the enterprise release version check uses. The only interface change is a new optional `next-version` input, `current-from-files`, which neither workflow passes. CI configuration only: no compiler or test change.
 
 ### Changed — release prep for 2026-10-20
 
 - **`CHANGELOG.md`:** the `[Unreleased]` entries for #107, #112, #113, #115 and #116 and the RFC-0014 draft move under `## 2026-10-20`. The 2026-10-08 release-prep entry, which shipped with #109, moves under `## 2026-10-08`. Docs only; no code changed. The counts stated in `README.md`, `CONTRIBUTING.md` and `AGENTS.md` (634 in the compiler crate, 765 in the workspace) match #107's measurement.
+
+### Changed — gateway names, four API gateways and build targets (2026-10-20)
+
+- **Docs only; no code, test or behaviour changed.** The Mzizi API repository is now named
+  `mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`) in `AGENTS.md`, `README.md`,
+  `design/ROADMAP.md`, `design/RFC-0009-comparison-benchmark.md` and `design/RFC-0010-contracts-everywhere.md`.
+  The three other API gateways are named in `AGENTS.md`, `README.md` and `MIGRATION.md` §7.2c with their
+  new repository names: `nyuchi/nyuchi-api`, `mukoko-dev/mukoko-api` (unchanged) and `nyuchi/nyuchi-servers-api`.
+  `AGENTS.md` says there are four API gateways. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from `api.mzizi.dev` and sign-in is WorkOS AuthKit. Any state it keeps is decided to go in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
+- **`LANGUAGE-TRACKER.md`, row P11 (targets)** corrected: a `program` lowers to native Rust as well as a
+  `service` (`compiler/src/run.rs`). Built today: a native axum package bound to `127.0.0.1`, and a native
+  program built with Cargo. No Workers (wasm32) target and no container image exists. The owner's decision of
+  2026-10-20 is recorded as direction, not as built: three targets, Cloudflare Workers, containers on any OCI
+  host and bare metal.
+- **`design/ROADMAP.md`** records the 2026-10-20 target decision and that the charter's §2 Worker-to-Container
+  wording is to be amended by an RFC. `CHARTER.md` is unchanged.
+- The owner renamed the three API gateway repositories that change name (`mukoko-dev/mukoko-api` keeps its
+  name); the new names are live, and GitHub redirects the old ones.
+- **Targets (`LANGUAGE-TRACKER.md` P11, `design/ROADMAP.md`):** RFC-0016 (three targets, a draft in #123) is approved as
+  design only (owner, 2026-10-21). The `CHARTER.md` amendment and every build wave wait for the Phase 0 gate; no container
+  or bare-metal build work has started. The container target is a standard OCI image, built with Docker by default and
+  run by any OCI runtime.
 
 ## 2026-10-20
 
