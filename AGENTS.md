@@ -251,10 +251,21 @@ the clone's shared config, which is one more reason each agent works in a clone 
   says the artifact is built from the folder, file for file, and is never edited on the
   artifact page, so change the design system there, not in the artifact or in this repo.
   Nothing in this repository reads it (see "Repo boundaries").
-- The rest of the ecosystem, for reference: `api.mzizi.dev` is `mzizi-api-gateway`, a Hono
-  Worker in TypeScript that serves the registry's files bundled at a pinned commit (no
-  database, no origin). `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds
-  no database; its files are the data layer. Only the console uses Supabase.
+- The rest of the ecosystem, for reference. There are four API gateways, and they are separate
+  services:
+  - **Mzizi API**, `api.mzizi.dev`: `mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`), the free,
+    public registry API. A Hono Worker in TypeScript today, it serves the registry's files bundled
+    at a pinned commit, with no origin and no database.
+  - **Nyuchi API (B2B)**, `api.nyuchi.com`: `nyuchi/nyuchi-api` (formerly `nyuchi/api-gateway`),
+    for external customers with scoped `nyk_` keys. FastAPI on Fly today; decided: rebuilt in Rust.
+  - **Mukoko API (consumer)**, `api.mukoko.com` (no DNS yet): `mukoko-dev/mukoko-api`, the
+    person-facing app surfaces. Being built on Workers; decided: a switch to a Rust build.
+  - **Nyuchi Servers API (internal)**, `api.nyuchiservers.com`: `nyuchi/nyuchi-servers-api`
+    (formerly `nyuchi/data-gateway`). Internal only, and not built yet.
+
+  `mcp.mzizi.dev` is `agent-tools` (`mzizi-mcp`). The registry holds no database; its files are
+  the data layer. `app.mzizi.dev` (`mzizi-dev/mzizi-console`) keeps no database of its own today; its data comes from the public `api.mzizi.dev` and sign-in is WorkOS AuthKit. It is decided that any state the console keeps goes in Cloudflare D1 (`mzizi-dev/mzizi-console#34`).
+
 - Security reports: GitHub private reporting first, then `security@nyuchi.com` (see
   [`SECURITY.md`](./SECURITY.md)), the same address as the console's.
 

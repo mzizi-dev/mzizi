@@ -103,6 +103,8 @@ because the phase descriptions belong to the charter and a second copy of them w
 | **4** — distribution adapters                                                                    | not started                 | Blocked on Phase 1's artifacts standing alone (the self-contained UI artifact CHARTER.md §4 Phase 1 defines) |
 | **5** — hardware / embedded                                                                      | not started                 | Blocked on Phase 1 having shipped a real full-stack deployment                                               |
 
+The owner decided on 2026-10-20 that Mzizi has three build targets: Cloudflare Workers, containers (a standard OCI image, built with Docker by default and run by any OCI runtime) and bare metal. RFC-0016 (a draft, #123) designs them, and the owner approved it as design only on 2026-10-21. Nothing is built: the amendment to [CHARTER.md](../CHARTER.md) §2's Worker-to-Container wording and every build wave wait for the Phase 0 gate, and this file does not amend the charter.
+
 ## Where each plan lives
 
 Every one of these is next to the code it plans. That is the point.
@@ -163,7 +165,7 @@ since. Read as of 2026-09-11, `gh repo list mzizi-dev`:
 - **`mzizi-dev/mzizi-benchmark` does not exist.** §1 lists it as the second repository to create.
 
 Read again on 2026-09-29, from the supervisor's current-facts list: `api.mzizi.dev` is
-`mzizi-dev/mzizi-api-gateway`, a Hono Worker in TypeScript serving the registry's files
+`mzizi-dev/mzizi-api` (formerly `mzizi-api-gateway`), a Hono Worker in TypeScript serving the registry's files
 bundled at a pinned commit, which replaced the earlier Rust proxy. `mcp.mzizi.dev` is served
 from `agent-tools` (`mzizi-mcp`). The registry holds no database (its PR #368). Only the
 console uses Supabase. Mzizi's own Rust components are named **Mzizi Roots**.
