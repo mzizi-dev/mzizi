@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — merging is squash through the merge queue; docs updated
+
+- **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
+
 ### Changed — CI reports on merge queue runs, and the release pins match the org's version check
 
 - **`ci.yml`, `supply-chain.yml` and `changelog.yml` also run on `merge_group`**, so their checks report on a merge queue's `gh-readonly-queue/**` ref and a queued pull request does not wait until the queue times it out (part of the org-wide merge-queue rollout, nyuchi/.github#100 and nyuchi/.github#101). `changelog / entry required` reads only pull request metadata (base, head, labels, author), so on a merge queue run the job is skipped, which counts as passed; its concurrency group falls back to the ref when there is no pull request number. Nothing changes where no queue is configured.
