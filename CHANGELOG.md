@@ -24,6 +24,7 @@ carry no pull request number.
 - **Proposed, not built:** `mz build --target native|container|workers` (RFC-0016 §4.1), a `HOST` setting beside `PORT` with a loopback default, graceful shutdown on SIGTERM, the `GET /_mz/health` route, and `MZ0813` for a route under the reserved `/_mz/` prefix (RFC-0016 §4.2 to §4.5).
 - **`LANGUAGE-TRACKER.md` P11** now says what the code on `main` does: a `program` lowers to a native package as well as a `service`, and the only build made is the x86_64 glibc one, in CI. Its "done when" is split by target. P13 to P16 are added as designs (📝), not as capabilities, and no status in the tracker's Status column changes.
 - **`README.md` and `design/ROADMAP.md`** point to the RFC.
+- **Q1 decided, design only** (owner, 2026-10-21: "approve RFC-0016 design only"). The design is approved as design. No exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts, and CHARTER.md is unchanged; the §3 charter text stays a proposal.
 
 ### Changed — release prep for 2026-10-20
 
