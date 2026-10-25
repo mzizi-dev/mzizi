@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — CHARTER.md §1 says what `mz build` lowers, as the README and AGENTS.md do (Fixes #46)
+
+- **`CHARTER.md` §1, "What Mzizi is":** the paragraph's last sentence, "It emits no Rust yet.", is replaced by the wording `README.md`, `AGENTS.md` and RFC-0012 §2 already use: "`mz build` lowers a `service` to a local Rust + axum package; no component lowers, and there is no Workers, WebAssembly or Containers target." The wording is the one the issue proposed, approved by the owner. Docs only: no code changed, and the paragraph's "That is the design and the goal, not the state" and its design sentence about "the Rust it emits" are untouched.
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
