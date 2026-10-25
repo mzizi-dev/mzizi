@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — `portal` documented as deliberately open surface (Fixes #5)
+
+- **`primitives/README.md`, `design/RFC-0001-syntax.md` §1.5 and `design/RFC-0006-contracts.md` §8.4** state how the `portal` attribute on the primitives' root elements stands: view attributes are open (any `name = value` line is accepted), only `slot`, `role` and `class` are first-class with checked values, and `portal` is an ordinary attribute — the corpus's documentation-URL convention, `https://mzizi.dev/components/<kebab-case name>` — resolved in #5 (2026-10-25) as deliberately open surface. Neither of the issue's other options was taken: first-class status is an RFC-0001 §1.5 amendment (a checked URL rule) that has not been made, and deletion would have changed the frozen benchmark task specs and the Mzizi arm's prompt, which the 2026-09-27 pilots ran against. Docs only: no code changed, no `.mz` file touched, and `portal` parses exactly as before.
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.

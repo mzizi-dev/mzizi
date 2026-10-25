@@ -224,6 +224,15 @@ compiler knows that an explicit `role` _replaces_ implicit semantics, the
 scanned so dynamic-class construction is impossible — another corpus rule
 made structural).
 
+One clarification (2026-10-25, [`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5)):
+the attribute lines a view writes that are not the three above are open, not an
+enumerated set — any `name = value` line is accepted, and only `slot`, `role` and
+`class` are checked. `portal`, the documentation URL on the primitives' root
+elements (`https://mzizi.dev/components/<kebab-case name>`), is such an ordinary
+attribute: deliberately open surface, not first-class. It would become first-class
+only by an amendment to this section naming the rule it would enforce; no such
+amendment has been made.
+
 ### 1.6 `contract` is part of the component — _FM-3, and the whole Phase 0 metric_
 
 The charter defines a defect as _compiles clean but behaviorally wrong_.

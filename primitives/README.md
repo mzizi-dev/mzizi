@@ -4,10 +4,16 @@ The foundational component set, written in Mzizi. Every file here parses clean u
 `mz check`, and every assertion in its `contract` block is evaluated by `mz contract`. Both
 are gated in CI, so these are verified source rather than aspirational examples.
 
-One undocumented thing to know while reading them: each root element carries a
-`portal = "https://mzizi.dev/components/<name>"` attribute that no RFC mentions. It is
-tracked in [`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5) and is either
-owed an RFC-0001 §1.5 amendment or a deletion.
+One thing to know while reading them: each root element carries a
+`portal = "https://mzizi.dev/components/<name>"` attribute. It is an ordinary
+attribute — view attributes are open (RFC-0001 §1.5: any `name = value` line is
+accepted), and nothing in the compiler checks a `portal`'s value. It is the
+corpus's documentation-URL convention, `<name>` the component's kebab-case file
+name; the benchmark task specs carry the same URL as `data-portal`, and the
+Mzizi arm writes it as `portal` (`benchmarks/prompts/mzizi-guide.md`). Resolved
+in [`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5) (2026-10-25) as
+deliberately open surface: neither an RFC-0001 §1.5 amendment making it first-class
+with a checked URL rule nor a deletion was done.
 
 | Primitive     | Shape                    | Why it is here                                                                     |
 | ------------- | ------------------------ | ---------------------------------------------------------------------------------- |

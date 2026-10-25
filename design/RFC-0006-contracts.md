@@ -355,6 +355,14 @@ It is orthogonal to contract evaluation — nothing in any contract refers to it
 first-class with a checked value, or deletion. Tracked as
 [`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5).
 
+Resolved 2026-10-25 ([`mzizi-dev/mzizi#5`](https://github.com/mzizi-dev/mzizi/issues/5)):
+documented as deliberately open surface — view attributes are open, `portal` is an
+ordinary attribute carrying the corpus's documentation-URL convention, and nothing
+checks its value. Neither option above was taken: the first-class route is an
+amendment to RFC-0001 §1.5 that has not been made, and deletion would have changed
+the frozen benchmark task specs and the Mzizi arm's prompt, which the 2026-09-27
+pilots ran against.
+
 ## 9. Measured, in this PR
 
 From `compiler/tests/contracts.rs` and `compiler/tests/ir_measured.rs`, over the nine
