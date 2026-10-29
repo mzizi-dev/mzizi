@@ -167,6 +167,9 @@ jobs:
       - name: cargo test the lowered service (one oneshot test per example)
         run: cargo test --manifest-path target/mz-build/registry/Cargo.toml
 
+      - name: score a backend candidate with the probes (mzbench, end to end)
+        run: cargo test -p mzizi-benchmark-runner --test backend -- --ignored
+
       - name: serve it, and answer OPTIONS over a socket
         run: |
           set -euo pipefail

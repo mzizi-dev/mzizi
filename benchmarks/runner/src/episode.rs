@@ -543,11 +543,18 @@ fn score_backend(st: &EpisodeState, cand: &Path) -> Result<ScoreResult, String> 
         Ok(t) => t,
         Err(e) => return Ok(unscored(format!("probes: {e}"))),
     };
-    let build = std::env::temp_dir().join(format!(
-        "mzbench-build-{}-{}",
-        std::process::id(),
-        fnv1a64(st.dir.to_string_lossy().as_bytes())
-    ));
+    // The build directory sits beside the episode, not in a shared temp directory, so the
+    // service's `target/` stays out of the episode's bundle and no other user can plant
+    // files at a predictable path. `create_dir` is exclusive: a stale one is an error.
+    let name = st
+        .dir
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let build = st.dir.with_file_name(format!("{name}.build"));
+    let _ = fs::remove_dir_all(&build);
+    if let Err(e) = fs::create_dir(&build) {
+        return Ok(unscored(format!("build dir {}: {e}", build.display())));
+    }
     let argv = st.meta.score.render(&[
         ("arm", &st.meta.arm.id),
         ("candidate", &cand.to_string_lossy()),

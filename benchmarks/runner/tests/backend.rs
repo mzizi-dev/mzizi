@@ -2,7 +2,8 @@
 //! Mode 2 episode on `b1-routing` with the `mzizi-be` arm, and a clean candidate is scored by
 //! starting it (`mz build`, then cargo, then the server) and sending the task's 59-fact
 //! probes. These need the toolchain and, on a cold cache, crates.io for the pinned `axum` and
-//! `tokio` that every lowered service builds against; CI's `benchmarks` job has both. No
+//! `tokio` that every lowered service builds against. The test that starts a real service is
+//! `#[ignore]`d for CI's `benchmarks` job, which lacks them, and run by its `lowering` job. No
 //! model and no tokenizer: `finish` is pointed at a closed port.
 //!
 //! What they show is that the scorer tells a candidate that holds every fact from one that
@@ -113,7 +114,11 @@ fn the_default_scorer_for_a_backend_episode_is_the_arms_serve_script() {
     );
 }
 
+// Builds a lowered service with `--offline`, so it needs `axum` and `tokio` already in the cargo
+// cache. CI's `benchmarks` job has no such cache; the `lowering` job fetches them and runs this
+// with `-- --ignored`. Locally: `cargo test -p mzizi-benchmark-runner --test backend -- --ignored`.
 #[test]
+#[ignore = "needs axum and tokio in the cargo cache; the lowering job runs it"]
 fn a_known_good_candidate_holds_every_fact_and_a_known_bad_one_does_not() {
     let out = Scratch::new("goodbad");
 
