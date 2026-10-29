@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2024"
 license = "Apache-2.0"
 publish = false
-description = "Phase 0 benchmark runner: drives model-authored and agent-authored porting episodes for the arms under benchmarks/arms (Mzizi, Dioxus, Leptos, React, mzizi-be), and summarises tokens, iterations to a clean compile and, for the UI arms, defect rate; backend episodes are not yet scored with probes."
+description = "Phase 0 benchmark runner: drives model-authored and agent-authored porting episodes for the arms under benchmarks/arms (Mzizi, Dioxus, Leptos, React, mzizi-be), and summarises tokens, iterations to a clean compile and, for the UI arms, defect rate; backend episodes are scored by the task's probes."
 
 # Two dependencies, both pinned exactly, against a house style of zero. Why each is
 # allowed here when compiler/ and benchmarks/harness/ take none:
@@ -24,6 +24,9 @@ description = "Phase 0 benchmark runner: drives model-authored and agent-authore
 [dependencies]
 ureq = { version = "=3.4.2", default-features = false }
 serde_json = "=1.0.151"
+# The backend scorer (RFC-0009 §2.3) is the probe crate, called in process: one reading of
+# `probes.toml`, shared with `mzprobe verify`. A workspace path dependency, so no new crate.
+mzizi-benchmark-probe = { version = "0.0.0", path = "../probe" }
 
 [[bin]]
 name = "mzbench"

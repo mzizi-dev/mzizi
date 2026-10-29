@@ -251,8 +251,36 @@ pins = ["sandbox/Cargo.toml", "sandbox/Cargo.lock"]
 2. Run `cargo test -p mzizi-benchmark-runner`. The parity test picks the new arm up with no
    code change, and fails if its message differs from the others by more than its naming.
 3. Scoring is separate. A UI arm needs an extractor in `benchmarks/harness/` that reads the
-   same facts (RFC-0009 §2.2). A backend arm is scored by probes (RFC-0009 §2.3), which do
-   not exist yet. Until then its episodes are clean but unscored.
+   same facts (RFC-0009 §2.2). A backend arm needs a `serve.sh` beside its `arm.toml` (see
+   [Backend episodes](#backend-episodes-probe-scoring)); its `extractor` stays `none`.
+
+## Backend episodes: probe scoring
+
+A `backend` task (RFC-0009 §2.3) holds a `spec.md` and a `probes.toml`; `b1-routing` is the
+one that exists. `--family backend` hands the author `spec.md`. A clean candidate is then
+scored in process by the `mzizi-benchmark-probe` crate, the same reader of `probes.toml` that
+`mzprobe verify` uses:
+
+1. The score command is the episode's **serve command**, by default
+   `env MZ_BUILD_DIR={build} benchmarks/arms/<arm>/serve.sh {candidate}` (recorded in
+   `meta.json` as `score`; replace it with `--score-cmd '<json argv>'`). It must read `PORT`
+   and `exec` the server. `{build}` is a temporary directory outside the episode, removed
+   afterwards, so a service's `target/` never enters a bundle. An arm with no `serve.sh`
+   is scored with a `score_error`, not as defect-free.
+2. The runner starts it, waits up to 15 minutes for it to listen (the first build runs
+   cargo), sends every probe, and stops it.
+3. **A defect is a failing fact** on a candidate that passed its check: each expected status,
+   header, body and JSON value is one fact. `facts_checked` is the number of facts and
+   `defects` the number that failed. The defect rate is then the same as for the UI
+   families: clean, scored episodes with at least one defect over clean, scored episodes.
+4. A clean candidate that never listens (it does not build, exits, or times out) fails every
+   fact and the final line carries `start_failed` with the reason. This is RFC-0009 §2.3's
+   `start_failed`, counted on purpose and not as a missing score. A run whose scorer itself
+   broke (no probes file, no serve script) is `scored: false` with a `score_error`.
+
+`score.json` holds one NDJSON line per fact (probe, clause, what, ok, expected, got), then a
+summary line. `serve.log` holds the server's output. Tokens and iterations to a clean check
+are recorded exactly as for the other families. Nothing here has been run with a model.
 
 ## Dependencies
 

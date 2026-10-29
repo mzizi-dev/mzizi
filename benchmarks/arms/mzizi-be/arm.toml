@@ -14,5 +14,5 @@ check = [
 ]
 normaliser = "file-name"
 # A backend episode is scored by the task's probes (benchmarks/probe), not by a source
-# extractor. Until the runner calls the probe crate, clean episodes are clean but unscored.
+# extractor: `mzbench` starts the candidate with serve.sh and sends the probes.
 extractor = "none"
