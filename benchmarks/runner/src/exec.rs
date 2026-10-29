@@ -192,6 +192,27 @@ pub fn default_check(arm: &ArmConfig, repo: &Path) -> CommandTemplate {
     }
 }
 
+/// The command that serves a backend candidate (RFC-0009 §2.3), in place of a scorer: the
+/// arm's `serve.sh <candidate>`, which must `exec` the server so that stopping it stops the
+/// service, and which reads `PORT`. `MZ_BUILD_DIR` points its build output outside the
+/// episode directory, so a service's `target/` never lands in a published bundle.
+/// Placeholders: `{build}`, `{candidate}`, `{arm}`, `{reference}`.
+pub fn default_serve(arm: &ArmConfig, repo: &Path) -> CommandTemplate {
+    CommandTemplate {
+        argv: vec![
+            "env".into(),
+            "MZ_BUILD_DIR={build}".into(),
+            repo.join("benchmarks/arms")
+                .join(&arm.id)
+                .join("serve.sh")
+                .to_string_lossy()
+                .into_owned(),
+            "{candidate}".into(),
+        ],
+        cwd: repo.to_path_buf(),
+    }
+}
+
 /// The shared scoring interface. Placeholders: `{arm}`, `{candidate}`, `{reference}`.
 pub fn default_score(repo: &Path) -> CommandTemplate {
     CommandTemplate {

@@ -19,7 +19,9 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use mzizi_benchmark_probe::{self as probe, Outcome};
 
 use serde_json::{Value, json};
 
@@ -504,17 +506,87 @@ struct ScoreResult {
     /// Variants the scorer paired by class string under a different name. `None` when the
     /// scorer predates the field (or failed).
     renames: Option<u64>,
+    /// Backend only (RFC-0009 §2.3): why a clean candidate never answered. Every fact then
+    /// failed, and it is a defect count like any other, not a missing score.
+    start_failed: Option<String>,
     error: Option<String>,
+}
+
+/// Judge a backend run: a defect is a failing fact (RFC-0009 §2.3), and a candidate that
+/// never listened fails every fact, so it is never scored as defect-free.
+fn backend_result(outcome: &Outcome) -> ScoreResult {
+    ScoreResult {
+        facts_checked: Some(outcome.facts.len() as u64),
+        defects: Some(outcome.failed() as u64),
+        class_token_jaccard: None,
+        renames: None,
+        start_failed: outcome.start_failed.clone(),
+        error: None,
+    }
+}
+
+/// How long a backend candidate may take to listen: the lowered service builds with cargo.
+const SERVE_TIMEOUT: Duration = Duration::from_secs(900);
+
+/// Score a clean backend candidate: start it with the episode's serve command, send the
+/// task's `probes.toml`, stop it. `score.json` gets one NDJSON line per fact.
+fn score_backend(st: &EpisodeState, cand: &Path) -> Result<ScoreResult, String> {
+    let unscored = |why: String| ScoreResult {
+        facts_checked: None,
+        defects: None,
+        class_token_jaccard: None,
+        renames: None,
+        start_failed: None,
+        error: Some(why),
+    };
+    let task = match probe::load_task(&st.meta.task_dir) {
+        Ok(t) => t,
+        Err(e) => return Ok(unscored(format!("probes: {e}"))),
+    };
+    let build = std::env::temp_dir().join(format!(
+        "mzbench-build-{}-{}",
+        std::process::id(),
+        fnv1a64(st.dir.to_string_lossy().as_bytes())
+    ));
+    let argv = st.meta.score.render(&[
+        ("arm", &st.meta.arm.id),
+        ("candidate", &cand.to_string_lossy()),
+        ("reference", &st.meta.reference_path.to_string_lossy()),
+        ("build", &build.to_string_lossy()),
+    ]);
+    let log = st.dir.join("serve.log");
+    let ran = probe::serve_and_probe(&task, &argv, &st.meta.score.cwd, &log, SERVE_TIMEOUT);
+    let _ = fs::remove_dir_all(&build);
+    let outcome = match ran {
+        Ok(o) => o,
+        Err(e) => return Ok(unscored(format!("serve: {e}"))),
+    };
+    let mut lines: Vec<String> = outcome.facts.iter().map(probe::fact_json).collect();
+    lines.push(
+        json!({
+            "summary": true,
+            "facts": outcome.facts.len(),
+            "failed": outcome.failed(),
+            "start_failed": outcome.start_failed,
+        })
+        .to_string(),
+    );
+    write(&st.dir.join("score.json"), &(lines.join("\n") + "\n"))?;
+    Ok(backend_result(&outcome))
 }
 
 fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
     let cand = iter_dir(&st.dir, clean_iter).join(format!("candidate.{}", st.meta.arm.extension));
+    if st.meta.family == TaskFamily::Backend {
+        return score_backend(st, &cand);
+    }
     if st.meta.arm.extractor == "none" {
         return Ok(ScoreResult {
             facts_checked: None,
             defects: None,
             class_token_jaccard: None,
             renames: None,
+            start_failed: None,
             error: Some(format!("arm `{}` has no scorer extractor", st.meta.arm.id)),
         });
     }
@@ -530,6 +602,7 @@ fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
         defects: None,
         class_token_jaccard: None,
         renames: None,
+        start_failed: None,
         error: Some(why),
     };
     if out.code != Some(0) {
@@ -546,6 +619,7 @@ fn score(st: &EpisodeState, clean_iter: u32) -> Result<ScoreResult, String> {
             defects: Some(d),
             class_token_jaccard: v["class_token_jaccard"].as_f64(),
             renames: v["renames"].as_u64(),
+            start_failed: None,
             error: None,
         }),
         _ => Ok(failed("scorer JSON lacks facts_checked/defects".into())),
@@ -628,6 +702,7 @@ pub fn finish_ended(
         "facts_checked": sc.as_ref().and_then(|s| s.facts_checked),
         "class_token_jaccard": sc.as_ref().and_then(|s| s.class_token_jaccard),
         "renames": sc.as_ref().and_then(|s| s.renames),
+        "start_failed": sc.as_ref().and_then(|s| s.start_failed.clone()),
         "ended_by": ended_by,
     });
     append_line(&st.dir, &v)?;
@@ -1201,6 +1276,36 @@ mod tests {
         assert!(!dir.join("iter-03/feedback.txt").exists());
         // Mode 2 guard: a model-mode episode refuses agent submissions.
         assert!(submit(&dir, &cand(&t.0, "z.mz", "OK")).is_err());
+    }
+
+    fn fact(ok: bool) -> probe::Fact {
+        probe::Fact {
+            probe: "p".into(),
+            clause: "B1.1".into(),
+            what: "status".into(),
+            ok,
+            expected: "200".into(),
+            got: "200".into(),
+        }
+    }
+
+    #[test]
+    fn a_backend_defect_is_a_failing_fact_and_start_failed_fails_them_all() {
+        let held = Outcome {
+            facts: vec![fact(true), fact(true), fact(false)],
+            start_failed: None,
+        };
+        let r = backend_result(&held);
+        assert_eq!((r.facts_checked, r.defects), (Some(3), Some(1)));
+        assert!(r.start_failed.is_none() && r.error.is_none());
+
+        let dead = Outcome {
+            facts: vec![fact(false), fact(false)],
+            start_failed: Some("nothing listened".into()),
+        };
+        let r = backend_result(&dead);
+        assert_eq!((r.facts_checked, r.defects), (Some(2), Some(2)));
+        assert_eq!(r.start_failed.as_deref(), Some("nothing listened"));
     }
 
     #[test]

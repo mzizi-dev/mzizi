@@ -35,7 +35,7 @@ use mzizi_benchmark_runner::episode::{
     submit, submit_output,
 };
 use mzizi_benchmark_runner::exec::{
-    CommandTemplate, Normaliser, default_check, default_score, parse_argv_json,
+    CommandTemplate, Normaliser, default_check, default_score, default_serve, parse_argv_json,
 };
 use mzizi_benchmark_runner::plan::{PlanInput, bundle_hash, render_plan, today_utc};
 use mzizi_benchmark_runner::prompt::{Prompt, build_prompt};
@@ -177,13 +177,22 @@ fn prepare(f: &mut Flags, mode: Mode, seed: u64) -> Result<(EpisodeMeta, PathBuf
         Some(n) => Normaliser::parse(&n)?,
         None => arm.normaliser,
     };
-    let mut score = template(f.take("score-cmd"), default_score(&repo))?;
+    // A backend episode is scored by serving the candidate and sending the task's probes
+    // (`episode::score`), so its "score command" is the serve command, and the harness
+    // scorer's flags do not apply to it.
+    let backend = family == TaskFamily::Backend;
+    let default_scorer = if backend {
+        default_serve(&arm, &repo)
+    } else {
+        default_score(&repo)
+    };
+    let mut score = template(f.take("score-cmd"), default_scorer)?;
     // Appended to a custom `--score-cmd` too, so the task's opt-in cannot be lost by
     // overriding the scorer; the argv as written to meta.json is what ran.
-    if task.allow_variant_renames {
+    if task.allow_variant_renames && !backend {
         score.argv.push("--allow-variant-renames".into());
     }
-    if task.score_slots {
+    if task.score_slots && !backend {
         score.argv.push("--slots".into());
     }
 

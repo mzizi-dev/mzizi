@@ -125,8 +125,10 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
    built: `mz check` checks a `service`, `mz contract` runs it, and `mz build` lowers it to an
    axum package that serves locally and answers HTTP. The `mzizi-be` arm exists, with a
    probe crate (`benchmarks/probe`) and B1 as its first task, whose Mzizi and axum references
-   both hold all 59 of its facts. Still open: the runner does not score an episode with
-   probes, B2–B5 and the incumbent backend arms do not exist, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
+   both hold all 59 of its facts. The runner now scores a clean backend episode with the task's probes
+   (`mzbench`, `--family backend`; a defect is a failing fact, and a candidate that never
+   listens fails every fact), tested on B1 with a known-good and a known-bad `mzizi-be`
+   candidate. Still open: B2–B5 and the incumbent backend arms do not exist, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
 
 ### Not part of the run: runtime performance
 

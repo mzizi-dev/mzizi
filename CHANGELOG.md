@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — `mzbench` scores backend episodes with probes (2026-10-29)
+
+- **`mzbench --family backend` now scores a clean candidate** instead of recording it unscored. The runner starts the candidate with the episode's serve command (default `benchmarks/arms/<arm>/serve.sh {candidate}`, replaceable with `--score-cmd`), sends the task's `probes.toml` through the `mzizi-benchmark-probe` crate (now a dependency of the runner), and stops it. `defects` is the number of failing facts and `facts_checked` the number of facts (RFC-0009 §2.3), so the summary's defect rate, tokens and iterations to a clean check are computed as for the UI families. A clean candidate that never listens fails every fact and the final line records `start_failed` with the reason. `score.json` lists every fact; `serve.log` keeps the server's output; the service's build output goes to a temporary directory outside the episode. Tested (`cargo test -p mzizi-benchmark-runner`): on `b1-routing` with the `mzizi-be` arm, the task's own Mzizi reference as a candidate holds all 59 facts, a copy with a changed 404 text fails only the facts that read it, and a clean candidate that never listens fails all 59. **Not run with a model, and not a measurement of anything: it shows only that the scorer separates a candidate that holds the facts from one that does not.**
+
 ### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
 
 - **`benchmarks/results/2026-10-29-pilot-4-haiku/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Haiku subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes). **It declares no pass or fail and is not the kill-criterion run.** All 18 episodes were clean at iteration 1; one `mzizi` `card` candidate (seed 2) declared one slot where the spec lists seven (1 defect). As in pilot 3, the metrics sit at the ceiling, so the arms are not separated; the ~7B open-weight headline model has not been run. Tokens were not measured. Tracked in #137.
