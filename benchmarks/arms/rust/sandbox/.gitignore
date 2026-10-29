@@ -1,0 +1,4 @@
+# The local runtime's build output (install.sh); the container image has its own.
+/target/
+# The root .gitignore ignores Cargo.lock; this one is part of the version pin.
+!/Cargo.lock

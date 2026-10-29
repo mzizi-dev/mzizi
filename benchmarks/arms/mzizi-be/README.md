@@ -26,11 +26,12 @@ holding one `service` (RFC-0011). Nothing has run in this arm: no episode, no sc
 
 ## The guide's budget
 
-RFC-0009 §4.2 puts every guide in a family on one token budget, within ±5%. This is the
-only `backend` guide so far, so the family has no budget yet. It is 2,210 tokens (7,861
-bytes, SHA-256 `2d8b7dac3074e8382175af8bee97b0e97a3f2a7211a33e472aff63b849529486`), counted on
-2026-09-30 with `Qwen/Qwen2.5-Coder-7B-Instruct`'s `tokenizer.json` (SHA-256
+RFC-0009 §4.2 puts every guide in a family on one token budget, within ±5%. The `backend`
+family's budget is this guide's own length: 2,210 tokens (7,861 bytes, SHA-256
+`2d8b7dac3074e8382175af8bee97b0e97a3f2a7211a33e472aff63b849529486`), counted on 2026-09-30 with
+`Qwen/Qwen2.5-Coder-7B-Instruct`'s `tokenizer.json` (SHA-256
 `c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539`, the tokenizer
-`../../prompts/BUDGET.md` names). The budget is set, and this guide rebalanced to it, when
-the incumbent backend arms' guides are written. It has the same five sections as the UI
-guides, and its worked example (a weather-station service) is not a task.
+`../../prompts/BUDGET.md` names) and re-counted the same on 2026-10-29. The five incumbent
+guides (`ts`, `python`, `go`, `cpp`, `rust`) were written to it on 2026-10-29; their counts
+are in `BUDGET.md`. This guide has the same five sections as the UI guides and the incumbents'
+backend guides, and its worked example (a weather-station service) is not a task.
