@@ -238,13 +238,26 @@ scoreable facts, each one HTTP request) and two references in two languages, eac
 `start.sh` that serves it on `$PORT`. `mzprobe verify <task>` (`benchmarks/probe`) starts each
 reference and runs every probe; CI runs it for every backend task.
 
-| Task         | Exercises                                                                                     | Probes | Facts | References                                    |
-| ------------ | --------------------------------------------------------------------------------------------- | ------ | ----- | --------------------------------------------- |
-| `b1-routing` | three routes, `HEAD`, `OPTIONS` `204`, `405`, the trailing-slash `308`, a JSON `404`, headers | 20     | 59    | Mzizi (lowered by `mz build`), and plain axum |
+| Task            | Exercises                                                                                                  | Probes | Facts | References                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------- | ------ | ----- | ----------------------------------------------------------------- |
+| `b1-routing`    | three routes, `HEAD`, `OPTIONS` `204`, `405`, the trailing-slash `308`, a JSON `404`, headers              | 20     | 59    | Mzizi (lowered by `mz build`), and plain axum                     |
+| `b2-validation` | typed `node`, `limit`, `offset` query parameters, `0x10` and `1e2` are absent, ranges, first value wins    | 36     | 189   | Mzizi, and plain axum                                             |
+| `b3-mirror`     | health, a fixture listing, `/v1/ui/{name}`, `410` retired routes, a `503`, CORS and cache headers          | 23     | 125   | Mzizi, and plain axum                                             |
+| `b4-state`      | an in-memory version history: record, list in order, `409` duplicate, `400`, `404`, separate histories     | 29     | 140   | plain axum, and Python (standard library). **No Mzizi reference** |
+| `b5-errors`     | `415`, `413` at 1024 bytes, `400` malformed and invalid, a `500` with no cause, `//evil.com/` to one `308` | 32     | 116   | plain axum, and Python (standard library). **No Mzizi reference** |
 
 B1 restates the API gateway's routing facts as RFC-0009 §2.4 and RFC-0010 §3.2 cite them, at
 `2468b2a`. It is derived from a public repository, so it is a development task, contaminated
 by construction and never gating. Both references passed all 59 facts on 2026-09-30.
+
+B2–B5 are public development tasks too, and never gating. Each is grounded in RFC-0009 §2.4's row,
+with its own choices written in its `task.toml` and `spec.md`. B2 and B3 hold every fact on a Mzizi
+and an axum reference (`mzprobe verify`, 2026-10-29). B3 is narrower than its RFC row: the filtered
+listing and the `nyuchi-*` rewrite are left out because RFC-0011 §10 says a handler cannot yet
+express them. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a
+request body ([RFC-0011](../../design/RFC-0011-handlers.md) §10 and §4.3; `mz check` reports `MZ0811`
+for a route's `body` line), so their two references are axum and Python. These tasks measure nothing
+about Mzizi: they check that references hold the facts.
 
 ## Survey: all 21 `.rs` files with a `.tsx` sibling
 

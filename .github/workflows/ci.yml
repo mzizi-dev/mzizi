@@ -159,6 +159,12 @@ jobs:
             target/mz-build/registry
             target/mz-build/b1-routing-reference
             benchmarks/tasks/b1-routing/reference-rust
+            target/mz-build/b2-validation-reference
+            benchmarks/tasks/b2-validation/reference-rust
+            target/mz-build/b3-mirror-reference
+            benchmarks/tasks/b3-mirror/reference-rust
+            benchmarks/tasks/b4-state/reference-rust
+            benchmarks/tasks/b5-errors/reference-rust
 
       - name: mz build the example service
         working-directory: compiler
@@ -204,6 +210,21 @@ jobs:
       # one in Mzizi (lowered by `mz build`) and one in plain axum, before any run.
       - name: mzprobe verify B1 against both references
         run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b1-routing
+
+      # B2 and B3 have a Mzizi reference too. B4 and B5 have none: RFC-0011 §10 says their state
+      # and request bodies are not built, so their two references are axum and Python's
+      # standard library (python3 is on the runner).
+      - name: mzprobe verify B2 against both references
+        run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b2-validation
+
+      - name: mzprobe verify B3 against both references
+        run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b3-mirror
+
+      - name: mzprobe verify B4 against its Rust and Python references
+        run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b4-state
+
+      - name: mzprobe verify B5 against its Rust and Python references
+        run: cargo run --quiet -p mzizi-benchmark-probe -- verify benchmarks/tasks/b5-errors
 
       # RFC-0013 §15.3 and §18.4: every example program runs through `mz run` (lowered to
       # Rust, built with cargo, run), and its standard output must match the committed

@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — backend development tasks B2 to B5 (2026-10-29)
+
+- **`benchmarks/tasks/b2-validation`, `b3-mirror`, `b4-state` and `b5-errors`** are public development tasks for RFC-0009's `backend` family, each with a language-neutral `spec.md`, `probes.toml` and `task.toml`. Tested: `mzprobe verify` holds all 189 (B2), 125 (B3), 140 (B4) and 116 (B5) facts on every reference. B2 and B3 have a Mzizi reference (`mz check` and `mz contract` clean) and an axum reference. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a request body (RFC-0011 §10; `mz check` reports `MZ0811` for a route's `body` line), so their references are axum and Python's standard library. B3 leaves out the filtered listing and the `nyuchi-*` rewrite for the same reason. CI's `lowering` job verifies all four, and `supply chain` checks the four axum manifests. They are development tasks, contaminated by construction, never gating, and nothing about Mzizi was measured.
+
 ### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
 
 - **`benchmarks/results/2026-10-29-pilot-4-haiku/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Haiku subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes). **It declares no pass or fail and is not the kill-criterion run.** All 18 episodes were clean at iteration 1; one `mzizi` `card` candidate (seed 2) declared one slot where the spec lists seven (1 defect). As in pilot 3, the metrics sit at the ceiling, so the arms are not separated; the ~7B open-weight headline model has not been run. Tokens were not measured. Tracked in #137.
