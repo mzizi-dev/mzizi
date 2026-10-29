@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — pilot 3: a frontier model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-3-frontier/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Fable subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes) and `dioxus` on `button` only (3 episodes). **It declares no pass or fail and is not the kill-criterion run.** 26 of 27 episodes were clean at iteration 1 with no defects; the other was `mzizi` `card` seed 1 (clean, one extra `card-skeleton` slot) and `mzizi` `card` seed 2 (clean at iteration 2, after `MZ0712`). At this model size on these tasks the metrics sit at the ceiling, so the arms are not separated. Tokens were not measured (no tokenizer endpoint). The run record states the departures, including a `flock` shim for macOS and one premature `episode finish` that was reverted. Tracked in #137.
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
