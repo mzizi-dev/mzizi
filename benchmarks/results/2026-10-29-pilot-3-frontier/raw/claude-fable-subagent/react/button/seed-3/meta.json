@@ -1,0 +1,75 @@
+{
+  "allow_variant_renames": false,
+  "arm": "react",
+  "arm_config": {
+    "check": [
+      "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/bench-wt/benchmarks/arms/react/check.sh",
+      "{file}"
+    ],
+    "class_accessor": "each a variant key of a `cva` call whose values are its Tailwind classes",
+    "enum_case": "cva",
+    "extension": "tsx",
+    "extractor": "react",
+    "family": "ui",
+    "file_kind": "a single TypeScript React source file (.tsx)",
+    "guide": "benchmarks/prompts/react-guide.md",
+    "id": "react",
+    "language_name": "TypeScript with React",
+    "normaliser": "file-name",
+    "pins": [
+      "sandbox/package.json",
+      "sandbox/package-lock.json",
+      "sandbox/tsconfig.json",
+      "sandbox/src/lib/utils.ts"
+    ],
+    "task_families": [
+      "ui-spec"
+    ]
+  },
+  "check": {
+    "argv": [
+      "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/bench-wt/benchmarks/arms/react/check.sh",
+      "{file}"
+    ],
+    "cwd": "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/bench-wt"
+  },
+  "diagnostics_normaliser": "file-name",
+  "endpoint": "http://127.0.0.1:8080",
+  "enums": [
+    "ButtonVariant",
+    "ButtonSize"
+  ],
+  "guide_bytes": 10298,
+  "guide_fnv1a64": "4834ceb80b8e4dfd",
+  "guide_path": "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/bench-wt/benchmarks/prompts/react-guide.md",
+  "iteration_count_enforced_by_runner": false,
+  "max_iters": 5,
+  "max_tokens": null,
+  "mode": "agent",
+  "model": "claude-fable-subagent",
+  "reference_path": "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/pilot3-tasks/button/reference.rs",
+  "rename_reason": null,
+  "score": {
+    "argv": [
+      "cargo",
+      "run",
+      "-q",
+      "-p",
+      "mzizi-benchmark-harness",
+      "--",
+      "score",
+      "--arm",
+      "{arm}",
+      "--candidate",
+      "{candidate}",
+      "--reference",
+      "{reference}"
+    ],
+    "cwd": "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/bench-wt"
+  },
+  "seed": 3,
+  "task": "button",
+  "task_dir": "/private/tmp/claude-501/-Users-bryanfawcett-GitHub-mzizi-dev/1690dff0-db02-4209-bf2b-65a49e842ce6/scratchpad/pilot3-tasks/button",
+  "task_family": "ui-spec",
+  "temperature": null
+}
