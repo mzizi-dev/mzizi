@@ -1,0 +1,59 @@
+## B2's Mzizi reference: one route with three typed query parameters (RFC-0011 §2, §4.2).
+## A value that is not an integer is absent (§4.2); an integer out of range is a 400.
+service listing
+
+  header "x-mzizi-source" "registry"
+
+  record page
+    field node: option(text)
+    field limit: option(int)
+    field offset: option(int)
+  end
+
+  record problem
+    field error: text
+  end
+
+  route ui_list
+    get "/v1/ui"
+    query node: option(text)
+    query limit: option(int)
+    query offset: option(int)
+    when limit is none
+    else
+      when limit at_most 0
+        respond 400 json problem error "limit must be between 1 and 100"
+      end
+      when limit at_least 101
+        respond 400 json problem error "limit must be between 1 and 100"
+      end
+    end
+    when offset is none
+    else
+      when offset at_least 0
+      else
+        respond 400 json problem error "offset must be 0 or more"
+      end
+    end
+    respond 200 json page node node limit limit offset offset
+  end
+
+  fallback
+    respond 404 json problem error "Not found"
+  end
+
+  contract
+    example get "/v1/ui" status is 200
+    example get "/v1/ui?limit=abc" status is 200
+    example get "/v1/ui?limit=0x10" status is 200
+    example get "/v1/ui?limit=0" status is 400
+    example get "/v1/ui?limit=101" status is 400
+    example get "/v1/ui?offset=-1" status is 400
+    example get "/v1/ui?node=N2&limit=5&offset=10" body.limit is 5
+    example get "/v1/ui?node=N2" body.node is "N2"
+    example get "/nope" status is 404
+    ensure header "x-mzizi-source" is "registry"
+    ensure when status is 400 then header "content-type" is "application/json"
+  end
+
+end service listing

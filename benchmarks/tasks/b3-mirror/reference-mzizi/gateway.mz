@@ -1,0 +1,90 @@
+## B3's Mzizi reference: a gateway's read routes, retired routes, a 503 and CORS headers.
+## What RFC-0011 §10 says it cannot yet express (a filtered listing, the nyuchi-* -> mzizi-*
+## prefix rewrite) is not in the spec. fixtures/ui.json is a copy of the task's ../fixtures/ui.json:
+## a file must sit inside the service's directory (MZ0810), and the probes catch any drift.
+service gateway
+
+  header "x-mzizi-source" "registry"
+  header "access-control-allow-origin" "*"
+  header "access-control-allow-methods" "GET, HEAD, OPTIONS"
+  header "access-control-allow-headers" "content-type"
+
+  record health
+    field status: text
+  end
+
+  record item
+    field name: text
+    field node: text
+  end
+
+  record problem
+    field error: text
+  end
+
+  route health_check
+    get "/v1/health"
+    header "cache-control" "no-cache"
+    respond 200 json health status "ok"
+  end
+
+  route ui_list
+    get "/v1/ui"
+    header "cache-control" "public, max-age=300"
+    respond 200 file "fixtures/ui.json"
+  end
+
+  route ui_item
+    get "/v1/ui/{name}"
+    when name in "badge" "button"
+      header "cache-control" "public, max-age=300"
+      respond 200 json item name name node "N2"
+    end
+    header "cache-control" "private, no-cache, no-store, max-age=0, must-revalidate"
+    respond 404 json problem error "Not found"
+  end
+
+  route components_retired
+    get "/v1/components"
+    header "cache-control" "no-store"
+    respond 410 json problem error "Gone"
+  end
+
+  route themes_retired
+    get "/v1/themes"
+    header "cache-control" "no-store"
+    respond 410 json problem error "Gone"
+  end
+
+  route versions
+    get "/v1/versions"
+    header "cache-control" "no-store"
+    respond 503 json problem error "Database not configured"
+  end
+
+  fallback
+    header "cache-control" "private, no-cache, no-store, max-age=0, must-revalidate"
+    respond 404 json problem error "Not found"
+  end
+
+  contract
+    example get "/v1/health" body.status is "ok"
+    example get "/v1/ui" header "content-type" is "application/json"
+    example get "/v1/ui/badge" body.node is "N2"
+    example get "/v1/ui/card" status is 404
+    example get "/v1/components" status is 410
+    example get "/v1/themes" body.error is "Gone"
+    example get "/v1/versions" status is 503
+    example options "/v1/ui" status is 204
+    example options "/v1/ui" header "access-control-allow-methods" is "GET, HEAD, OPTIONS"
+    example delete "/v1/ui/button" status is 405
+    example get "/v1/ui/" status is 308
+    example get "/nope" status is 404
+    ensure header "x-mzizi-source" is "registry"
+    ensure header "access-control-allow-origin" is "*"
+    ensure when status is 410 then body.error is "Gone"
+    ensure when status is 503 then body.error is "Database not configured"
+    ensure when status is 405 then header "allow" is "GET, HEAD, OPTIONS"
+  end
+
+end service gateway

@@ -126,7 +126,7 @@ passes only if both pass (§6.2, rule 5). In RFC-0009 §9's order:
    axum package that serves locally and answers HTTP. The `mzizi-be` arm exists, with a
    probe crate (`benchmarks/probe`) and B1 as its first task, whose Mzizi and axum references
    both hold all 59 of its facts. Still open: the runner does not score an episode with
-   probes, B2–B5 and the incumbent backend arms do not exist, and nothing has been measured. RFC-0011 §12 records each piece as it lands.
+   probes, the incumbent backend arms do not exist, and nothing has been measured. B2–B5 exist as public development tasks (2026-10-29): B2 and B3 have Mzizi and axum references, B4 and B5 have only axum and Python ones, because a `service` cannot yet hold state or read a request body. RFC-0011 §12 records each piece as it lands.
 
 ### Not part of the run: runtime performance
 
