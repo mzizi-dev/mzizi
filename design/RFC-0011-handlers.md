@@ -328,8 +328,10 @@ predicate := is <value> | in <value> … | not_empty | contains "<text>"
 to `<dir>`: `Cargo.toml`, `src/main.rs` and the fixtures the service embeds. The package is
 its own workspace root, so it never joins this repository's workspace. It is generated
 output, and is never committed (RFC-0010 §5, CONTRIBUTING.md). `cargo run --release` in it
-serves `127.0.0.1:$PORT` (8080 by default) and prints one `listening on …` line when it is
-ready.
+serves `$HOST:$PORT` (`127.0.0.1` and 8080 by default; a container sets `HOST=0.0.0.0`) and
+prints one `listening on …` line when it is ready. The manifest carries a `[profile.release]`
+(`lto`, `codegen-units = 1`, `panic = "abort"`, `strip`) for a small static binary; traps exit
+through `process::exit(101)`, not a panic, so `abort` changes no behaviour.
 
 ### 8.2 What it emits
 

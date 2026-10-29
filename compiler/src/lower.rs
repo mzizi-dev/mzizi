@@ -126,6 +126,16 @@ tokio = {{ version = "{tokio}", features = ["rt-multi-thread", "macros", "net"] 
 tower = {{ version = "{tower}", features = ["util"] }}
 http-body-util = "{hbu}"
 serde_json = "{sj}"
+
+# Small and fast to start: a service ships as one static binary. Traps are explicit
+# `process::exit(101)` calls, not panics, so `panic = "abort"` leaves them unchanged.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true
 "#,
         name = service.name.replace('_', "-"),
         axum = pin("axum"),
@@ -891,14 +901,26 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(8080);
-    let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+    // Loopback unless `HOST` says otherwise: a container sets `HOST=0.0.0.0`. It must be an
+    // IP address, so a typo stops the service instead of binding somewhere unintended.
+    let host: std::net::IpAddr = match std::env::var("HOST") {
+        Ok(h) if !h.is_empty() => match h.parse() {
+            Ok(ip) => ip,
+            Err(_) => {
+                eprintln!("HOST must be an IP address, got {h:?}");
+                std::process::exit(1);
+            }
+        },
+        _ => std::net::Ipv4Addr::LOCALHOST.into(),
+    };
+    let listener = match tokio::net::TcpListener::bind((host, port)).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("cannot listen on 127.0.0.1:{port}: {e}");
+            eprintln!("cannot listen on {host}:{port}: {e}");
             std::process::exit(1);
         }
     };
-    println!("listening on http://127.0.0.1:{port}");
+    println!("listening on http://{host}:{port}");
     if let Err(e) = axum::serve(listener, app()).await {
         eprintln!("server stopped: {e}");
         std::process::exit(1);
