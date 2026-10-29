@@ -1,0 +1,2 @@
+# serve.sh builds a candidate in a .arm-work directory beside it (lib/arm-run.sh).
+.arm-work/

@@ -1,0 +1,18 @@
+# The Rust backend arm's package (RFC-0009 §1): axum on tokio, with serde. A candidate is
+# placed at src/main.rs. Its own workspace root, so no other manifest resolves it. The
+# axum, tokio and serde_json pins are the ones B1's Rust reference and `mz build`'s lowering
+# use (compiler/src/lower.rs `PINS`), so this arm does not fail on version drift the other
+# side does not. Cargo.lock is committed: the dependency tree is the arm's pin.
+[package]
+name = "candidate"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+axum = "=0.8.9"
+tokio = { version = "=1.53.3", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"

@@ -1,0 +1,15 @@
+{
+  "name": "ts-arm-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The TypeScript backend arm's sandbox. See ../README.md. Exact pins, installed once by install.sh; nothing is fetched at check time.",
+  "type": "module",
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.10"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

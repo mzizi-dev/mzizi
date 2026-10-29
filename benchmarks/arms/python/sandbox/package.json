@@ -1,0 +1,9 @@
+{
+  "name": "python-arm-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "description": "The Python backend arm's checker: pyright, from npm, run by the system Node. See ../README.md.",
+  "devDependencies": {
+    "pyright": "1.1.414"
+  }
+}
