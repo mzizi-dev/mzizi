@@ -1,0 +1,44 @@
+## A container for grouped content, or its loading skeleton.
+component card
+
+  enum card_size
+    default  class ""
+    sm       class "gap-3 p-4"
+  end
+
+  prop size: card_size = default
+  prop loading: bool = false
+
+  view
+    when loading
+      column
+        slot = "card"
+        portal = "https://mzizi.dev/components/card"
+        loading = true
+        size = size
+        class = "group/card flex animate-pulse flex-col gap-4 overflow-hidden rounded-[var(--radius-lg,14px)] bg-card p-6 text-sm ring-1 ring-foreground/10 {size.class}"
+        row
+          class = "h-4 w-2/3 rounded bg-muted"
+        end
+        row
+          class = "h-3 w-full rounded bg-muted"
+        end
+        row
+          class = "h-3 w-4/5 rounded bg-muted"
+        end
+      end
+    else
+      column
+        slot = "card"
+        size = size
+        class = "group/card flex flex-col gap-6 overflow-hidden rounded-[var(--radius-lg,14px)] bg-card py-6 text-sm text-card-foreground ring-1 ring-foreground/10 has-[>img:first-child]:pt-0 data-[size=sm]:gap-4 data-[size=sm]:py-4 *:[img:first-child]:rounded-t-[var(--radius-md,12px)] *:[img:last-child]:rounded-b-[var(--radius-md,12px)]"
+      end
+    end
+  end
+
+  contract
+    slot is "card"
+    card_size.sm class contains "gap-3"
+  end
+
+end component card
