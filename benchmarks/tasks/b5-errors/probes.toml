@@ -66,7 +66,7 @@ expect = { status = 201 }
 [[probe]]
 id = "exactly-1024"
 clause = "B5.3"
-request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/exact-1024.json" }
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/exact-1024.body" }
 expect = { status = 201 }
 
 [[probe]]
@@ -90,25 +90,25 @@ expect = { status = 415, headers = { "content-type" = "application/json", "x-mzi
 [[probe]]
 id = "type-before-size"
 clause = "B5.2"
-request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "text/plain" }, body_file = "fixtures/over-1025.json" }
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "text/plain" }, body_file = "fixtures/over-1025.body" }
 expect = { status = 415, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Expected application/json" } }
 
 [[probe]]
 id = "too-large"
 clause = "B5.3"
-request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-1025.json" }
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-1025.body" }
 expect = { status = 413, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Payload too large" } }
 
 [[probe]]
 id = "size-before-syntax"
 clause = "B5.3"
-request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-malformed.json" }
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-malformed.body" }
 expect = { status = 413, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Payload too large" } }
 
 [[probe]]
 id = "malformed"
 clause = "B5.4"
-request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/malformed.json" }
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/malformed.body" }
 expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Malformed JSON" } }
 
 [[probe]]
