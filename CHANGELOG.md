@@ -66,6 +66,10 @@ carry no pull request number.
   or bare-metal build work has started. The container target is a standard OCI image, built with Docker by default and
   run by any OCI runtime.
 
+### Fixed — a `match` in a service handler is one `MZ0410`, as in a view (Refs #65)
+
+- **`mz check`:** a `match` line in a service handler's statements is now the same one error a `match` in a view is — `MZ0410`, the whole block skipped, no fix — instead of the handler's catch-all `MZ0811` (`cannot start a line in a handler`), which recovered a single line, so the arms and the statements after the block cascaded into their own errors. `statements` now skips the block with the view's `skip_match`: the arms, whatever shape they come in, are one error that names the per-variant form `when name is x … end`, the block's `end` is consumed at the handler's statement column, and the statements after it are still checked. `handler_line_kind` counts the line as `LineKind::Match`, so `skip_too_deep`'s block balance reads a handler `match` the way it reads a view `match`. Measured: `cargo test` in the compiler crate passes 636 tests (634 before this change, +2 the new tests — the full-run numbers, which include the one doc-test section that `cargo test -- --list` does not enumerate; 634 is the number AGENTS.md states), including the two new tests in `compiler/tests/services.rs` (one `MZ0410` and nothing else for a handler with a `match name` and `when` arms, and a `return` after the block still its own `MZ0811`), and the compiler job's `mz check` and `mz contract` loops over every `examples/*.mz` and `primitives/*.mz` pass.
+
 ## 2026-10-20
 
 ### Changed — one UI framework's name removed from the README and the charter (2026-10-20)
