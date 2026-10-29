@@ -84,6 +84,34 @@ jobs:
           --config deny.toml
           check
 
+      - name: cargo deny check (B2 reference, axum + tokio)
+        run: >-
+          cargo-deny
+          --manifest-path benchmarks/tasks/b2-validation/reference-rust/Cargo.toml
+          --config deny.toml
+          check
+
+      - name: cargo deny check (B3 reference, axum + tokio)
+        run: >-
+          cargo-deny
+          --manifest-path benchmarks/tasks/b3-mirror/reference-rust/Cargo.toml
+          --config deny.toml
+          check
+
+      - name: cargo deny check (B4 reference, axum + tokio)
+        run: >-
+          cargo-deny
+          --manifest-path benchmarks/tasks/b4-state/reference-rust/Cargo.toml
+          --config deny.toml
+          check
+
+      - name: cargo deny check (B5 reference, axum + tokio)
+        run: >-
+          cargo-deny
+          --manifest-path benchmarks/tasks/b5-errors/reference-rust/Cargo.toml
+          --config deny.toml
+          check
+
   workflow-audit:
     name: workflow audit
     runs-on: ubuntu-latest

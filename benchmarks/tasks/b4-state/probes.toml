@@ -1,0 +1,180 @@
+# B4's probes (RFC-0009 §2.3). Each expected status, header, body and JSON value is one
+# fact. The probes run in file order against one server that starts empty, and later probes
+# depend on earlier ones: that is what the task tests. `clause` is the spec rule the probe
+# checks: B4.1 listing, B4.2 recording, B4.3 the 409, B4.4 the 400, B4.5 separate histories,
+# B4.6 the name check, B4.7 methods and other paths. Every probe must pass against every
+# reference (`mzprobe verify benchmarks/tasks/b4-state`).
+
+[[probe]]
+id = "badge-empty"
+clause = "B4.1"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 0, "/versions" = [] } }
+
+[[probe]]
+id = "record-first"
+clause = "B4.2"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1.json" }
+expect = { status = 201, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry", location = "/v1/ui/badge/versions" }, json = { "/component" = "badge", "/version" = "1.0.0", "/count" = 1 } }
+
+[[probe]]
+id = "list-one"
+clause = "B4.1"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 1, "/versions" = ["1.0.0"] } }
+
+[[probe]]
+id = "record-second"
+clause = "B4.2"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v2.json" }
+expect = { status = 201, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry", location = "/v1/ui/badge/versions" }, json = { "/component" = "badge", "/version" = "1.1.0", "/count" = 2 } }
+
+[[probe]]
+id = "list-two-in-order"
+clause = "B4.1"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 2, "/versions" = ["1.0.0", "1.1.0"] } }
+
+[[probe]]
+id = "duplicate"
+clause = "B4.3"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1.json" }
+expect = { status = 409, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Version already recorded" } }
+
+[[probe]]
+id = "duplicate-not-recorded"
+clause = "B4.3"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 2, "/versions" = ["1.0.0", "1.1.0"] } }
+
+[[probe]]
+id = "exact-text"
+clause = "B4.3"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1-padded.json" }
+expect = { status = 201, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry", location = "/v1/ui/badge/versions" }, json = { "/component" = "badge", "/version" = "1.0.00", "/count" = 3 } }
+
+[[probe]]
+id = "empty-version"
+clause = "B4.4"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/empty-version.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid body" } }
+
+[[probe]]
+id = "number-version"
+clause = "B4.4"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/number-version.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid body" } }
+
+[[probe]]
+id = "truncated-json"
+clause = "B4.4"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/truncated.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid body" } }
+
+[[probe]]
+id = "array-body"
+clause = "B4.4"
+request = { method = "POST", path = "/v1/ui/badge/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/array.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid body" } }
+
+[[probe]]
+id = "invalid-not-recorded"
+clause = "B4.4"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 3, "/versions" = ["1.0.0", "1.1.0", "1.0.00"] } }
+
+[[probe]]
+id = "button-empty"
+clause = "B4.5"
+request = { method = "GET", path = "/v1/ui/button/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "button", "/count" = 0, "/versions" = [] } }
+
+[[probe]]
+id = "button-same-version"
+clause = "B4.5"
+request = { method = "POST", path = "/v1/ui/button/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1.json" }
+expect = { status = 201, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry", location = "/v1/ui/button/versions" }, json = { "/component" = "button", "/version" = "1.0.0", "/count" = 1 } }
+
+[[probe]]
+id = "button-list"
+clause = "B4.5"
+request = { method = "GET", path = "/v1/ui/button/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "button", "/count" = 1, "/versions" = ["1.0.0"] } }
+
+[[probe]]
+id = "badge-unchanged"
+clause = "B4.5"
+request = { method = "GET", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/component" = "badge", "/count" = 3, "/versions" = ["1.0.0", "1.1.0", "1.0.00"] } }
+
+[[probe]]
+id = "unknown-get"
+clause = "B4.6"
+request = { method = "GET", path = "/v1/ui/card/versions" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "unknown-post"
+clause = "B4.6"
+request = { method = "POST", path = "/v1/ui/card/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1.json" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "unknown-post-bad-body"
+clause = "B4.6"
+request = { method = "POST", path = "/v1/ui/card/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/truncated.json" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "unknown-options"
+clause = "B4.6"
+request = { method = "OPTIONS", path = "/v1/ui/card/versions" }
+expect = { status = 404 }
+
+[[probe]]
+id = "name-before-body"
+clause = "B4.6"
+request = { method = "POST", path = "/v1/ui/Button/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v2.json" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "head"
+clause = "B4.7"
+request = { method = "HEAD", path = "/v1/ui/badge/versions" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "options"
+clause = "B4.7"
+request = { method = "OPTIONS", path = "/v1/ui/badge/versions" }
+expect = { status = 204, headers = { allow = "GET, HEAD, POST, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "delete"
+clause = "B4.7"
+request = { method = "DELETE", path = "/v1/ui/badge/versions" }
+expect = { status = 405, headers = { allow = "GET, HEAD, POST, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "put"
+clause = "B4.7"
+request = { method = "PUT", path = "/v1/ui/button/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v2.json" }
+expect = { status = 405, headers = { allow = "GET, HEAD, POST, OPTIONS" }, body = "" }
+
+[[probe]]
+id = "other-path"
+clause = "B4.7"
+request = { method = "GET", path = "/v1/ui/badge" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "trailing-slash"
+clause = "B4.7"
+request = { method = "GET", path = "/v1/ui/badge/versions/" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "root"
+clause = "B4.7"
+request = { method = "GET", path = "/" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }

@@ -1,0 +1,143 @@
+# B3's probes (RFC-0009 §2.3). Each expected status, header, body and JSON value is one
+# fact. `clause` is the spec rule the probe checks: B3.1 the routes and the listing, B3.2 the
+# retired and unavailable routes, B3.3 the headers on every response, B3.4 methods, B3.5 other
+# paths. Every probe must pass against both references
+# (`mzprobe verify benchmarks/tasks/b3-mirror`).
+
+[[probe]]
+id = "health"
+clause = "B3.1"
+request = { method = "GET", path = "/v1/health" }
+expect = { status = 200, headers = { "content-type" = "application/json", cache-control = "no-cache", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/status" = "ok" } }
+
+[[probe]]
+id = "listing"
+clause = "B3.1"
+request = { method = "GET", path = "/v1/ui" }
+expect = { status = 200, headers = { "content-type" = "application/json", cache-control = "public, max-age=300", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/components/0/name" = "badge", "/components/0/node" = "N2", "/components/1/name" = "button", "/components/1/node" = "N2", "/meta/total" = 2, "/meta/source" = "fixture" } }
+
+[[probe]]
+id = "item-badge"
+clause = "B3.1"
+request = { method = "GET", path = "/v1/ui/badge" }
+expect = { status = 200, headers = { "content-type" = "application/json", cache-control = "public, max-age=300", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/name" = "badge", "/node" = "N2" } }
+
+[[probe]]
+id = "item-button"
+clause = "B3.1"
+request = { method = "GET", path = "/v1/ui/button" }
+expect = { status = 200, json = { "/name" = "button", "/node" = "N2" } }
+
+[[probe]]
+id = "item-unknown"
+clause = "B3.1"
+request = { method = "GET", path = "/v1/ui/card" }
+expect = { status = 404, headers = { "content-type" = "application/json", cache-control = "private, no-cache, no-store, max-age=0, must-revalidate", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "retired-components"
+clause = "B3.2"
+request = { method = "GET", path = "/v1/components" }
+expect = { status = 410, headers = { "content-type" = "application/json", cache-control = "no-store", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/error" = "Gone" } }
+
+[[probe]]
+id = "retired-themes"
+clause = "B3.2"
+request = { method = "GET", path = "/v1/themes" }
+expect = { status = 410, headers = { "content-type" = "application/json", cache-control = "no-store", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/error" = "Gone" } }
+
+[[probe]]
+id = "retired-subpath"
+clause = "B3.2"
+request = { method = "GET", path = "/v1/components/badge" }
+expect = { status = 404, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "versions"
+clause = "B3.2"
+request = { method = "GET", path = "/v1/versions" }
+expect = { status = 503, headers = { "content-type" = "application/json", cache-control = "no-store", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/error" = "Database not configured" } }
+
+[[probe]]
+id = "cors-on-404"
+clause = "B3.3"
+request = { method = "GET", path = "/nothing" }
+expect = { status = 404, headers = { "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" } }
+
+[[probe]]
+id = "cors-on-308"
+clause = "B3.3"
+request = { method = "GET", path = "/v1/ui/" }
+expect = { status = 308, headers = { location = "/v1/ui", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, body = "" }
+
+[[probe]]
+id = "cors-on-405"
+clause = "B3.3"
+request = { method = "DELETE", path = "/v1/ui" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, body = "" }
+
+[[probe]]
+id = "preflight"
+clause = "B3.4"
+request = { method = "OPTIONS", path = "/v1/ui/button" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, body = "" }
+
+[[probe]]
+id = "preflight-retired"
+clause = "B3.4"
+request = { method = "OPTIONS", path = "/v1/versions" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS" } }
+
+[[probe]]
+id = "head-listing"
+clause = "B3.4"
+request = { method = "HEAD", path = "/v1/ui" }
+expect = { status = 200, headers = { "content-type" = "application/json", cache-control = "public, max-age=300", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, body = "" }
+
+[[probe]]
+id = "head-retired"
+clause = "B3.4"
+request = { method = "HEAD", path = "/v1/themes" }
+expect = { status = 410, body = "" }
+
+[[probe]]
+id = "post-health"
+clause = "B3.4"
+request = { method = "POST", path = "/v1/health" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS" }, body = "" }
+
+[[probe]]
+id = "put-retired"
+clause = "B3.4"
+request = { method = "PUT", path = "/v1/components" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS" } }
+
+[[probe]]
+id = "trailing-slash-query"
+clause = "B3.5"
+request = { method = "GET", path = "/v1/ui/button/?a=1" }
+expect = { status = 308, headers = { location = "/v1/ui/button?a=1" } }
+
+[[probe]]
+id = "trailing-slash-retired"
+clause = "B3.5"
+request = { method = "GET", path = "/v1/versions/" }
+expect = { status = 308, headers = { location = "/v1/versions" } }
+
+[[probe]]
+id = "root"
+clause = "B3.5"
+request = { method = "GET", path = "/" }
+expect = { status = 404, headers = { "content-type" = "application/json", cache-control = "private, no-cache, no-store, max-age=0, must-revalidate", "x-mzizi-source" = "registry", "access-control-allow-origin" = "*", "access-control-allow-methods" = "GET, HEAD, OPTIONS", "access-control-allow-headers" = "content-type" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "case-sensitive"
+clause = "B3.5"
+request = { method = "GET", path = "/V1/Health" }
+expect = { status = 404 }
+
+[[probe]]
+id = "unknown-delete"
+clause = "B3.5"
+request = { method = "DELETE", path = "/nothing" }
+expect = { status = 404, json = { "/error" = "Not found" } }

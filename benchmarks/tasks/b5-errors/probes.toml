@@ -1,0 +1,196 @@
+# B5's probes (RFC-0009 §2.3). Each expected status, header, body and JSON value is one
+# fact. `clause` is the spec rule the probe checks: B5.1 the canonical path, B5.2 the 415,
+# B5.3 the 413, B5.4 the 400s, B5.5 the 201, B5.6 the 500, B5.7 methods and the 404. Every
+# probe must pass against every reference (`mzprobe verify benchmarks/tasks/b5-errors`).
+
+[[probe]]
+id = "evil-host"
+clause = "B5.1"
+request = { method = "GET", path = "//evil.com/" }
+expect = { status = 308, headers = { location = "/evil.com", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "evil-host-no-slash"
+clause = "B5.1"
+request = { method = "GET", path = "//evil.com" }
+expect = { status = 308, headers = { location = "/evil.com", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "many-slashes"
+clause = "B5.1"
+request = { method = "GET", path = "////evil.com//x///" }
+expect = { status = 308, headers = { location = "/evil.com/x", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "only-slashes"
+clause = "B5.1"
+request = { method = "GET", path = "//" }
+expect = { status = 308, headers = { location = "/", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "inner-slashes"
+clause = "B5.1"
+request = { method = "GET", path = "/v1//health" }
+expect = { status = 308, headers = { location = "/v1/health", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "trailing-slash-query"
+clause = "B5.1"
+request = { method = "GET", path = "/v1/health/?x=1" }
+expect = { status = 308, headers = { location = "/v1/health?x=1", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "slash-with-post"
+clause = "B5.1"
+request = { method = "POST", path = "/v1//messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/ok.json" }
+expect = { status = 308, headers = { location = "/v1/messages", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "created"
+clause = "B5.5"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/ok.json" }
+expect = { status = 201, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/text" = "hello" } }
+
+[[probe]]
+id = "created-charset"
+clause = "B5.5"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json; charset=utf-8" }, body_file = "fixtures/ok.json" }
+expect = { status = 201, json = { "/text" = "hello" } }
+
+[[probe]]
+id = "created-upper-case"
+clause = "B5.5"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "Application/JSON" }, body_file = "fixtures/ok.json" }
+expect = { status = 201 }
+
+[[probe]]
+id = "exactly-1024"
+clause = "B5.3"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/exact-1024.json" }
+expect = { status = 201 }
+
+[[probe]]
+id = "wrong-type"
+clause = "B5.2"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "text/plain" }, body_file = "fixtures/ok.json" }
+expect = { status = 415, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Expected application/json" } }
+
+[[probe]]
+id = "no-type"
+clause = "B5.2"
+request = { method = "POST", path = "/v1/messages", body_file = "fixtures/ok.json" }
+expect = { status = 415, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Expected application/json" } }
+
+[[probe]]
+id = "type-prefix-only"
+clause = "B5.2"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/jsonx" }, body_file = "fixtures/ok.json" }
+expect = { status = 415, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Expected application/json" } }
+
+[[probe]]
+id = "type-before-size"
+clause = "B5.2"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "text/plain" }, body_file = "fixtures/over-1025.json" }
+expect = { status = 415, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Expected application/json" } }
+
+[[probe]]
+id = "too-large"
+clause = "B5.3"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-1025.json" }
+expect = { status = 413, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Payload too large" } }
+
+[[probe]]
+id = "size-before-syntax"
+clause = "B5.3"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/over-malformed.json" }
+expect = { status = 413, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Payload too large" } }
+
+[[probe]]
+id = "malformed"
+clause = "B5.4"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/malformed.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Malformed JSON" } }
+
+[[probe]]
+id = "missing-text"
+clause = "B5.4"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/missing-text.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid message" } }
+
+[[probe]]
+id = "empty-text"
+clause = "B5.4"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/empty-text.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid message" } }
+
+[[probe]]
+id = "array"
+clause = "B5.4"
+request = { method = "POST", path = "/v1/messages", headers = { "content-type" = "application/json" }, body_file = "fixtures/array.json" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Invalid message" } }
+
+[[probe]]
+id = "fail"
+clause = "B5.6"
+request = { method = "GET", path = "/v1/fail" }
+expect = { status = 500, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Internal server error" } }
+
+[[probe]]
+id = "fail-head"
+clause = "B5.6"
+request = { method = "HEAD", path = "/v1/fail" }
+expect = { status = 500, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "health"
+clause = "B5.7"
+request = { method = "GET", path = "/v1/health" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/status" = "ok" } }
+
+[[probe]]
+id = "health-options"
+clause = "B5.7"
+request = { method = "OPTIONS", path = "/v1/health" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "health-post"
+clause = "B5.7"
+request = { method = "POST", path = "/v1/health", headers = { "content-type" = "application/json" }, body_file = "fixtures/ok.json" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "messages-get"
+clause = "B5.7"
+request = { method = "GET", path = "/v1/messages" }
+expect = { status = 405, headers = { allow = "POST, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "messages-options"
+clause = "B5.7"
+request = { method = "OPTIONS", path = "/v1/messages" }
+expect = { status = 204, headers = { allow = "POST, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "fail-delete"
+clause = "B5.7"
+request = { method = "DELETE", path = "/v1/fail" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS" }, body = "" }
+
+[[probe]]
+id = "not-found"
+clause = "B5.7"
+request = { method = "GET", path = "/v1/nothing" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "root"
+clause = "B5.7"
+request = { method = "GET", path = "/" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "case-sensitive"
+clause = "B5.7"
+request = { method = "GET", path = "/V1/Health" }
+expect = { status = 404 }
