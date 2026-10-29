@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — pilot 3: a frontier model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-3-frontier/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Fable subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes) and `dioxus` on `button` only (3 episodes). **It declares no pass or fail and is not the kill-criterion run.** 26 of 27 episodes were clean at iteration 1 with no defects; the other was `mzizi` `card` seed 1 (clean, one extra `card-skeleton` slot) and `mzizi` `card` seed 2 (clean at iteration 2, after `MZ0712`). At this model size on these tasks the metrics sit at the ceiling, so the arms are not separated. Tokens were not measured (no tokenizer endpoint). The run record states the departures, including a `flock` shim for macOS and one premature `episode finish` that was reverted. Tracked in #137.
+
 ### Changed — a generated service can listen off loopback, and builds slim
 
 - **The `tokio` pin moves from `=1.53.1` to `=1.53.3`** in generated services (`PINS`) and in the B1 reference, for RUSTSEC-2026-0386 (an I/O-safety unsoundness in `tokio::io::unix::AsyncFd`). A service built before this change still pins the old version and should be rebuilt. `cargo deny` had been failing on every pull request since the advisory. Fixes #136.
