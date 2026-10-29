@@ -78,6 +78,8 @@ carry no pull request number.
 
 ### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
 
+- `benchmarks/kill-criterion/check-task.sh` no longer fails on macOS's bash 3.2 for a task that needs no scorer flags: the empty `flags` array tripped `set -u` ("flags[@]: unbound variable") and every such task was reported NOT READY.
+
 - **The `workflow audit` job failed on every pull request** with zizmor's `ref-version-mismatch`: `dtolnay/rust-toolchain`'s `v1` tag moved to `683b588`, so the pin to `e2a55d2` no longer matched its `# v1` comment. The four uses in `ci.yml` and `supply-chain.yml` now pin `683b588c487a69d01f6c6ddf40f036ff682cc2c8`, which `git ls-remote` reports for both `refs/tags/v1` and `master` on 2026-10-20. `zizmor --offline .github/workflows/` reports no findings.
 
 ### Fixed — the follow-ups from the C6 review (#107)
