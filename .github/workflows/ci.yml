@@ -181,6 +181,25 @@ jobs:
           grep -q '^HTTP/1.1 204' response.txt
           grep -qi '^allow: GET, HEAD, OPTIONS$' response.txt
 
+      # A container needs the service reachable off loopback (`HOST=0.0.0.0`), and a bad
+      # `HOST` must stop it rather than bind somewhere unintended.
+      - name: serve it on a non-loopback address, and refuse a bad HOST
+        run: |
+          set -euo pipefail
+          bin=target/mz-build/registry/target/release/mz-registry
+          if HOST=not-an-ip "$bin" > bad-host.log 2>&1; then echo "bad HOST was accepted"; exit 1; fi
+          grep -q 'HOST must be an IP address' bad-host.log
+          addr=$(hostname -I | tr ' ' '\n' | grep -v '^127\.' | head -n 1)
+          test -n "$addr"
+          HOST=0.0.0.0 PORT=18081 "$bin" > serve-host.log 2>&1 &
+          server=$!
+          for _ in $(seq 1 50); do grep -q listening serve-host.log && break; sleep 0.2; done
+          exec 3<>/dev/tcp/"$addr"/18081
+          printf 'OPTIONS /v1/ui HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3
+          tr -d '\r' <&3 | tee response-host.txt
+          kill "$server"
+          grep -q '^HTTP/1.1 204' response-host.txt
+
       # RFC-0009 §2.3: every probe must pass against both of a backend task's references,
       # one in Mzizi (lowered by `mz build`) and one in plain axum, before any run.
       - name: mzprobe verify B1 against both references
