@@ -101,6 +101,38 @@ fn the_package_pins_its_dependencies_exactly_and_is_its_own_workspace() {
 }
 
 #[test]
+fn the_service_binds_loopback_unless_host_says_otherwise() {
+    let p = lower(&registry(), "registry.mz");
+    let main = &p.files.iter().find(|(n, _)| n == "src/main.rs").unwrap().1;
+    assert!(main.contains("std::env::var(\"HOST\")"), "no HOST override");
+    assert!(
+        main.contains("Ipv4Addr::LOCALHOST"),
+        "default is not loopback"
+    );
+    assert!(
+        main.contains("HOST must be an IP address"),
+        "HOST is not validated"
+    );
+    assert!(main.contains("TcpListener::bind((host, port))"));
+}
+
+#[test]
+fn the_service_package_has_a_slim_release_profile_once() {
+    let p = lower(&registry(), "registry.mz");
+    let cargo = &p.files.iter().find(|(n, _)| n == "Cargo.toml").unwrap().1;
+    assert_eq!(cargo.matches("[profile.release]").count(), 1);
+    for line in [
+        "lto = true",
+        "codegen-units = 1",
+        "panic = \"abort\"",
+        "strip = true",
+        "overflow-checks = true",
+    ] {
+        assert!(cargo.contains(line), "{line} missing");
+    }
+}
+
+#[test]
 fn narrowing_lowers_to_if_let_and_options_serialise_as_null() {
     let src = "service t\n  record page\n    field limit: option(int)\n  end\n  route r\n    get \"/\"\n    query limit: option(int)\n    when limit is none\n      respond 200 json page limit limit\n    else\n      respond 200 text \"{limit}\"\n    end\n  end\n  contract\n    example get \"/\" status is 200\n  end\nend service t\n";
     let (program, diags) = parse_program(src, "t.mz");
