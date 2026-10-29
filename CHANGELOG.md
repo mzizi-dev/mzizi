@@ -19,6 +19,7 @@ carry no pull request number.
 
 ### Changed — a generated service can listen off loopback, and builds slim
 
+- **The `tokio` pin moves from `=1.53.1` to `=1.53.3`** in generated services (`PINS`) and in the B1 reference, for RUSTSEC-2026-0386 (an I/O-safety unsoundness in `tokio::io::unix::AsyncFd`). A service built before this change still pins the old version and should be rebuilt. `cargo deny` had been failing on every pull request since the advisory. Fixes #136.
 - **`mz build` services read `HOST`** (default `127.0.0.1`, as before) alongside `PORT`. A container sets `HOST=0.0.0.0`; a value that is not an IP address stops the service with exit 1 instead of resolving a name and binding somewhere unintended. Loopback stays the default so a service is private unless its operator opens it. Tested: the lowering tests check the generated `main.rs`, and a CI step serves the built package on a non-loopback address and sends it a request. Fixes #132.
 - **The generated service `Cargo.toml` carries a `[profile.release]`** (`lto`, `codegen-units = 1`, `panic = "abort"`, `strip`, `overflow-checks`), as program packages already carried `overflow-checks`. `panic = "abort"` changes no behaviour: traps exit through `process::exit(101)`, not a panic. Measured by hand on `examples/registry.mz` on 2026-10-29 with the musl target added: 1,671,144 B to 934,720 B and idle RSS 3.5 MB to about 1 MB. That measures Rust's output through Mzizi's lowering, **not a Mzizi advantage**, and nothing here has met the kill criterion. Fixes #133.
 

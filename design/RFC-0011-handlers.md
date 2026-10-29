@@ -435,7 +435,7 @@ Updated by each pull request that implements part of this RFC.
    (8 tests) checks the generated text offline, including that the serving code holds no
    `unwrap`, `expect`, `panic!` or indexing. A header value holding a control character is
    dropped by both the lowering and the evaluator, because `HeaderValue` refuses it (§3).
-   The pins are `axum =0.8.9`, `tokio =1.53.1`, and for tests `tower =0.5.3`,
+   The pins are `axum =0.8.9`, `tokio =1.53.3`, and for tests `tower =0.5.3`,
    `http-body-util =0.1.5` and `serde_json =1.0.151`. The generated package has no lockfile,
    so their own dependencies float, as the runner's do.
 4. **The `mzizi-be` arm, the probe crate and B1** (RFC-0009 §9 step 6's language half).

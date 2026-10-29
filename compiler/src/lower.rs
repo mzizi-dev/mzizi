@@ -38,7 +38,7 @@ pub struct Package {
 /// Exact pins for the generated package. Changing one is a change to the lowering.
 pub const PINS: &[(&str, &str)] = &[
     ("axum", "=0.8.9"),
-    ("tokio", "=1.53.1"),
+    ("tokio", "=1.53.3"),
     ("tower", "=0.5.3"),
     ("http-body-util", "=0.1.5"),
     ("serde_json", "=1.0.151"),
