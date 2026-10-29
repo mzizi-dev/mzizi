@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-4-haiku/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Haiku subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes). **It declares no pass or fail and is not the kill-criterion run.** All 18 episodes were clean at iteration 1; one `mzizi` `card` candidate (seed 2) declared one slot where the spec lists seven (1 defect). As in pilot 3, the metrics sit at the ceiling, so the arms are not separated; the ~7B open-weight headline model has not been run. Tokens were not measured. Tracked in #137.
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.
