@@ -44,7 +44,7 @@ grep -Eq '^score_slots *= *true' "$dir/task.toml" && flags+=(--slots)
 
 harness=(cargo run -q --manifest-path "$repo/Cargo.toml" -p mzizi-benchmark-harness --)
 json=$("${harness[@]}" score --arm dioxus --candidate "$dir/reference.rs" \
-  --reference "$dir/reference.rs" "${flags[@]}") || fail "the scorer failed on the reference"
+  --reference "$dir/reference.rs" ${flags[@]+"${flags[@]}"}) || fail "the scorer failed on the reference"
 facts=$(grep -o '"facts_checked":[0-9]*' <<<"$json" | cut -d: -f2)
 defects=$(grep -o '"defects":[0-9]*' <<<"$json" | cut -d: -f2)
 [[ -n $facts && -n $defects ]] || fail "the scorer printed no facts_checked/defects"
