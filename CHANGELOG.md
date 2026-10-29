@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-4-haiku/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Haiku subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes). **It declares no pass or fail and is not the kill-criterion run.** All 18 episodes were clean at iteration 1; one `mzizi` `card` candidate (seed 2) declared one slot where the spec lists seven (1 defect). As in pilot 3, the metrics sit at the ceiling, so the arms are not separated; the ~7B open-weight headline model has not been run. Tokens were not measured. Tracked in #137.
+
 ### Added — pilot 3: a frontier model on the `ui-spec` family, published (2026-10-29)
 
 - **`benchmarks/results/2026-10-29-pilot-3-frontier/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Fable subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes) and `dioxus` on `button` only (3 episodes). **It declares no pass or fail and is not the kill-criterion run.** 26 of 27 episodes were clean at iteration 1 with no defects; the other was `mzizi` `card` seed 1 (clean, one extra `card-skeleton` slot) and `mzizi` `card` seed 2 (clean at iteration 2, after `MZ0712`). At this model size on these tasks the metrics sit at the ceiling, so the arms are not separated. Tokens were not measured (no tokenizer endpoint). The run record states the departures, including a `flock` shim for macOS and one premature `episode finish` that was reverted. Tracked in #137.
