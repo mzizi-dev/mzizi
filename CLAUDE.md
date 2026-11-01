@@ -96,7 +96,7 @@ that is not `rustc` rejecting the lowered code).
 - `lower.rs`'s `PINS` (exact `axum`, `tokio`, ...) must stay in step with
   `benchmarks/tasks/b1-routing/reference-rust/Cargo.toml`. CI's `lowering` job builds both and
   `mzprobe verify` checks B1's probes against the Mzizi reference (lowered by `mz build`) and
-  the plain axum reference. `cargo deny` checks that reference as a separate manifest.
+  the plain axum reference (B2 to B5 likewise; B4 and B5 have no Mzizi reference). `cargo deny` checks that reference as a separate manifest.
 - `Cargo.lock` is gitignored, so nothing is locked beyond the exact pins in each `Cargo.toml`.
 
 **The `.mz` corpus.** `primitives/*.mz` and `examples/*.mz` are hand-written Mzizi read by
