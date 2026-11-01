@@ -27,6 +27,13 @@ clause = "B5.1"
 request = { method = "GET", path = "//" }
 expect = { status = 308, headers = { location = "/", "x-mzizi-source" = "registry" }, body = "" }
 
+# A percent-encoded CR LF stays encoded in the Location, and no header is injected.
+[[probe]]
+id = "encoded-crlf"
+clause = "B5.1"
+request = { method = "GET", path = "//v1/health%0D%0AX-Injected:%20yes" }
+expect = { status = 308, headers = { location = "/v1/health%0D%0AX-Injected:%20yes", "x-mzizi-source" = "registry", "x-injected" = false }, body = "" }
+
 [[probe]]
 id = "inner-slashes"
 clause = "B5.1"
