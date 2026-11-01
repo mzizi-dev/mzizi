@@ -2577,7 +2577,7 @@ nothing measured.
     it with `try_reserve_exact`. A list too long for memory is `MZ0991` (exit 101), not a
     capacity-overflow panic or the allocator's abort (exit 134). `xs.map(f)` reserves its
     result the same way. The reservation is only as good as the host's: on Linux with
-    overcommit, a reservation that succeeds can still be killed for memory later. Other
+    overcommit (and on macOS), a reservation that succeeds can still be killed for memory later (exit 137, #135). Other
     growth is not checked: a loop of `push`, `filter`, `sort_by` and `group_by` copies,
     each bounded by a collection the program already holds.
   - `.find(f)` gets a `guess` `first`, not `exact`: `first` returns an option, which the
