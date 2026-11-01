@@ -15,7 +15,7 @@ pub enum TaskFamily {
     UiPort,
     /// `spec.md`, a language-neutral statement of the component. Gating.
     UiSpec,
-    /// `spec.md` for an HTTP service, scored by probes. Gating; not runnable yet.
+    /// `spec.md` for an HTTP service, scored by probes (`episode::score_backend`). Gating.
     Backend,
 }
 
