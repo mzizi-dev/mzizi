@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — the B4 and B5 Python references never write a request-built header with a line break (2026-11-01)
+
+- **`benchmarks/tasks/b4-state/reference-python/server.py` and `b5-errors/reference-python/server.py`** strip CR and LF from every response header value before `send_header`, and B4's `Location` now comes from a constant per accepted name instead of the request path. CodeQL reported both as HTTP response splitting (header values built from request input). Raw CR or LF cannot arrive in a request line, so no answer changes. **New probes**: B4 `name-encoded-crlf` and B5 `encoded-crlf` send a percent-encoded CR LF and expect no `x-injected` header (B4 a `404`, B5 a `308` whose `Location` keeps the encoding). Tested: `mzprobe verify` holds all 145 (B4) and 121 (B5) facts on both the Rust and Python references. The axum references are unchanged. Benchmark reference servers only; nothing about Mzizi was measured.
+
 ## 2026-11-01
 
 ### Changed — release prep for 2026-11-01
