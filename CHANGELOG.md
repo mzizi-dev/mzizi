@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — `check-task.sh` on macOS bash 3.2 with no scorer flags (2026-11-01, #144)
+
+- **`benchmarks/kill-criterion/check-task.sh` no longer fails on macOS's bash 3.2 for a task that needs no scorer flags**: the empty `flags` array tripped `set -u` ("flags[@]: unbound variable") and every such task was reported NOT READY.
+
 ### Added — backend development tasks B2 to B5 (2026-10-29)
 
 - **`benchmarks/tasks/b2-validation`, `b3-mirror`, `b4-state` and `b5-errors`** are public development tasks for RFC-0009's `backend` family, each with a language-neutral `spec.md`, `probes.toml` and `task.toml`. Tested: `mzprobe verify` holds all 189 (B2), 125 (B3), 140 (B4) and 116 (B5) facts on every reference. B2 and B3 have a Mzizi reference (`mz check` and `mz contract` clean) and an axum reference. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a request body (RFC-0011 §10; `mz check` reports `MZ0811` for a route's `body` line), so their references are axum and Python's standard library. B3 leaves out the filtered listing and the `nyuchi-*` rewrite for the same reason. CI's `lowering` job verifies all four, and `supply chain` checks the four axum manifests. They are development tasks, contaminated by construction, never gating, and nothing about Mzizi was measured.
