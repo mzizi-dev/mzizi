@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+## 2026-11-01
+
+### Changed — release prep for 2026-11-01
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entries move under dated sections: #141, #142 and #144 under `## 2026-11-01`; pilot 3, pilot 4 and the generated-service change (#134, #138, #139), which shipped with #140, under `## 2026-10-29`; and the four entries that shipped with #125 and #128 under `## 2026-10-21`. Docs only; no code changed.
+
 ### Added — `mzbench` scores backend episodes with probes (2026-10-29)
 
 - **`mzbench --family backend` now scores a clean candidate** instead of recording it unscored. The runner starts the candidate with the episode's serve command (default `benchmarks/arms/<arm>/serve.sh {candidate}`, replaceable with `--score-cmd`), sends the task's `probes.toml` through the `mzizi-benchmark-probe` crate (now a dependency of the runner), and stops it. `defects` is the number of failing facts and `facts_checked` the number of facts (RFC-0009 §2.3), so the summary's defect rate, tokens and iterations to a clean check are computed as for the UI families. A clean candidate that never listens fails every fact and the final line records `start_failed` with the reason. `score.json` lists every fact; `serve.log` keeps the server's output; the service's build output goes to a temporary directory outside the episode. Tested (`cargo test -p mzizi-benchmark-runner`): on `b1-routing` with the `mzizi-be` arm, the task's own Mzizi reference as a candidate holds all 59 facts, a copy with a changed 404 text fails only the facts that read it, and a clean candidate that never listens fails all 59. **Not run with a model, and not a measurement of anything: it shows only that the scorer separates a candidate that holds the facts from one that does not.**
@@ -28,6 +34,8 @@ carry no pull request number.
 ### Added — backend development tasks B2 to B5 (2026-10-29)
 
 - **`benchmarks/tasks/b2-validation`, `b3-mirror`, `b4-state` and `b5-errors`** are public development tasks for RFC-0009's `backend` family, each with a language-neutral `spec.md`, `probes.toml` and `task.toml`. Tested: `mzprobe verify` holds all 189 (B2), 125 (B3), 140 (B4) and 116 (B5) facts on every reference. B2 and B3 have a Mzizi reference (`mz check` and `mz contract` clean) and an axum reference. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a request body (RFC-0011 §10; `mz check` reports `MZ0811` for a route's `body` line), so their references are axum and Python's standard library. B3 leaves out the filtered listing and the `nyuchi-*` rewrite for the same reason. CI's `lowering` job verifies all four, and `supply chain` checks the four axum manifests. They are development tasks, contaminated by construction, never gating, and nothing about Mzizi was measured.
+
+## 2026-10-29
 
 ### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
 
@@ -42,6 +50,8 @@ carry no pull request number.
 - **The `tokio` pin moves from `=1.53.1` to `=1.53.3`** in generated services (`PINS`) and in the B1 reference, for RUSTSEC-2026-0386 (an I/O-safety unsoundness in `tokio::io::unix::AsyncFd`). A service built before this change still pins the old version and should be rebuilt. `cargo deny` had been failing on every pull request since the advisory. Fixes #136.
 - **`mz build` services read `HOST`** (default `127.0.0.1`, as before) alongside `PORT`. A container sets `HOST=0.0.0.0`; a value that is not an IP address stops the service with exit 1 instead of resolving a name and binding somewhere unintended. Loopback stays the default so a service is private unless its operator opens it. `LANGUAGE-TRACKER.md` row P11 says so. Tested: the lowering tests check the generated `main.rs`, and a CI step serves the built package on a non-loopback address and sends it a request. Fixes #132.
 - **The generated service `Cargo.toml` carries a `[profile.release]`** (`lto`, `codegen-units = 1`, `panic = "abort"`, `strip`, `overflow-checks`), as program packages already carried `overflow-checks`. `panic = "abort"` changes no behaviour: traps exit through `process::exit(101)`, not a panic. Measured by hand on `examples/registry.mz` on 2026-10-29 with the musl target added: 1,671,144 B to 934,720 B and idle RSS 3.5 MB to about 1 MB. That measures Rust's output through Mzizi's lowering, **not a Mzizi advantage**, and nothing here has met the kill criterion. Fixes #133.
+
+## 2026-10-21
 
 ### Changed — merging is squash through the merge queue; docs updated
 
