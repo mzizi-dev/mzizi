@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Fixed — `check-task.sh` on macOS bash 3.2 with no scorer flags (2026-11-01, #144)
+
+- **`benchmarks/kill-criterion/check-task.sh` no longer fails on macOS's bash 3.2 for a task that needs no scorer flags**: the empty `flags` array tripped `set -u` ("flags[@]: unbound variable") and every such task was reported NOT READY.
+
 ### Added — backend development tasks B2 to B5 (2026-10-29)
 
 - **`benchmarks/tasks/b2-validation`, `b3-mirror`, `b4-state` and `b5-errors`** are public development tasks for RFC-0009's `backend` family, each with a language-neutral `spec.md`, `probes.toml` and `task.toml`. Tested: `mzprobe verify` holds all 189 (B2), 125 (B3), 140 (B4) and 116 (B5) facts on every reference. B2 and B3 have a Mzizi reference (`mz check` and `mz contract` clean) and an axum reference. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a request body (RFC-0011 §10; `mz check` reports `MZ0811` for a route's `body` line), so their references are axum and Python's standard library. B3 leaves out the filtered listing and the `nyuchi-*` rewrite for the same reason. CI's `lowering` job verifies all four, and `supply chain` checks the four axum manifests. They are development tasks, contaminated by construction, never gating, and nothing about Mzizi was measured.
@@ -77,8 +81,6 @@ carry no pull request number.
 - **`README.md` and `CHARTER.md` no longer name a UI framework.** The owner's decision, 2026-10-20 (mzizi-dev/mzizi-registry#503), is that one framework is removed from every repository. The one sentence in each that named it as an example is removed; the TypeScript and React examples before it carry the same point. The charter's version (v0.4) and every other sentence are unchanged. Docs only: no code changed, and no test reads these lines (`compiler/tests` cites CHARTER.md §6 in comments only).
 
 ### Fixed — `dtolnay/rust-toolchain` pinned to the commit `v1` now names
-
-- `benchmarks/kill-criterion/check-task.sh` no longer fails on macOS's bash 3.2 for a task that needs no scorer flags: the empty `flags` array tripped `set -u` ("flags[@]: unbound variable") and every such task was reported NOT READY.
 
 - **The `workflow audit` job failed on every pull request** with zizmor's `ref-version-mismatch`: `dtolnay/rust-toolchain`'s `v1` tag moved to `683b588`, so the pin to `e2a55d2` no longer matched its `# v1` comment. The four uses in `ci.yml` and `supply-chain.yml` now pin `683b588c487a69d01f6c6ddf40f036ff682cc2c8`, which `git ls-remote` reports for both `refs/tags/v1` and `master` on 2026-10-20. `zizmor --offline .github/workflows/` reports no findings.
 
