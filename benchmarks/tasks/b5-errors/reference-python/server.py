@@ -28,7 +28,10 @@ class Handler(BaseHTTPRequestHandler):
         if body is not None:
             self.send_header("content-type", "application/json")
         for k, v in (headers or {}).items():
-            self.send_header(k, v)
+            # A header value never carries a line break: http.server would write it as is,
+            # splitting the response. Raw CR or LF cannot arrive in a request line, so this
+            # changes no answer the probes see; it closes the path for any future caller.
+            self.send_header(k, v.replace("\r", "").replace("\n", ""))
         self.send_header("content-length", str(len(payload)))
         self.end_headers()
         if self.command != "HEAD":
