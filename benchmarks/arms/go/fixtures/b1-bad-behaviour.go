@@ -24,5 +24,5 @@ func main() {
 		w.Header().Set("content-type", "application/json")
 		fmt.Fprintf(w, `{"name":%q}`, r.PathValue("name"))
 	})
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+os.Getenv("PORT"), mux))
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+os.Getenv("PORT"), mux)) // nosemgrep: go.lang.security.audit.net.use-tls.use-tls -- plain HTTP to the benchmark probe inside the arm sandbox; no TLS on that hop
 }

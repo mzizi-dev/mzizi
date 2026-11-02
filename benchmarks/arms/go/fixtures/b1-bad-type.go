@@ -10,5 +10,5 @@ import (
 func main() {
 	var count int = "2"
 	http.HandleFunc("/v1/ui", func(w http.ResponseWriter, r *http.Request) {})
-	log.Fatal(http.ListenAndServe("0.0.0.0:"+os.Getenv("PORT"), nil), count)
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+os.Getenv("PORT"), nil), count) // nosemgrep: go.lang.security.audit.net.use-tls.use-tls -- plain HTTP to the benchmark probe inside the arm sandbox; no TLS on that hop
 }
