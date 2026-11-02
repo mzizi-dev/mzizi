@@ -78,7 +78,7 @@ Run before every push. These are the commands in
 from it, because `mz` takes exactly one file and `mz check ../primitives/*.mz` exits 2 (usage).
 The `secret scan` job (gitleaks), the `lowering` job (`mz build` of `examples/registry.mz`,
 then `cargo test` and one request over a socket against the generated package, and
-`mzprobe verify` of the backend task B1 against its Mzizi and axum references, and `mz run`
+`mzprobe verify` of the backend tasks B1 to B5 against their references, and `mz run`
 of every example program with its output diffed against `examples/<name>.expected`, and
 `benchmarks/perf/run.sh --check-only`; it fetches `axum` and `tokio` from crates.io), the `supply chain` workflow (`supply-chain.yml`:
 `cargo deny check` against [`deny.toml`](./deny.toml), and zizmor over the workflows), the org's required workflows (Semgrep,
