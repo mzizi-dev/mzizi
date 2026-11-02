@@ -1,0 +1,7 @@
+{
+  "components": [
+    { "name": "badge", "node": "N2" },
+    { "name": "button", "node": "N2" }
+  ],
+  "meta": { "total": 2, "source": "fixture" }
+}
