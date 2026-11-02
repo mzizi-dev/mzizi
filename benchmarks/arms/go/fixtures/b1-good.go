@@ -77,5 +77,5 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	addr := "0.0.0.0:" + os.Getenv("PORT")
-	log.Fatal(http.ListenAndServe(addr, http.HandlerFunc(handler)))
+	log.Fatal(http.ListenAndServe(addr, http.HandlerFunc(handler))) // nosemgrep: go.lang.security.audit.net.use-tls.use-tls -- plain HTTP to the benchmark probe inside the arm sandbox; no TLS on that hop
 }
