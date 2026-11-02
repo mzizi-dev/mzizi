@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+## 2026-11-02
+
+### Changed — release prep for 2026-11-02
+
+- **`CHANGELOG.md`:** the two `[Unreleased]` entries, the B4 and B5 Python header fix (#147) and the range-too-long trap test (#149), move under `## 2026-11-02`. Docs only; no code changed.
+
 ### Fixed — the range-too-long trap test asks for a length every host refuses (2026-11-01, #135)
 
 - **`compiler/tests/program_collections.rs`'s `range_huge` case now builds `range(0, to = 576460752303423488)`**, 2^59 elements (2^62 bytes), instead of `range(0, to = 100000000000)` (800 GB). The old length fits `isize`, so whether `try_reserve_exact` refused it was the host's call: Linux's default heuristic overcommit refused it (exit 101, `MZ0991`, as the test expects), but macOS reserved it, and the process was killed while filling it (exit 137 after about 160 s). 2^62 bytes is still under `isize::MAX`, so it reaches the allocator, and it is larger than any 64-bit user address space, so every allocator refuses it. Measured on Linux x86-64: `try_reserve_exact` returns the allocator's error for 10^11 and for 2^59 elements. The runtime is unchanged. RFC-0013's note on the reservation now names macOS beside Linux: a length that fits the address space but not memory can still be killed (exit 137), not trapped. Not run on macOS here.
