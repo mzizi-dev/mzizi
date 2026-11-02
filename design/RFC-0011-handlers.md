@@ -328,8 +328,10 @@ predicate := is <value> | in <value> … | not_empty | contains "<text>"
 to `<dir>`: `Cargo.toml`, `src/main.rs` and the fixtures the service embeds. The package is
 its own workspace root, so it never joins this repository's workspace. It is generated
 output, and is never committed (RFC-0010 §5, CONTRIBUTING.md). `cargo run --release` in it
-serves `127.0.0.1:$PORT` (8080 by default) and prints one `listening on …` line when it is
-ready.
+serves `$HOST:$PORT` (`127.0.0.1` and 8080 by default; a container sets `HOST=0.0.0.0`) and
+prints one `listening on …` line when it is ready. The manifest carries a `[profile.release]`
+(`lto`, `codegen-units = 1`, `panic = "abort"`, `strip`) for a small static binary; traps exit
+through `process::exit(101)`, not a panic, so `abort` changes no behaviour.
 
 ### 8.2 What it emits
 
@@ -433,7 +435,7 @@ Updated by each pull request that implements part of this RFC.
    (8 tests) checks the generated text offline, including that the serving code holds no
    `unwrap`, `expect`, `panic!` or indexing. A header value holding a control character is
    dropped by both the lowering and the evaluator, because `HeaderValue` refuses it (§3).
-   The pins are `axum =0.8.9`, `tokio =1.53.1`, and for tests `tower =0.5.3`,
+   The pins are `axum =0.8.9`, `tokio =1.53.3`, and for tests `tower =0.5.3`,
    `http-body-util =0.1.5` and `serde_json =1.0.151`. The generated package has no lockfile,
    so their own dependencies float, as the runner's do.
 4. **The `mzizi-be` arm, the probe crate and B1** (RFC-0009 §9 step 6's language half).
@@ -447,6 +449,12 @@ Updated by each pull request that implements part of this RFC.
    `lowering` job verifies that. Writing the guide found one cascade, a malformed pattern
    leaving its `{name}`s unbound, which is fixed. Not done: the runner does not call the
    probes, so an episode is clean but unscored; no episode has run.
+5. **B2–B5 as public development tasks** (`benchmarks/tasks/b2-validation` to `b5-errors`).
+   B2 (typed query parameters) and B3 (the routes §10 says are expressible) each have a Mzizi
+   reference that `mz check` and `mz contract` accept and an axum reference, and `mzprobe verify`
+   holds every fact on both. B4 and B5 have none: `mz check` rejects a `body` line in a handler
+   (`MZ0811`), and there is no state, so their references are axum and Python. Nothing here
+   changes the language.
 
 ## 13. Open questions
 
