@@ -1,0 +1,2 @@
+{"code":"MZ0712","severity":"error","file":"candidate.mz","span":[24,18,24,53],"say":"`portal = \"https://mzizi.dev/components/card\"` and 3 more attributes (lines 24–37) are inside a `when`, which holds elements only — move them onto an element"}
+{"summary":true,"errors":1,"warnings":0,"exact_fixable":0,"ms":4}

@@ -27,6 +27,46 @@ carry no pull request number.
 - **Q1 decided, design only** (owner, 2026-10-21: "approve RFC-0016 design only"). The design is approved as design. No exception to the Phase 0 gate is granted, so no build wave (W2 to W6) starts, and CHARTER.md is unchanged; the §3 charter text stays a proposal. Confirmed the same day: the charter text and the build waves wait for the Phase 0 gate together. The container target's scope is recorded: a standard OCI image, built with Docker by default and run by any OCI runtime (W3 would also check it with Podman).
 - **Brought up to date with `staging` (2026-10-21).** The `LANGUAGE-TRACKER.md` P11 row keeps this PR's evidence and "done when" and adds #121's record of the owner's 2026-10-20 target decision; RFC-0016 §8.1 quotes the same row. RFC-0016's note on the overlap with #121 now says #121 is on `staging`, and the cargo-deny musl citation moves from `supply-chain.yml:62` to line 65, where #124 left it. No design change.
 
+### Fixed — the B4 and B5 Python references never write a request-built header with a line break (2026-11-01)
+
+- **`benchmarks/tasks/b4-state/reference-python/server.py` and `b5-errors/reference-python/server.py`** strip CR and LF from every response header value before `send_header`, and B4's `Location` now comes from a constant per accepted name instead of the request path. CodeQL reported both as HTTP response splitting (header values built from request input). Raw CR or LF cannot arrive in a request line, so no answer changes. **New probes**: B4 `name-encoded-crlf` and B5 `encoded-crlf` send a percent-encoded CR LF and expect no `x-injected` header (B4 a `404`, B5 a `308` whose `Location` keeps the encoding). Tested: `mzprobe verify` holds all 145 (B4) and 121 (B5) facts on both the Rust and Python references. The axum references are unchanged. Benchmark reference servers only; nothing about Mzizi was measured.
+
+## 2026-11-01
+
+### Changed — release prep for 2026-11-01
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entries move under dated sections: #141, #142 and #144 under `## 2026-11-01`; pilot 3, pilot 4 and the generated-service change (#134, #138, #139), which shipped with #140, under `## 2026-10-29`; and the four entries that shipped with #125 and #128 under `## 2026-10-21`. Docs only; no code changed.
+
+### Added — `mzbench` scores backend episodes with probes (2026-10-29)
+
+- **`mzbench --family backend` now scores a clean candidate** instead of recording it unscored. The runner starts the candidate with the episode's serve command (default `benchmarks/arms/<arm>/serve.sh {candidate}`, replaceable with `--score-cmd`), sends the task's `probes.toml` through the `mzizi-benchmark-probe` crate (now a dependency of the runner), and stops it. `defects` is the number of failing facts and `facts_checked` the number of facts (RFC-0009 §2.3), so the summary's defect rate, tokens and iterations to a clean check are computed as for the UI families. A clean candidate that never listens fails every fact and the final line records `start_failed` with the reason. `score.json` lists every fact; `serve.log` keeps the server's output; the service's build output goes to a temporary directory outside the episode. Tested (`cargo test -p mzizi-benchmark-runner`): on `b1-routing` with the `mzizi-be` arm, the task's own Mzizi reference as a candidate holds all 59 facts, a copy with a changed 404 text fails only the facts that read it, and a clean candidate that never listens fails all 59. **Not run with a model, and not a measurement of anything: it shows only that the scorer separates a candidate that holds the facts from one that does not.**
+
+### Fixed — `check-task.sh` on macOS bash 3.2 with no scorer flags (2026-11-01, #144)
+
+- **`benchmarks/kill-criterion/check-task.sh` no longer fails on macOS's bash 3.2 for a task that needs no scorer flags**: the empty `flags` array tripped `set -u` ("flags[@]: unbound variable") and every such task was reported NOT READY.
+
+### Added — backend development tasks B2 to B5 (2026-10-29)
+
+- **`benchmarks/tasks/b2-validation`, `b3-mirror`, `b4-state` and `b5-errors`** are public development tasks for RFC-0009's `backend` family, each with a language-neutral `spec.md`, `probes.toml` and `task.toml`. Tested: `mzprobe verify` holds all 189 (B2), 125 (B3), 140 (B4) and 116 (B5) facts on every reference. B2 and B3 have a Mzizi reference (`mz check` and `mz contract` clean) and an axum reference. B4 and B5 have no Mzizi reference, because a `service` has no state and cannot read a request body (RFC-0011 §10; `mz check` reports `MZ0811` for a route's `body` line), so their references are axum and Python's standard library. B3 leaves out the filtered listing and the `nyuchi-*` rewrite for the same reason. CI's `lowering` job verifies all four, and `supply chain` checks the four axum manifests. They are development tasks, contaminated by construction, never gating, and nothing about Mzizi was measured.
+
+## 2026-10-29
+
+### Added — pilot 4: a smaller model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-4-haiku/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Haiku subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes). **It declares no pass or fail and is not the kill-criterion run.** All 18 episodes were clean at iteration 1; one `mzizi` `card` candidate (seed 2) declared one slot where the spec lists seven (1 defect). As in pilot 3, the metrics sit at the ceiling, so the arms are not separated; the ~7B open-weight headline model has not been run. Tokens were not measured. Tracked in #137.
+
+### Added — pilot 3: a frontier model on the `ui-spec` family, published (2026-10-29)
+
+- **`benchmarks/results/2026-10-29-pilot-3-frontier/`** holds `PLAN.md`, `RUN.md` and the raw episodes of a pilot (Mode 2, a fresh Claude Fable subagent per episode) on the public `button`, `badge` and `card` tasks, for the `mzizi` and `react` arms (3 seeds each, 18 episodes) and `dioxus` on `button` only (3 episodes). **It declares no pass or fail and is not the kill-criterion run.** 26 of 27 episodes were clean at iteration 1 with no defects; the other was `mzizi` `card` seed 1 (clean, one extra `card-skeleton` slot) and `mzizi` `card` seed 2 (clean at iteration 2, after `MZ0712`). At this model size on these tasks the metrics sit at the ceiling, so the arms are not separated. Tokens were not measured (no tokenizer endpoint). The run record states the departures, including a `flock` shim for macOS and one premature `episode finish` that was reverted. Tracked in #137.
+
+### Changed — a generated service can listen off loopback, and builds slim
+
+- **The `tokio` pin moves from `=1.53.1` to `=1.53.3`** in generated services (`PINS`) and in the B1 reference, for RUSTSEC-2026-0386 (an I/O-safety unsoundness in `tokio::io::unix::AsyncFd`). A service built before this change still pins the old version and should be rebuilt. `cargo deny` had been failing on every pull request since the advisory. Fixes #136.
+- **`mz build` services read `HOST`** (default `127.0.0.1`, as before) alongside `PORT`. A container sets `HOST=0.0.0.0`; a value that is not an IP address stops the service with exit 1 instead of resolving a name and binding somewhere unintended. Loopback stays the default so a service is private unless its operator opens it. `LANGUAGE-TRACKER.md` row P11 says so. Tested: the lowering tests check the generated `main.rs`, and a CI step serves the built package on a non-loopback address and sends it a request. Fixes #132.
+- **The generated service `Cargo.toml` carries a `[profile.release]`** (`lto`, `codegen-units = 1`, `panic = "abort"`, `strip`, `overflow-checks`), as program packages already carried `overflow-checks`. `panic = "abort"` changes no behaviour: traps exit through `process::exit(101)`, not a panic. Measured by hand on `examples/registry.mz` on 2026-10-29 with the musl target added: 1,671,144 B to 934,720 B and idle RSS 3.5 MB to about 1 MB. That measures Rust's output through Mzizi's lowering, **not a Mzizi advantage**, and nothing here has met the kill criterion. Fixes #133.
+
+## 2026-10-21
+
 ### Changed — merging is squash through the merge queue; docs updated
 
 - **`AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md` and `MIGRATION.md` now describe squash merging through the merge queue** (`gh pr merge <n> --squash --auto`), the org's convention since 2026-10-21, in place of rebase-only. The squash commit keeps every commit message in its body (`COMMIT_MESSAGES`), so the per-commit reasoning `CONTRIBUTING.md` argues for is preserved. Rebase and merge commits are disabled in the repo settings and rulesets. Updating a branch with its base is now fine, and the merge queue tests each pull request against the latest base. Docs only: no code changed.

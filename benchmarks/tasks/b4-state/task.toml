@@ -1,0 +1,26 @@
+# B4 (RFC-0009 §2.4): a small service with state. A development task: it is derived from a
+# public repository, so it is contaminated by construction and never gating.
+name = "b4-state"
+spec_md = "spec.md"
+# The runner requires one reference file to exist; a backend task is scored by its probes
+# (probes.toml), never against this file.
+reference = "reference-rust/src/main.rs"
+
+[backend]
+# Every probe must pass against both before any run (RFC-0009 §2.3; `mzprobe verify`).
+# There is NO Mzizi reference: RFC-0011 §10 says B4 needs state (G1.1) and request bodies
+# (§4.3), and neither is built. `mz check` rejects a route's `body` line (MZ0811). Until they
+# are, the `mzizi-be` arm cannot meet this task, and this task's two references are in Rust
+# and in Python. Add `reference-mzizi` here when a service can hold state.
+references = ["reference-rust", "reference-python"]
+
+[source]
+repo = "mzizi-dev/mzizi-api-gateway"
+commit = "2468b2a"
+# RFC-0009 §2.4: component version history is "the one dataset the gateway answers 503 for
+# because it lives in a database". This task replaces the database with memory. The routes,
+# bodies and status codes are this task's own. Nothing was fetched from the gateway.
+facts = [
+  "component version history is the dataset the gateway answers 503 for (RFC-0009 §2.4)",
+  "record a version, list them, 409 on a duplicate, 404 for an unknown component (RFC-0009 §2.4)",
+]
