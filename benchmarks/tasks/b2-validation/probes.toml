@@ -1,0 +1,220 @@
+# B2's probes (RFC-0009 §2.3). Each expected status, header, body and JSON value is one
+# fact. `clause` is the spec rule the probe checks: B2.1 reading the query string, B2.2 which
+# values are integers, B2.3 the ranges, B2.4 methods, B2.5 other paths. Every probe must
+# pass against both references (`mzprobe verify benchmarks/tasks/b2-validation`).
+
+[[probe]]
+id = "none"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "all-three"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=N2&limit=5&offset=10" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "N2", "/limit" = 5, "/offset" = 10 } }
+
+[[probe]]
+id = "node-empty"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "node-no-equals"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "node-plus"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=a+b" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "a b" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "node-percent"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=a%20b%2Fc" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "a b/c" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "node-bad-escape"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=100%zz" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "100%zz" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "node-first-wins"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?node=N2&node=N3" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/node" = "N2" }, json_null = ["/limit", "/offset"] }
+
+[[probe]]
+id = "limit-first-wins"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?limit=abc&limit=5" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "unknown-name"
+clause = "B2.1"
+request = { method = "GET", path = "/v1/ui?page=2&limit=3" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/limit" = 3 }, json_null = ["/node", "/offset"] }
+
+[[probe]]
+id = "limit-abc"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=abc" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-hex"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=0x10" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-exp"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=1e2" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-float"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=1.5" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-plus"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=%2B5" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-spaces"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=%207%20" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-empty"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-huge"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?limit=99999999999999999999" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "offset-abc"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?offset=abc" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "offset-hex"
+clause = "B2.2"
+request = { method = "GET", path = "/v1/ui?offset=0x10" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json_null = ["/node", "/limit", "/offset"] }
+
+[[probe]]
+id = "limit-one"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=1" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/limit" = 1 }, json_null = ["/node", "/offset"] }
+
+[[probe]]
+id = "limit-hundred"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=100" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/limit" = 100 }, json_null = ["/node", "/offset"] }
+
+[[probe]]
+id = "limit-zero"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=0" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "limit must be between 1 and 100" } }
+
+[[probe]]
+id = "limit-over"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=101" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "limit must be between 1 and 100" } }
+
+[[probe]]
+id = "limit-negative"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=-1" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "limit must be between 1 and 100" } }
+
+[[probe]]
+id = "offset-zero"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?offset=0" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/offset" = 0 }, json_null = ["/node", "/limit"] }
+
+[[probe]]
+id = "offset-large"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?offset=1000000" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/offset" = 1000000 }, json_null = ["/node", "/limit"] }
+
+[[probe]]
+id = "offset-negative"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?offset=-1" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "offset must be 0 or more" } }
+
+[[probe]]
+id = "both-bad-limit-wins"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=0&offset=-1" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "limit must be between 1 and 100" } }
+
+[[probe]]
+id = "bad-limit-absent-offset-bad"
+clause = "B2.3"
+request = { method = "GET", path = "/v1/ui?limit=abc&offset=-5" }
+expect = { status = 400, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "offset must be 0 or more" } }
+
+[[probe]]
+id = "head"
+clause = "B2.4"
+request = { method = "HEAD", path = "/v1/ui?limit=5" }
+expect = { status = 200, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "options"
+clause = "B2.4"
+request = { method = "OPTIONS", path = "/v1/ui" }
+expect = { status = 204, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "post"
+clause = "B2.4"
+request = { method = "POST", path = "/v1/ui" }
+expect = { status = 405, headers = { allow = "GET, HEAD, OPTIONS", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "trailing-slash-query"
+clause = "B2.5"
+request = { method = "GET", path = "/v1/ui/?limit=2" }
+expect = { status = 308, headers = { location = "/v1/ui?limit=2", "x-mzizi-source" = "registry" }, body = "" }
+
+[[probe]]
+id = "unknown-path"
+clause = "B2.5"
+request = { method = "GET", path = "/v1/other?limit=2" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
+
+[[probe]]
+id = "case-sensitive"
+clause = "B2.5"
+request = { method = "GET", path = "/V1/UI" }
+expect = { status = 404 }
