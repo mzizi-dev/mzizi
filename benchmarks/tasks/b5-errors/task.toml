@@ -1,0 +1,31 @@
+# B5 (RFC-0009 §2.4): error paths. A development task: it is derived from a public
+# repository, so it is contaminated by construction and never gating.
+name = "b5-errors"
+spec_md = "spec.md"
+# The runner requires one reference file to exist; a backend task is scored by its probes
+# (probes.toml), never against this file.
+reference = "reference-rust/src/main.rs"
+
+[backend]
+# Every probe must pass against both before any run (RFC-0009 §2.3; `mzprobe verify`).
+# There is NO Mzizi reference: RFC-0011 §10 says request bodies and declared rejections
+# (§4.3) are designed and not built, and `mz check` rejects a route's `body` line (MZ0811).
+# Until they are, the `mzizi-be` arm cannot meet this task, and its two references are in
+# Rust and in Python. Add `reference-mzizi` here when a service can read a body.
+references = ["reference-rust", "reference-python"]
+
+[source]
+repo = "mzizi-dev/mzizi-api-gateway"
+commit = "2468b2a"
+# RFC-0009 §2.4 lists malformed JSON 400, wrong content type 415, an oversized body 413, the
+# gateway's `internalError` 500, and slash collapsing. The routes, the 1024-byte limit, the
+# messages and the check order are this task's own. The gateway's `//evil.com/` goes to
+# `/evil.com/` in RFC-0009's table; this spec chooses one hop to `/evil.com`, RFC-0011 §6's
+# rule, which RFC-0009 §2.3 allows because the spec settles it. Nothing was fetched from the
+# gateway.
+facts = [
+  "malformed JSON 400, wrong content type 415, an oversized body 413 (RFC-0009 §2.4)",
+  "an internal failure -> 500 {\"error\":\"Internal server error\"} (RFC-0009 §2.4)",
+  "no stack trace in any body (RFC-0009 §2.4)",
+  "repeated slashes collapse instead of redirecting off-site (RFC-0009 §2.4)",
+]

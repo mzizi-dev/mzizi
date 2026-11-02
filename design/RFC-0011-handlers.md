@@ -449,6 +449,12 @@ Updated by each pull request that implements part of this RFC.
    `lowering` job verifies that. Writing the guide found one cascade, a malformed pattern
    leaving its `{name}`s unbound, which is fixed. Not done: the runner does not call the
    probes, so an episode is clean but unscored; no episode has run.
+5. **B2–B5 as public development tasks** (`benchmarks/tasks/b2-validation` to `b5-errors`).
+   B2 (typed query parameters) and B3 (the routes §10 says are expressible) each have a Mzizi
+   reference that `mz check` and `mz contract` accept and an axum reference, and `mzprobe verify`
+   holds every fact on both. B4 and B5 have none: `mz check` rejects a `body` line in a handler
+   (`MZ0811`), and there is no state, so their references are axum and Python. Nothing here
+   changes the language.
 
 ## 13. Open questions
 

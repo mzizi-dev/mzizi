@@ -1,0 +1,25 @@
+# B2 (RFC-0009 §2.4): data validation, typed query parameters. A development task: it is
+# derived from a public repository, so it is contaminated by construction and never gating.
+name = "b2-validation"
+spec_md = "spec.md"
+# The runner requires one reference file to exist; a backend task is scored by its probes
+# (probes.toml), never against this file.
+reference = "reference-rust/src/main.rs"
+
+[backend]
+# Every probe must pass against both before any run (RFC-0009 §2.3; `mzprobe verify`).
+references = ["reference-mzizi", "reference-rust"]
+
+[source]
+# The gateway's `positiveInt` reads query parameters with JavaScript's `Number()`, so `0x10`
+# is 16 and `1e2` is 100. RFC-0009 §2.3 says the spec, not the scorer, settles that. This
+# spec chooses RFC-0011 §4.2's rule instead: only an optional `-` and ASCII digits is an
+# integer. Nothing was fetched from the gateway.
+repo = "mzizi-dev/mzizi-api-gateway"
+commit = "2468b2a"
+facts = [
+  "/v1/ui reads node, limit and offset (RFC-0009 §2.4, src/routes/registry.ts positiveInt)",
+  "limit=abc is a 200 with no limit (RFC-0009 §2.4)",
+  "0x10 and 1e2 are not integers here: the spec's choice, not the gateway's (RFC-0009 §2.3)",
+  "the 1..100 and >= 0 ranges are this task's own, not the gateway's",
+]
