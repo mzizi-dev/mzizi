@@ -1,0 +1,117 @@
+## base64url without padding (RFC 4648 §5) over bytes, as a list of ints from 0 to 255.
+## It is the pure core of the registry's `server-base64url` (N4 safety rails), written in
+## Mzizi so a component can be built from it. A byte list is the input because the language
+## has no text-to-bytes method yet (tracker row P2, "text and bytes"), so the examples use the
+## RFC's own vectors as byte lists.
+## `mz run examples/components/base64url.mz` prints what base64url.expected holds.
+program base64url
+
+  fn alphabet: text
+    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+  end fn alphabet
+
+  fn symbol(i: int): text
+    return alphabet()[i] otherwise "?"
+  end fn symbol
+
+  ## The text for `bytes`, without `=` padding.
+  fn encode(bytes: list(int)): text
+    var out = ""
+    var i = 0
+    while i + 2 < bytes.length()
+      let n = (bytes[i] otherwise 0) * 65536 + (bytes[i + 1] otherwise 0) * 256 + (bytes[i + 2] otherwise 0)
+      out = "{out}{symbol(n / 262144)}{symbol(n / 4096 % 64)}{symbol(n / 64 % 64)}{symbol(n % 64)}"
+      i = i + 3
+    end
+    let left = bytes.length() - i
+    when left is 1
+      let n = (bytes[i] otherwise 0) * 16
+      out = "{out}{symbol(n / 64)}{symbol(n % 64)}"
+    else when left is 2
+      let n = (bytes[i] otherwise 0) * 1024 + (bytes[i + 1] otherwise 0) * 4
+      out = "{out}{symbol(n / 4096)}{symbol(n / 64 % 64)}{symbol(n % 64)}"
+    end
+    return out
+  end fn encode
+
+  ## The bytes of `value`, or why it is not base64url: a character outside the alphabet
+  ## (`=` included), or a length no byte count produces (4n + 1). A result and not an
+  ## `option(list(int))` because `option(T)` as a type is not built (tracker row C4).
+  fn decode(value: text): result(list(int), text)
+    let chars = value.chars()
+    when chars.length() % 4 is 1
+      return error("a length of 4n + 1 is not base64url")
+    end
+    var sextets: list(int) = []
+    for each c in chars
+      let at = alphabet().find(c) otherwise -1
+      when at < 0
+        return error("{c} is not in the base64url alphabet")
+      end
+      sextets.push(at)
+    end
+    var out: list(int) = []
+    var i = 0
+    while i + 3 < sextets.length()
+      let n = (sextets[i] otherwise 0) * 262144 + (sextets[i + 1] otherwise 0) * 4096 + (sextets[i + 2] otherwise 0) * 64 + (sextets[i + 3] otherwise 0)
+      out.push(n / 65536)
+      out.push(n / 256 % 256)
+      out.push(n % 256)
+      i = i + 4
+    end
+    let left = sextets.length() - i
+    when left is 2
+      let n = (sextets[i] otherwise 0) * 64 + (sextets[i + 1] otherwise 0)
+      out.push(n / 16)
+    else when left is 3
+      let n = (sextets[i] otherwise 0) * 4096 + (sextets[i + 1] otherwise 0) * 64 + (sextets[i + 2] otherwise 0)
+      out.push(n / 1024)
+      out.push(n / 4 % 256)
+    end
+    return out
+  end fn decode
+
+  fn round_trips(text_form: text, bytes: list(int)): bool
+    match decode(text_form)
+      case ok back
+        return back is bytes
+      case error why
+        return false
+    end
+  end fn round_trips
+
+  fn show(label: text, bytes: list(int))
+    let text_form = encode(bytes)
+    print("{label}: [{text_form}] round trip {round_trips(text_form, bytes)}")
+  end fn show
+
+  fn reject(value: text)
+    match decode(value)
+      case ok bytes
+        print("{value} decoded to {bytes}")
+      case error why
+        print("{value} rejected: {why}")
+    end
+  end fn reject
+
+  fn main
+    show("empty", [])
+    show("f", [102])
+    show("fo", [102, 111])
+    show("foo", [102, 111, 111])
+    show("foob", [102, 111, 111, 98])
+    show("fooba", [102, 111, 111, 98, 97])
+    show("foobar", [102, 111, 111, 98, 97, 114])
+    show("url-safe bytes", [251, 255, 190])
+    reject("Zg==")
+    reject("Zm9vY")
+    reject("Zm+v")
+    match decode("Zm9v")
+      case ok bytes
+        print(bytes)
+      case error why
+        print(why)
+    end
+  end fn main
+
+end program base64url

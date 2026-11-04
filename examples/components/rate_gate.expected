@@ -1,0 +1,11 @@
+rejected: limit must be at least 1
+-- the sustained rate is limit per window even with a burst
+drained: 0 left
+one window later 10 were allowed
+-- a denial counts the part of a token already refilled
+at 0: denied, wait 100 ms
+at 40: denied, wait 60 ms
+-- more tokens than the bucket can ever hold
+impossible
+-- time never runs backwards
+12

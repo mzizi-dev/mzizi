@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — three server components written in Mzizi, and seven gaps they found (2026-11-04, Refs #153)
+
+- **`examples/components/`:** `circuit_breaker.mz` (closed, open and half-open, a sliding failure window, one probe, epochs), `base64url.mz` (RFC 4648 §5 without padding, over a byte list, with a decoder that rejects what is not base64url) and `rate_gate.mz` (a token bucket with a burst and a wait time). They port the algorithms of the registry's `mzizi-resilience` crate and `server-base64url`. Each is a `program` with a `main` that exercises it, checked and run in CI (`compiler/tests/components.rs`, and the two `examples/` loops in `ci.yml` now include `examples/components/`). `mz run` of each prints its committed `.expected`; the tests pin the lines worked out by hand (`Zm9vYmFy`, 499 ms left of a 500 ms cooldown, exactly 10 allowed in the window after a drained 15-token bucket).
+- **`LANGUAGE-TRACKER.md`:** a new section, "Components written in Mzizi, and the gaps they found", with the three components as evidence and seven rows, K1 to K7, for what building them found missing: importable libraries (K1, which is P1), payload enums (K2), `option(T)` as a type (K3), text to bytes (K4), closures (K5), time (K6) and concurrency (K7). All seven are ❌. The count toward the Phase 0 exit criteria ("components built with no gap") is **none yet**; this adds no capability and changes no existing row.
+- **Not claimed:** none of the three is a library another file can import, none is installed with `mzizi add`, none lowers as a component, and nothing here has been measured against another language. Mzizi stays Phase 0 (`CHARTER.md`).
+
 ### Changed — Dioxus is out of the stack; notes on the documents that name it as the target (2026-11-04)
 
 - Owner decision, 2026-11-04 ([`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)): "dioxus is out!!!"; components and primitives are Mzizi first, TypeScript second, native (Swift, Kotlin) where those exist. **`CHARTER.md`, `design/RFC-0001-syntax.md`, `design/RFC-0002-runtime-and-prior-art.md` and `design/RFC-0009-comparison-benchmark.md`** each open with a dated note saying so; their bodies are unchanged and stay as written. **`design/ROADMAP.md`**'s Phase 3 row and **`CONTRIBUTING.md`**'s out-of-scope paragraph no longer name Dioxus interop as the route. No replacement Rust rendering target is named: that is open for the owner.
