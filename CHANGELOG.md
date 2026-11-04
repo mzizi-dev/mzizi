@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — `mz check` and `mz contract` take a directory (toolchain, 2026-11-04)
+
+- `mz check [--agent] <dir>` and `mz contract [--agent] <dir>` read every `.mz` file under the directory, recursively, in sorted path order (hidden directories and `target` are skipped), and print each file's diagnostics with its own `file` path. The last line is one summary: in `--agent` mode the usual summary object with a new `files` key and every count summed (`errors`, `warnings`, `exact_fixable`, and for `contract` `contract_clauses`, `contract_failures`, `contract_tested`); a run on one file prints exactly what it printed before. Exit status: 0 with no errors, 1 when any file has an error or a failed clause, 2 for a directory with no `.mz` file or an unreadable file (after every readable file has run). `outline`, `hash`, `ir`, `fix`, `build` and `run` still take one file and say so (exit 2).
+- Why: the component streams of [#153](https://github.com/mzizi-dev/mzizi/issues/153) add hundreds of files, and `mz` took one, so CI and agents looped in shell and read one summary per file.
+- Tested: `compiler/tests/directory.rs` (eight cases against the shipped binary: clean, sorted order, one failing file, human form, skipped directories, no source file, other commands refuse a directory, and `primitives/` and `examples/` as directories). The `mz check` and `mz contract` entries in the language harness name the directory form. Tracker row T1 notes it. Nothing is measured; this is a convenience, not a claim about speed or quality.
+- Site/docs impact: the compiler page's `mz check` and `mz contract` sections gain the directory form and the `files` summary key; the protocol version is unchanged (a key was added to the summary line, nothing was removed or renamed).
+
 ### Changed — Dioxus is out of the stack; notes on the documents that name it as the target (2026-11-04)
 
 - Owner decision, 2026-11-04 ([`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)): "dioxus is out!!!"; components and primitives are Mzizi first, TypeScript second, native (Swift, Kotlin) where those exist. **`CHARTER.md`, `design/RFC-0001-syntax.md`, `design/RFC-0002-runtime-and-prior-art.md` and `design/RFC-0009-comparison-benchmark.md`** each open with a dated note saying so; their bodies are unchanged and stay as written. **`design/ROADMAP.md`**'s Phase 3 row and **`CONTRIBUTING.md`**'s out-of-scope paragraph no longer name Dioxus interop as the route. No replacement Rust rendering target is named: that is open for the owner.
