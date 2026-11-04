@@ -17,6 +17,15 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — `render` contract clauses: `mz contract` checks a component against its rendered markup; `label` and `skeleton` primitives (RFC-0017 Wave 1, #153, 2026-11-04)
+
+- **Contract clause `render [with <prop> = <value> …] [of <attr>] <predicate>`** (`compiler/src/contract.rs`, `compiler/src/parse.rs`): renders the component with the named props (`render::tree`) and tests the markup with `is`, `contains`, `not_empty` or the new `omits "<text>"`; `of <attr>` reads one attribute of the root element (by its view name) or `text`. A clause whose component cannot render (missing prop with no default, unknown prop, wrong type, an unsupported view) is `MZ0605`, never a pass; a failed one is `MZ0603`. `omits` is rejected on any other subject. A prop named `render` still reads as a name.
+- **`primitives/separator.mz`, `badge.mz`, `alert.mz`** gain render clauses; **`primitives/label.mz`** (from the registry's `label.mz`) and **`primitives/skeleton.mz`** (new, no sizing: the caller's `class` is tracker U3) are added with them. `mz contract` passes on all of them; `alert`'s summary now counts 6 clauses (was 4).
+- **Tested** in `compiler/tests/contracts.rs`: clauses that hold, clauses that fail, each unevaluable case, the `render` prop-name case, `omits` elsewhere, and malformed clauses (one diagnostic each).
+- **`LANGUAGE-TRACKER.md` U7** records the clause; it stays 🟡 (no `for each`, composition or handlers in a rendered view). **`design/RFC-0017-render.md` §7** is now built.
+- **Not claimed:** no component renders in a browser or on a server; the registry's own `.mz` copies do not use `render` clauses until they sync. Mzizi stays Phase 0.
+- **Site/docs impact:** the contract grammar gains the `render` subject and `omits`; the primitives list gains `label` and `skeleton`.
+
 ### Added — a component's view renders to escaped markup in the library: the element tree (RFC-0017 Wave 0, #153, 2026-11-04)
 
 - **`compiler/src/render.rs` (new, `mzizi_lang_compiler::render`):** `tree(component, props)` evaluates a component's static view against typed prop values to an element tree (`Node`), and `to_html` / `render` serialise it with every text node and attribute value escaped (`&`, `<`, `>`, `"`, `'` as decimal references). Covers elements, attributes, `text`, `{path}` interpolation, `when` / `else` and `nothing`. One closed table maps the view's words to tags (`strip`, `notice`, `row`, `surface`, `rule`, `field` to `div`; `mark`, `busy` to `span`; `caption`, `figure`, `picture`, `button`); a word outside it is `RenderError::UnknownElement`. `slot` and `portal` become `data-slot` and `data-portal`; event wires (`tap`, `change`) are left out. Props are supplied as `Value`s and checked before rendering: a wrong type, an unknown variant, an unknown prop and a missing prop with no default are distinct errors. `for each`, composition and an event prop given a value return `RenderError::Unsupported`.

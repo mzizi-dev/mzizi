@@ -6,7 +6,7 @@
 [#153](https://github.com/mzizi-dev/mzizi/issues/153) (stream N2 UI core).
 **Scope:** the first six of #153's ten UI language gaps, in the order the first static primitives
 meet them: the element tree (U1), children and slots (U2), pass-through attributes (U3), explicit raw
-output (U5), a server-side render as a test oracle (U7), and typed props (U9, confirmed in Wave 0).
+output (U5), a render as a test oracle (U7), and typed props (U9, confirmed in Wave 0).
 Event handlers, local state, callbacks that return content and the browser attach point (#153 gaps
 4, 5, 6 and 9) are out of scope and have rows in the tracker.
 
@@ -110,13 +110,28 @@ Writing `separator` against the registry's contract showed two things the view c
 (MZ0714). Both are tracker rows (U10, U11). `separator` renders today with `data-decorative`
 standing in for the registry's `role`, and `progress` is not written until U11 closes.
 
-## 7. The render oracle (U7)
+## 7. The render oracle (U7) — Wave 1, built
 
-Wave 0's tests call `render` directly. Wave 1 makes `mz contract` use it: a clause form
-`render [<prop> = <value> …] contains "<text>"` (and `is`, `not_empty`) evaluated against the
-serialised output with those props, so every clause is checkable on real output, not only on the
-declarations. A clause that cannot be evaluated stays an error, never a silent pass (RFC-0006).
-This adds a subject word to RFC-0006's grammar and needs its harness entry.
+`mz contract` evaluates render-backed clauses: the component is rendered with the named props, and
+the clause is tested against what came out.
+
+```mz
+render [with <prop> = <value> …] [of <attr>] <predicate>
+```
+
+- `of <attr>` reads one thing from the rendered root element, by its view name (`slot`, `role`,
+  `class`, `axis`), or `text` for the root's own text. With no `of`, the predicate is tested against
+  the whole markup string.
+- Predicates: `is`, `contains`, `not_empty`, and the new `omits "<text>"` (absence), which only a
+  `render` clause takes.
+- A prop not named takes its default. A prop with no default that the clause does not supply, an
+  unknown prop, a wrong-typed value, or a view the renderer refuses is **MZ0605, cannot be
+  evaluated**: a contract that cannot render never passes.
+- `render` opens this form only when `with`, `of`, `contains`, `omits` or `not_empty` follows, so a
+  prop named `render` still reads as a name.
+- A string in a component has no escape for `"`, so a clause cannot quote markup with attributes in
+  it. That is why `of <attr>` exists: attribute values are asserted exactly, and `contains` is for
+  class fragments and tags.
 
 ## 8. Open questions for the owner
 
