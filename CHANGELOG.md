@@ -17,6 +17,11 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — Dioxus is out of the stack; notes on the documents that name it as the target (2026-11-04)
+
+- Owner decision, 2026-11-04 ([`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)): "dioxus is out!!!"; components and primitives are Mzizi first, TypeScript second, native (Swift, Kotlin) where those exist. **`CHARTER.md`, `design/RFC-0001-syntax.md`, `design/RFC-0002-runtime-and-prior-art.md` and `design/RFC-0009-comparison-benchmark.md`** each open with a dated note saying so; their bodies are unchanged and stay as written. **`design/ROADMAP.md`**'s Phase 3 row and **`CONTRIBUTING.md`**'s out-of-scope paragraph no longer name Dioxus interop as the route. No replacement Rust rendering target is named: that is open for the owner.
+- Documentation only. Nothing is built or removed. The Dioxus and Leptos benchmark arms (`benchmarks/arms/dioxus`, `benchmarks/harness`, `benchmarks/runner`), the workspace `Cargo.toml` and CI comments that mention them, and the pilot results are unchanged: the arms are comparison arms and the results are dated records. Whether the Dioxus arm stays in the benchmark is open for the owner.
+
 ## 2026-11-02
 
 ### Changed — release prep for 2026-11-02
