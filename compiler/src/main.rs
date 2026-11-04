@@ -3,8 +3,9 @@
 //! ```text
 //! mz check <file.mz>            human-readable diagnostics
 //! mz check --agent <file.mz>    NDJSON, one diagnostic per line + a summary line
+//! mz check [--agent] <dir>      every .mz file under <dir>, one summary at the end
 //! mz fix <file.mz>              apply every `exact` fix in place, then check again
-//! mz contract <file.mz>         evaluate the `contract` block (RFC-0006)
+//! mz contract <file.mz>         evaluate the `contract` block (RFC-0006); also on a <dir>
 //! mz outline <file.mz>          the interface only, as valid Mzizi (RFC-0003 §4)
 //! mz hash <file.mz>             the root hash and the stored node count
 //! mz ir <file.mz>               every node with its hash and structural path
@@ -81,6 +82,16 @@ fn main() -> ExitCode {
     };
     if command == "build" && out.is_none() {
         eprintln!("usage: mz build <file.mz> --out <dir>");
+        return ExitCode::from(2);
+    }
+
+    // A directory: `check` and `contract` read every `.mz` file under it (the registry's
+    // components are hundreds of files, and `mz` used to take one).
+    if std::path::Path::new(path).is_dir() {
+        if matches!(command, "check" | "contract") {
+            return many(command, path, agent);
+        }
+        eprintln!("mz: `{command}` takes one file; only `check` and `contract` take a directory");
         return ExitCode::from(2);
     }
 
@@ -313,6 +324,115 @@ fn main() -> ExitCode {
     }
 
     if report.error_count() > 0 {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// Every `.mz` file under `dir`, recursively, in sorted path order so two runs print the
+/// same lines in the same order. Hidden directories and `target` are skipped. A directory
+/// that cannot be read is an error, never silently empty.
+fn mz_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
+        .map(|e| e.map(|e| e.path()))
+        .collect::<std::io::Result<_>>()?;
+    entries.sort();
+    for path in entries {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+        let name = name.unwrap_or_default();
+        if path.is_dir() {
+            if !name.starts_with('.') && name != "target" {
+                mz_files(&path, out)?;
+            }
+        } else if path.extension().is_some_and(|x| x == "mz") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// `mz check <dir>` and `mz contract <dir>`: the same work as on one file, for every `.mz`
+/// file under the directory, with one summary at the end. The `file` key of each diagnostic
+/// is the path as found under `dir`. A file that cannot be read is reported on standard
+/// error and makes the exit status 2 (a usage or I/O problem), after every other file has
+/// been checked; otherwise the status is 1 when any file has an error and 0 when none does.
+fn many(command: &str, dir: &str, agent: bool) -> ExitCode {
+    let mut files = Vec::new();
+    if let Err(e) = mz_files(std::path::Path::new(dir), &mut files) {
+        eprintln!("mz: cannot read {dir}: {e}");
+        return ExitCode::from(2);
+    }
+    if files.is_empty() {
+        eprintln!("mz: no .mz files under {dir}");
+        return ExitCode::from(2);
+    }
+    let contract = command == "contract";
+    let started = Instant::now();
+    let (mut errors, mut warnings, mut exact) = (0, 0, 0);
+    let (mut clauses, mut failed, mut tested) = (0, 0, None::<usize>);
+    let mut unreadable = 0;
+    for file in &files {
+        let path = file.to_string_lossy();
+        let src = match std::fs::read_to_string(file) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("mz: cannot read {path}: {e}");
+                unreadable += 1;
+                continue;
+            }
+        };
+        let (report, tally) = if contract {
+            check_contract(&src, &path)
+        } else {
+            (
+                check(&src, &path),
+                mzizi_lang_compiler::contract::Tally::default(),
+            )
+        };
+        errors += report.error_count();
+        warnings += report.diagnostics.len() - report.error_count();
+        exact += report.exact_fixable();
+        clauses += tally.clauses;
+        failed += tally.failed;
+        if let Some(n) = tally.tested {
+            tested = Some(tested.unwrap_or(0) + n);
+        }
+        if agent {
+            print!("{}", report.diagnostics_ndjson());
+        } else {
+            print_human(&report);
+        }
+    }
+    let elapsed = started.elapsed().as_millis();
+    let counts = contract.then_some((clauses, failed));
+    if agent {
+        print!(
+            "{}",
+            mzizi_lang_compiler::diagnostic::summary_ndjson(
+                Some(files.len()),
+                errors,
+                warnings,
+                exact,
+                counts,
+                tested,
+                elapsed
+            )
+        );
+    } else {
+        let contracts = if contract {
+            format!(", {clauses} contract clauses, {failed} failed")
+        } else {
+            String::new()
+        };
+        println!(
+            "mz: {} files, {errors} errors ({exact} exact-fixable), {warnings} warnings{contracts}, {elapsed}ms",
+            files.len()
+        );
+    }
+    if unreadable > 0 {
+        ExitCode::from(2)
+    } else if errors > 0 {
         ExitCode::from(1)
     } else {
         ExitCode::SUCCESS
