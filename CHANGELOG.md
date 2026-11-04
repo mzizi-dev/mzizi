@@ -17,6 +17,15 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — a component's view renders to escaped markup in the library: the element tree (RFC-0017 Wave 0, #153, 2026-11-04)
+
+- **`compiler/src/render.rs` (new, `mzizi_lang_compiler::render`):** `tree(component, props)` evaluates a component's static view against typed prop values to an element tree (`Node`), and `to_html` / `render` serialise it with every text node and attribute value escaped (`&`, `<`, `>`, `"`, `'` as decimal references). Covers elements, attributes, `text`, `{path}` interpolation, `when` / `else` and `nothing`. One closed table maps the view's words to tags (`strip`, `notice`, `row`, `surface`, `rule`, `field` to `div`; `mark`, `busy` to `span`; `caption`, `figure`, `picture`, `button`); a word outside it is `RenderError::UnknownElement`. `slot` and `portal` become `data-slot` and `data-portal`; event wires (`tap`, `change`) are left out. Props are supplied as `Value`s and checked before rendering: a wrong type, an unknown variant, an unknown prop and a missing prop with no default are distinct errors. `for each`, composition and an event prop given a value return `RenderError::Unsupported`.
+- **Tested** by `compiler/tests/render.rs` (13 tests): expected markup written by hand from `separator.mz`, `badge.mz`, `alert.mz`, `avatar.mz` and `spinner.mz`, escaping in text and in attribute values after interpolation, branch choice by `when`, determinism, and each refusal.
+- **Designed, not built:** `design/RFC-0017-render.md` (draft): children and slots, pass-through attributes, explicit raw output and render-backed contract clauses, each with the tracker row that tracks it.
+- **`LANGUAGE-TRACKER.md`:** a new Tier U (UI components) with rows U1 to U12 from #153's gap list and two gaps found writing `separator` and `progress`: U10, attributes conditional on a prop (so `separator` renders `data-decorative`, not the registry's `role`), and U11, expressions in a view interpolation (so `progress` is not written in Mzizi yet). U1, U7 and U9 are 🟡; nothing is ✅.
+- **Not claimed:** no component renders in a browser or on a server, no component lowers to Rust, there is no `mz` command for `render`, and nothing was measured. Mzizi stays Phase 0.
+- **Site/docs impact:** the tracker gains Tier U; the compiler page may mention the `render` library function and RFC-0017 as a draft.
+
 ### Changed — Dioxus is out of the stack; notes on the documents that name it as the target (2026-11-04)
 
 - Owner decision, 2026-11-04 ([`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)): "dioxus is out!!!"; components and primitives are Mzizi first, TypeScript second, native (Swift, Kotlin) where those exist. **`CHARTER.md`, `design/RFC-0001-syntax.md`, `design/RFC-0002-runtime-and-prior-art.md` and `design/RFC-0009-comparison-benchmark.md`** each open with a dated note saying so; their bodies are unchanged and stay as written. **`design/ROADMAP.md`**'s Phase 3 row and **`CONTRIBUTING.md`**'s out-of-scope paragraph no longer name Dioxus interop as the route. No replacement Rust rendering target is named: that is open for the owner.
