@@ -134,7 +134,7 @@ fn is_void(tag: &str) -> bool {
 
 /// The markup attribute name for a view attribute, or `None` when the attribute is not
 /// markup (an event wire).
-fn markup_attr(name: &str) -> Option<String> {
+pub fn markup_attr(name: &str) -> Option<String> {
     Some(match name {
         "tap" | "change" => return None,
         "slot" => "data-slot".to_string(),
