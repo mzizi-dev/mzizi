@@ -43,6 +43,7 @@ pub mod numbers;
 pub mod outline;
 pub mod parse;
 pub mod program;
+pub mod render;
 pub mod resolve;
 pub mod run;
 pub mod serve;
