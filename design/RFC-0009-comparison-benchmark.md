@@ -1,5 +1,7 @@
 # RFC-0009 — The comparison benchmark: every language arm, every task family, and a gate against the best incumbent
 
+> **Dioxus is no longer part of the Mzizi stack (owner decision, 2026-11-04, [`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)).** Components and primitives are Mzizi first, TypeScript second, and native (Swift, Kotlin) where those exist. Dioxus appears here as a benchmark comparison arm, not as part of the stack. Whether that arm stays in the benchmark is open for the owner; nothing here has been changed. The text below is kept as written and is history where it names Dioxus as the interop or rendering target.
+
 **Status:** draft for review — nothing here is implemented. Two parts are owner decisions of
 2026-09-29, recorded here as decided rather than proposed: the kill criterion (§6) and the
 publication rule (§7). Everything else is a proposal.

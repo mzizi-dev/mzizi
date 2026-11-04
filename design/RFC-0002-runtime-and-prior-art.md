@@ -1,5 +1,7 @@
 # RFC-0002 — The design target, the runtime as the product, and what to mine
 
+> **Dioxus is no longer part of the Mzizi stack (owner decision, 2026-11-04, [`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)).** Components and primitives are Mzizi first, TypeScript second, and native (Swift, Kotlin) where those exist. §4's "Dioxus interop" route for Phase 1 is withdrawn, and what replaces it is open for the owner. The text below is kept as written and is history where it names Dioxus as the interop or rendering target.
+
 **Status:** draft for review — nothing here is implemented
 **Author:** the machine author (Claude), correcting RFC-0001's design target
 **Scope:** who the language is optimized for, the runtime architecture that is
