@@ -53,9 +53,23 @@ pub struct Program {
     pub enums: Vec<EnumDecl>,
     /// Every `record`, in source order (RFC-0013 §11).
     pub records: Vec<RecordDecl>,
+    /// Every `test` block, in source order (RFC-0013 §15.2). Each is a function body with no
+    /// parameters, in which `expect` is allowed; `mz run` never runs one.
+    pub tests: Vec<TestDecl>,
     /// Whether statements stood outside every `fn` (reported as `MZ0901`, whose message
     /// names `fn main`, so a missing `fn main` is not reported a second time).
     pub stray_statements: bool,
+}
+
+/// `test "<description>"` … `end` (RFC-0013 §15.2): a body of statements and `expect` lines.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TestDecl {
+    /// The description, as written between the quotes.
+    pub desc: String,
+    /// The test as a function with no parameters and no return type, named `test`, so the
+    /// checker reads its body as it reads any function's. Its `name_span` is the
+    /// description's and its `end_span` the closing `end`.
+    pub func: FnDecl,
 }
 
 /// A type as written in a signature or an annotation.
@@ -371,6 +385,12 @@ pub fn check(p: &Program, file: &str, src: &str) -> Vec<Diagnostic> {
         cx.run();
         diags.append(&mut cx.diags);
     }
+    for t in &p.tests {
+        let mut cx = FnCheck::new(&t.func, &fns, &p.enums, &p.records, file, src);
+        cx.in_test = true;
+        cx.run();
+        diags.append(&mut cx.diags);
+    }
     diags
 }
 
@@ -436,6 +456,8 @@ struct FnCheck<'a> {
     /// Whether an `always` clause is being checked, which may read a record's fields and
     /// call nothing (§11.4, `MZ0975`).
     in_always: bool,
+    /// Whether the body being checked is a `test` block's, where `expect` is allowed.
+    in_test: bool,
     /// How many loops enclose the statement being checked (`MZ0935` at none).
     loops: usize,
     /// Where each statement `match` reported as missing a case (`MZ0930`) starts, by its
@@ -477,6 +499,7 @@ impl<'a> FnCheck<'a> {
             records,
             receiver: None,
             in_always: false,
+            in_test: false,
             loops: 0,
             partial: Vec::new(),
             file,
@@ -1686,6 +1709,29 @@ impl<'a> FnCheck<'a> {
         Ty::Error
     }
 
+    /// `expect <bool>` (RFC-0013 §15.2): a statement of a `test` block, nowhere else
+    /// (`MZ0993`). Its value is read as a `when` condition is, so a value that is not a `bool`
+    /// is `MZ0712`.
+    fn expect_call(&mut self, args: &[Expr], at: Span) -> Ty {
+        let types: Vec<Ty> = args.iter().map(|a| self.expr(a)).collect();
+        if !self.in_test {
+            self.err(
+                "MZ0993",
+                at,
+                "`expect` is a statement of a `test` block — `test \"what holds\"` … `expect <bool>` … `end`; in a `fn`, return or print the value",
+            );
+        } else if let ([a], [t]) = (args, types.as_slice()) {
+            self.condition(a, *t, "expect");
+        } else {
+            self.err(
+                "MZ0905",
+                at,
+                "`expect` takes one `bool`, the claim the test makes: `expect x is 5`",
+            );
+        }
+        Ty::Nothing
+    }
+
     fn call(&mut self, name: &str, name_span: Span, args: &[Expr], labelled: bool, at: Span) -> Ty {
         if self.in_always && self.fns.contains_key(name) {
             self.err(
@@ -1696,6 +1742,9 @@ impl<'a> FnCheck<'a> {
                 ),
             );
             return Ty::Error;
+        }
+        if name == "expect" && !self.fns.contains_key(name) && self.visible(name).is_none() {
+            return self.expect_call(args, at);
         }
         if !self.fns.contains_key(name) && self.visible(name).is_none() {
             if name == "range" {
