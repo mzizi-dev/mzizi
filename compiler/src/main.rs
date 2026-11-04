@@ -341,8 +341,12 @@ fn mz_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) -> std::io
     for path in entries {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
         let name = name.unwrap_or_default();
+        // A symlinked directory is not followed, so a link back up the tree cannot loop.
+        let linked = path
+            .symlink_metadata()
+            .is_ok_and(|m| m.file_type().is_symlink());
         if path.is_dir() {
-            if !name.starts_with('.') && name != "target" {
+            if !linked && !name.starts_with('.') && name != "target" {
                 mz_files(&path, out)?;
             }
         } else if path.extension().is_some_and(|x| x == "mz") {
