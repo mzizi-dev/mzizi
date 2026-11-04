@@ -40,6 +40,8 @@ component alert
     alert_variant.destructive announce is "alert"
     alert_variant.default announce is "status"
     slot is "alert"
+    render with title = "t" message = "m" of role is "status"
+    render with variant = destructive title = "t" message = "m" of role is "alert"
   end
 
 end component alert
