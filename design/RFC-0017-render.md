@@ -130,10 +130,10 @@ This adds a subject word to RFC-0006's grammar and needs its harness entry.
 
 ## 9. Waves
 
-| Wave | Adds | Tracker | State |
-| ---- | ---- | ------- | ----- |
-| 0 | Element tree, serialiser, escaping, typed props, `when`/`else`, the closed tag table | U1, U9 | on this branch, tested by `compiler/tests/render.rs` |
-| 1 | Render-backed contract clauses | U7 | designed |
-| 2 | `content` props, named placement | U2 | designed |
-| 3 | `attrs` pass-through with an allow list | U3 | designed |
-| 4 | `raw` on `style`, from a `css` value | U5 | designed |
+| Wave | Adds                                                                                 | Tracker | State                                                |
+| ---- | ------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------- |
+| 0    | Element tree, serialiser, escaping, typed props, `when`/`else`, the closed tag table | U1, U9  | on this branch, tested by `compiler/tests/render.rs` |
+| 1    | Render-backed contract clauses                                                       | U7      | designed                                             |
+| 2    | `content` props, named placement                                                     | U2      | designed                                             |
+| 3    | `attrs` pass-through with an allow list                                              | U3      | designed                                             |
+| 4    | `raw` on `style`, from a `css` value                                                 | U5      | designed                                             |
