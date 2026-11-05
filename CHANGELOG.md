@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — `mz check` and `mz contract` take a directory (toolchain, 2026-11-04)
+
+- `mz check [--agent] <dir>` and `mz contract [--agent] <dir>` read every `.mz` file under the directory, recursively, in sorted path order (hidden directories, `target` and symlinked directories are skipped), and print each file's diagnostics with its own `file` path. The last line is one summary: in `--agent` mode the usual summary object with a new `files` key and every count summed (`errors`, `warnings`, `exact_fixable`, and for `contract` `contract_clauses`, `contract_failures`, `contract_tested`); a run on one file prints exactly what it printed before. Exit status: 0 with no errors, 1 when any file has an error or a failed clause, 2 for a directory with no `.mz` file or an unreadable file (after every readable file has run). `outline`, `hash`, `ir`, `fix`, `build` and `run` still take one file and say so (exit 2).
+- Why: the component streams of [#153](https://github.com/mzizi-dev/mzizi/issues/153) add hundreds of files, and `mz` took one, so CI and agents looped in shell and read one summary per file.
+- Tested: `compiler/tests/directory.rs` (eight cases against the shipped binary: clean, sorted order, one failing file, human form, skipped directories, no source file, other commands refuse a directory, and `primitives/` and `examples/` as directories). The `mz check` and `mz contract` entries in the language harness name the directory form. Tracker row T1 notes it. Nothing is measured; this is a convenience, not a claim about speed or quality.
+- Site/docs impact: the compiler page's `mz check` and `mz contract` sections gain the directory form and the `files` summary key; the protocol version is unchanged (a key was added to the summary line, nothing was removed or renamed).
+
 ### Added — three server components written in Mzizi, and seven gaps they found (2026-11-04, Refs #153)
 
 - **`examples/components/`:** `circuit_breaker.mz` (closed, open and half-open, a sliding failure window, one probe, epochs), `base64url.mz` (RFC 4648 §5 without padding, over a byte list, with a decoder that rejects what is not base64url) and `rate_gate.mz` (a token bucket with a burst and a wait time). They port the algorithms of the registry's `mzizi-resilience` crate and `server-base64url`. Each is a `program` with a `main` that exercises it, checked and run in CI (`compiler/tests/components.rs`, and the two `examples/` loops in `ci.yml` now include `examples/components/`). `mz run` of each prints its committed `.expected`; the tests pin the lines worked out by hand (`Zm9vYmFy`, 499 ms left of a 500 ms cooldown, exactly 10 allowed in the window after a drained 15-token bucket).
