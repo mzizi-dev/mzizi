@@ -28,6 +28,11 @@ component badge
     every badge_variant class not_empty
     badge_variant.default class contains "bg-primary"
     slot is "badge"
+    render with label = "New" of text is "New"
+    render with label = "New" of slot is "badge"
+    render with variant = destructive label = "x" of variant is "destructive"
+    render with variant = destructive label = "x" contains "text-destructive"
+    render with label = "x" omits "<script"
   end
 
 end component badge
