@@ -1,0 +1,16 @@
+rejected: failure_threshold must be at least 1
+-- opens on the failing call, not the next
+t=15 closed allowed retry_after=0 failures=2
+t=21 open turned_away retry_after=499 failures=0
+-- old failures leave the window
+t=2000 closed allowed retry_after=0 failures=1
+-- half-open admits exactly one probe
+t=600 half_open allowed retry_after=0 failures=0
+t=600 half_open probe_in_flight retry_after=0 failures=0
+t=602 closed allowed retry_after=0 failures=0
+-- a failed probe reopens for a full cooldown
+t=601 open turned_away retry_after=499 failures=0
+-- a released probe frees the slot without judging the dependency
+t=600 half_open allowed retry_after=0 failures=0
+-- a late outcome from before opening changes nothing
+t=5 open turned_away retry_after=498 failures=0
