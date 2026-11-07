@@ -19,6 +19,7 @@ owed an RFC-0001 §1.5 amendment or a deletion.
 | `avatar`      | size, with fallback      | Two columns per variant, and `when … is none … else` on an `option(text)`          |
 | `separator`   | axis                     | Smallest useful primitive                                                          |
 | `label`       | text                     | Names a control; `text` on the root, checked by a `render` clause                  |
+| `progress`    | int value                | The indicator's offset is integer arithmetic in the view (tracker U11)             |
 | `skeleton`    | none                     | A placeholder; its sizing `class` waits on pass-through attributes (tracker U3)    |
 | `spinner`     | size, `use motion`       | The capability declaration in practice                                             |
 | `confirm_bar` | composition              | Uses `button` and `alert` **with no import line** — see below                      |
