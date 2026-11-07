@@ -49,6 +49,7 @@ pub mod run;
 pub mod serve;
 pub mod service;
 pub mod text;
+pub mod viewexpr;
 
 use diagnostic::{CheckReport, Severity};
 
