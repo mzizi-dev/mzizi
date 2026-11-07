@@ -485,6 +485,33 @@ fn duplicates_among_routes_and_parameters_are_mz0812() {
 // Reused codes ------------------------------------------------------------------------
 
 #[test]
+fn a_match_in_a_handler_is_one_mz0410_and_skips_its_block() {
+    // #65: the handler's catch-all reported `match` as the generic MZ0811 and recovered
+    // one line, so the arms and the lines after the block cascaded. The view treatment:
+    // one MZ0410, the block skipped whole, and nothing else read.
+    let d = one(
+        &route(
+            "    match name\n      when name is \"badge\"\n        respond 200\n      end\n    end\n    respond 404\n",
+        ),
+        "MZ0410",
+    );
+    assert!(d.fix.is_none(), "{d:#?}");
+    assert!(d.say.contains("no `match`"), "{}", d.say);
+    assert!(d.say.contains("`when name is x … end`"), "{}", d.say);
+}
+
+#[test]
+fn a_mistake_after_a_match_block_in_a_handler_is_still_reported() {
+    // Skipping the `match` block stops at its `end`: the `return` after it is its own
+    // error, as after a `match` in a view. The `respond` after the `return` keeps the
+    // path ending in a `respond`, so no other code joins the two.
+    let src =
+        route("    match name\n      respond 500\n    end\n    return 200\n    respond 200\n");
+    let codes: Vec<&str> = errors(&src).iter().map(|d| d.code).collect();
+    assert_eq!(codes, ["MZ0410", "MZ0811"]);
+}
+
+#[test]
 fn an_unknown_name_is_mz0707_with_a_nearest_fix() {
     let src = service(
         "  route r\n    get \"/{name}\"\n    when nme is \"a\"\n      respond 200\n    end\n    respond 404\n  end\n",

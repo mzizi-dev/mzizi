@@ -536,6 +536,11 @@ impl Parser {
                     self.bump();
                     out.push(self.parse_when(stack, records, span));
                 }
+                Tok::Keyword("match") => {
+                    // One `MZ0410` for the whole block, as in a view (#65): the arms are
+                    // skipped, so the handler does not read them and nothing cascades.
+                    self.skip_match(span);
+                }
                 Tok::Ident(w)
                     if w == "if"
                         && !matches!(

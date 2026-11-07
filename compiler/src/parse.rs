@@ -1453,7 +1453,10 @@ impl Parser {
     /// form and carries no fix. Its arms come in whatever shape the writer knows (`case x`
     /// blocks with or without `end`, Rust's `x => …`, an `else`), so none of them is parsed:
     /// every line indented past `match` is skipped, then its `end`, and the lexer's
-    /// diagnostics on those lines are dropped (`skipped`), so the block is one error.
+    /// diagnostics on those lines are dropped (`skipped`), so the block is one error. A
+    /// service handler uses the same treatment for a `match` line in its statements (#65),
+    /// where the arms are handler lines and the block's `end` sits at the handler's
+    /// statement column.
     fn skip_match(&mut self, span: Span) {
         self.bump();
         // The subject is quoted back when it is one name, the usual `match size`.
@@ -1530,6 +1533,9 @@ impl Parser {
             }
             Tok::Keyword("end") => LineKind::Closes,
             Tok::Keyword("when") => LineKind::Opens,
+            // `match` has no block the parser reads, but it carries an `end` at its own
+            // column; count it as its own self-balancing block, as the view does.
+            Tok::Keyword("match") => LineKind::Match,
             Tok::Ident(w) if w == "if" && !matches!(next, Some(Tok::Newline | Tok::Eof)) => {
                 LineKind::Opens
             }
