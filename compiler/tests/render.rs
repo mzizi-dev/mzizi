@@ -58,7 +58,7 @@ fn separator_renders_its_defaults() {
     assert_eq!(
         render(&c, &[]).unwrap(),
         "<div data-slot=\"separator\" data-portal=\"https://mzizi.dev/components/separator\" \
-         data-axis=\"horizontal\" data-decorative=\"true\" class=\"shrink-0 bg-border h-px w-full\"></div>"
+         data-axis=\"horizontal\" role=\"none\" class=\"shrink-0 bg-border h-px w-full\"></div>"
     );
 }
 
@@ -76,7 +76,7 @@ fn separator_takes_a_typed_variant_and_bool() {
     assert_eq!(
         html,
         "<div data-slot=\"separator\" data-portal=\"https://mzizi.dev/components/separator\" \
-         data-axis=\"vertical\" data-decorative=\"false\" class=\"shrink-0 bg-border w-px self-stretch\"></div>"
+         data-axis=\"vertical\" role=\"separator\" aria-orientation=\"vertical\" class=\"shrink-0 bg-border w-px self-stretch\"></div>"
     );
 }
 
@@ -265,5 +265,42 @@ fn arithmetic_that_cannot_be_computed_is_refused_not_rendered() {
     assert_eq!(
         render(&c, &[("n", Value::Int(5))]).unwrap(),
         "<div class=\"2\"></div>"
+    );
+}
+
+#[test]
+fn a_conditional_attribute_follows_its_guard_and_is_absent_when_none_holds() {
+    let c = load("primitives/separator.mz");
+    let html = |axis: &str, decorative: bool| {
+        render(
+            &c,
+            &[("axis", var(axis)), ("decorative", Value::Bool(decorative))],
+        )
+        .unwrap()
+    };
+    // Decorative: role none, never an orientation, whatever the axis.
+    assert!(html("horizontal", true).contains(" role=\"none\" "));
+    assert!(!html("vertical", true).contains("aria-orientation"));
+    // Semantic: role separator, and an orientation only when vertical (the ARIA default
+    // for a separator is horizontal, so it is not stated).
+    assert!(html("horizontal", false).contains(" role=\"separator\" "));
+    assert!(!html("horizontal", false).contains("aria-orientation"));
+    assert!(html("vertical", false).contains(" aria-orientation=\"vertical\" "));
+    assert!(!html("vertical", true).contains("data-decorative"));
+}
+
+#[test]
+fn conditional_text_and_an_option_guard_render_the_chosen_value() {
+    let src = "component t\n  prop note: option(text)\n  prop loud: bool = false\n  view\n    mark\n      text = \"!\" when loud else \"ok\"\n      title = \"has note\" when note is none else \"no note\"\n    end\n  end\n  contract\n  end\nend component t\n";
+    let (c, report) = check_with_ast(src, "t.mz");
+    assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics);
+    let c = c.unwrap();
+    assert_eq!(
+        render(&c, &[]).unwrap(),
+        "<span title=\"has note\">ok</span>"
+    );
+    assert_eq!(
+        render(&c, &[("loud", Value::Bool(true)), ("note", text("n"))]).unwrap(),
+        "<span title=\"no note\">!</span>"
     );
 }
