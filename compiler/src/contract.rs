@@ -551,7 +551,13 @@ fn outermost_attr<'a>(view: &'a [Element], name: &str) -> Option<&'a str> {
     let mut level: Vec<&'a Element> = view.iter().collect();
     while !level.is_empty() {
         for el in &level {
-            if let Some(attr) = el.attrs.iter().find(|a| a.name == name) {
+            // A conditional attribute has no single value to compare, so it is skipped: a
+            // static clause about it is unevaluable, and a `render` clause tests it.
+            if let Some(attr) = el
+                .attrs
+                .iter()
+                .find(|a| a.name == name && a.guard.is_none() && a.otherwise.is_empty())
+            {
                 return Some(attr.value.as_str());
             }
         }

@@ -1180,3 +1180,24 @@ fn the_changelog_port_checks_clean_and_keeps_its_contract() {
     }
     assert_eq!(depth(c.view.as_deref().unwrap()), 2, "nested for each");
 }
+
+#[test]
+fn a_conditional_attribute_checks_its_condition_and_every_value() {
+    let with = |attr: &str| {
+        component(&format!(
+            "  enum tone\n    calm\n    loud\n  end\n  prop t: tone = calm\n  prop on: bool = true\n  prop n: text\n  view\n    row\n      {attr}\n    end\n  end\n"
+        ))
+    };
+    clean(&with("role = \"a\" when on else \"b\""));
+    clean(&with("role = none when on else \"x\" when t is loud"));
+    clean(&with("role = \"a\" when not on"));
+    one(&with("role = \"a\" when nope"), "MZ0707");
+    one(&with("role = \"a\" when t is shouting"), "MZ0708");
+    one(&with("role = \"a\" when n"), "MZ0712");
+    one(&with("role = \"a\" else \"b\""), "MZ0404");
+    one(
+        &with("role = \"a\" when on else \"b\" else \"c\""),
+        "MZ0404",
+    );
+    one(&with("role = \"a\" when on else nope"), "MZ0707");
+}

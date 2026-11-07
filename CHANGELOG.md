@@ -17,6 +17,15 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — conditional attributes: `separator` sets `role` from `decorative` (RFC-0017 §6, U10, #153, 2026-11-07)
+
+- **A view attribute (or `text`) may be conditional:** `role = "none" when decorative else "separator"`, with `else <value> when <condition>` links and an optional plain final `else`. Conditions are a `when` element's (`<bool>`, `not <bool>`, `<name> is <variant or none>`). With no final `else` the attribute is absent when no guard holds; `none` as a value omits it. `ast::Attr` gains `guard` and `otherwise`; `Attr::canonical_value` puts the chain in the IR, so a component's hash moves when a condition does and no existing hash moves.
+- **Diagnostics, no new codes:** the checker reads each condition and value with `MZ0707`, `MZ0708`, `MZ0711` and `MZ0712`; an `else` with no `when` before it, or after a plain `else`, is `MZ0404`. Before, `role = "x" when y` was accepted and the tail silently dropped.
+- **`primitives/separator.mz`:** renders `role="none"` when decorative and `role="separator"` otherwise, and `aria-orientation="vertical"` only for a semantic vertical rule, as the registry's contract has it; `data-decorative` is gone. A static clause about a conditional attribute is unevaluable and a `render` clause tests it (`mz contract` passes, 11 clauses).
+- **Tested:** `compiler/tests/render.rs` (both axes and both settings, conditional `text`, an option guard), `compiler/tests/types.rs` (each diagnostic).
+- **`LANGUAGE-TRACKER.md` U10:** ❌ to 🟡 with evidence. **RFC-0017** §6 updated. Not claimed: nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
+- **Site/docs impact:** the view grammar gains `value when <condition> else <value>`; `separator`'s rendered attributes change.
+
 ### Added — integer arithmetic in a view string, and `progress` in Mzizi (RFC-0017 §6, U11, #153, 2026-11-07)
 
 - **A `{…}` in a view attribute string may hold `int` arithmetic** (`compiler/src/viewexpr.rs`, new): integer literals, prop and enum-column paths, unary `-`, `+ - * / %`, parentheses, `min(a, b)` and `max(a, b)`. The checker and the renderer read a body with the same parser. A name that is not an `int` is `MZ0711`; a malformed body is `MZ0714` (whose text now says what was wrong and names the arithmetic form). `{a + a}` on a `text` prop was `MZ0714`; it is now `MZ0711`. Rendering uses checked arithmetic: division by zero or overflow is `RenderError::Arithmetic`, not a wrapped number. `style` now passes through to markup. Service and program text interpolation are unchanged.
