@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
+
+- **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
+- **`design/RFC-0013-core-language.md`:** a dated note under §6.4 and on §20 Q7 pointing to RFC-0018. Its rules are unchanged.
+- **`LANGUAGE-TRACKER.md`:** row K5 names RFC-0018 as its design. Its mark stays ❌.
+
 ### Added — `mz check` and `mz contract` take a directory (toolchain, 2026-11-04)
 
 - `mz check [--agent] <dir>` and `mz contract [--agent] <dir>` read every `.mz` file under the directory, recursively, in sorted path order (hidden directories, `target` and symlinked directories are skipped), and print each file's diagnostics with its own `file` path. The last line is one summary: in `--agent` mode the usual summary object with a new `files` key and every count summed (`errors`, `warnings`, `exact_fixable`, and for `contract` `contract_clauses`, `contract_failures`, `contract_tested`); a run on one file prints exactly what it printed before. Exit status: 0 with no errors, 1 when any file has an error or a failed clause, 2 for a directory with no `.mz` file or an unreadable file (after every readable file has run). `outline`, `hash`, `ir`, `fix`, `build` and `run` still take one file and say so (exit 2).
