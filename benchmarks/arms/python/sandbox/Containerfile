@@ -1,0 +1,9 @@
+# The Python backend arm's sandbox image. Built once by ../setup.sh (the only step that
+# uses the network); every check runs from it with --network none. The base is pinned by
+# digest (Alpine 3.22). `apk` resolves Python and Node from that release's repositories, so
+# the image records their versions when built (../README.md); the Python packages and
+# pyright are pinned exactly (requirements.txt, package-lock.json).
+FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+RUN apk add --no-cache python3 nodejs npm
+COPY . /opt/arm
+RUN sh /opt/arm/install.sh
