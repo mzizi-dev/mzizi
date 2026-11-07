@@ -235,3 +235,35 @@ fn event_wires_are_left_out_of_the_markup() {
     assert!(!html.contains("change"), "{html}");
     assert!(!html.contains("on-change"), "{html}");
 }
+
+#[test]
+fn progress_offsets_the_indicator_by_integer_arithmetic_in_the_view() {
+    let c = load("primitives/progress.mz");
+    let at = |v: i64| render(&c, &[("value", Value::Int(v))]).unwrap();
+    assert!(
+        at(40).contains("style=\"transform: translateX(-60%);\""),
+        "{}",
+        at(40)
+    );
+    assert!(at(40).contains("aria-valuenow=\"40\""), "{}", at(40));
+    assert!(at(0).contains("translateX(-100%)"));
+    assert!(at(100).contains("translateX(-0%)"));
+    // Out of range is clamped by min and max, not rendered as a negative offset.
+    assert!(at(150).contains("translateX(-0%)"));
+    assert!(at(-5).contains("translateX(-100%)"));
+    // The default is 0.
+    assert!(render(&c, &[]).unwrap().contains("aria-valuenow=\"0\""));
+}
+
+#[test]
+fn arithmetic_that_cannot_be_computed_is_refused_not_rendered() {
+    let src = "component t\n  prop n: int = 0\n  view\n    row\n      class = \"{10 / n}\"\n    end\n  end\n  contract\n  end\nend component t\n";
+    let (c, report) = check_with_ast(src, "t.mz");
+    assert_eq!(report.error_count(), 0);
+    let c = c.unwrap();
+    assert!(matches!(render(&c, &[]), Err(RenderError::Arithmetic(_))));
+    assert_eq!(
+        render(&c, &[("n", Value::Int(5))]).unwrap(),
+        "<div class=\"2\"></div>"
+    );
+}
