@@ -1,7 +1,6 @@
 # RFC-0017 — Rendering a component: the element tree, typed props, and a test oracle
 
-**Status:** draft for review. **Wave 0 is implemented** (§9): `compiler/src/render.rs` and
-`compiler/tests/render.rs` are on this branch, and every other section is design.
+**Status:** draft for review. Waves 0, 1 and 1b are built (§9); every other wave is design.
 **Author:** the machine author (Claude), for the owner, on issue
 [#153](https://github.com/mzizi-dev/mzizi/issues/153) (stream N2 UI core).
 **Scope:** the first six of #153's ten UI language gaps, in the order the first static primitives
@@ -102,13 +101,23 @@ from a prop of type `css` — a newtype that only a sanitising constructor makes
 else is a diagnostic. There is no raw HTML, so `markdown-renderer`, which has none by design, cannot
 acquire one. The renderer has no code path from `text` to unescaped output.
 
-## 6. Conditional attributes and expressions in a view — found, not designed
+## 6. Conditional attributes and expressions in a view
 
-Writing `separator` against the registry's contract showed two things the view cannot say:
-`role="none"` versus `role="separator"` chosen by a `bool` prop, and `progress`'s
-`transform: translateX(-{100 - value}%)`, because an interpolation holds one name and no operators
-(MZ0714). Both are tracker rows (U10, U11). `separator` renders today with `data-decorative`
-standing in for the registry's `role`, and `progress` is not written until U11 closes.
+Writing `separator` against the registry's contract showed two things the view could not say:
+`role="none"` versus `role="separator"` chosen by a `bool` prop (U10, still open), and
+`progress`'s `transform: translateX(-{100 - value}%)`, because an interpolation held one name and
+no operators.
+
+**Expressions in a view string (U11), built.** A `{…}` in a view attribute string holds a path, or
+`int` arithmetic: integer literals, prop and enum-column paths, unary `-`, `+ - * / %` with the
+usual precedence, parentheses, and `min(a, b)` and `max(a, b)` (`compiler/src/viewexpr.rs`; the
+checker and the renderer read a body with the same parser, so what checks is what renders). Every
+name in an expression must be an `int` (`MZ0711` otherwise); a malformed body is `MZ0714`. All
+arithmetic is checked: a render that divides by zero or overflows is `RenderError::Arithmetic`,
+never a wrapped number. There are no comparisons, no text operators and no other calls. `progress`
+is written with it: `style = "transform: translateX(-{100 - min(max(value, 0), 100)}%);"`, and the
+clamp is `min` and `max`, so an out-of-range value never renders a negative offset. `style` joins
+the attributes that pass through to markup.
 
 ## 7. The render oracle (U7) — Wave 1, built
 
@@ -135,20 +144,25 @@ render [with <prop> = <value> …] [of <attr>] <predicate>
 
 ## 8. Open questions for the owner
 
+**Q1 is accepted** (owner, recorded on #153, comment 6703585202, 2026-11-07): the closed
+element-to-tag table of §1.1 stands. **Q2 is not decided**, so children and slots at the call site
+(§3, U2) wait for the owner.
+
 - **Q1.** Is the closed element table (§1.1) the right shape, or should an element word carry its tag
   in the component (a `tag = "section"` attribute)? The table keeps generation from picking an
   unlisted tag; it costs one table edit per new word.
 - **Q2.** Call-site syntax for composing one component inside another (`uses button` is read today
   but not rendered).
-- **Q3.** `data-decorative="true"` is not an accessibility attribute. Until U11, the registry's
+- **Q3.** `data-decorative="true"` is not an accessibility attribute. Until U10, the registry's
   `role` rule is not reproduced; the TypeScript and Rust siblings remain the reference for it.
 
 ## 9. Waves
 
-| Wave | Adds                                                                                 | Tracker | State                                                |
-| ---- | ------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------- |
-| 0    | Element tree, serialiser, escaping, typed props, `when`/`else`, the closed tag table | U1, U9  | on this branch, tested by `compiler/tests/render.rs` |
-| 1    | Render-backed contract clauses                                                       | U7      | designed                                             |
-| 2    | `content` props, named placement                                                     | U2      | designed                                             |
-| 3    | `attrs` pass-through with an allow list                                              | U3      | designed                                             |
-| 4    | `raw` on `style`, from a `css` value                                                 | U5      | designed                                             |
+| Wave | Adds                                                                                 | Tracker | State                                                       |
+| ---- | ------------------------------------------------------------------------------------ | ------- | ----------------------------------------------------------- |
+| 0    | Element tree, serialiser, escaping, typed props, `when`/`else`, the closed tag table | U1, U9  | built, `compiler/tests/render.rs`                           |
+| 1    | Render-backed contract clauses                                                       | U7      | built, `compiler/tests/contracts.rs`                        |
+| 1b   | Integer arithmetic in a view string                                                  | U11     | built, `compiler/src/viewexpr.rs`, `primitives/progress.mz` |
+| 2    | `content` props, named placement                                                     | U2      | designed; waits for the owner's call-site decision (Q2)     |
+| 3    | `attrs` pass-through with an allow list                                              | U3      | designed                                                    |
+| 4    | `raw` on `style`, from a `css` value                                                 | U5      | designed                                                    |

@@ -308,9 +308,24 @@ fn a_bad_interpolation_is_one_diagnostic() {
         ))
     };
     one(&with("x {}"), "MZ0714");
-    one(&with("x {a + a}"), "MZ0714");
+    one(&with("x {a +}"), "MZ0714");
+    one(&with("x {a b}"), "MZ0714");
     one(&with("x {a"), "MZ0714");
     clean(&with("x {a} y {a}"));
+}
+
+#[test]
+fn int_arithmetic_in_a_view_string_checks_its_names_are_ints() {
+    let with = |s: &str| {
+        component(&format!(
+            "  prop n: int = 0\n  prop a: text\n  view\n    row\n      class = \"{s}\"\n    end\n  end\n"
+        ))
+    };
+    clean(&with("x-{100 - n}%"));
+    clean(&with("{min(max(n, 0), 100) * 2 + 1}"));
+    one(&with("{n + a}"), "MZ0711");
+    one(&with("{nope + 1}"), "MZ0707");
+    one(&with("{foo(n)}"), "MZ0714");
 }
 
 #[test]

@@ -83,6 +83,9 @@ pub enum RenderError {
     UnknownElement(String),
     /// A form the static renderer does not cover yet; the message names the tracker row.
     Unsupported(String),
+    /// Integer arithmetic in an interpolation failed: division by zero, overflow, or a name
+    /// that is not an int.
+    Arithmetic(String),
     /// A name in the view that does not resolve to a value. The checker reports these; this
     /// is the renderer refusing a tree it was handed unchecked.
     Unresolved(String),
@@ -103,6 +106,7 @@ impl fmt::Display for RenderError {
             }
             Self::UnknownElement(w) => write!(f, "element word `{w}` has no markup tag"),
             Self::Unsupported(what) => write!(f, "{what}"),
+            Self::Arithmetic(what) => write!(f, "arithmetic failed in {what}"),
             Self::Unresolved(n) => write!(f, "`{n}` does not resolve to a value"),
         }
     }
@@ -141,8 +145,8 @@ pub fn markup_attr(name: &str) -> Option<String> {
         "portal" => "data-portal".to_string(),
         "source" => "src".to_string(),
         "class" | "id" | "role" | "href" | "src" | "alt" | "for" | "type" | "name" | "value"
-        | "placeholder" | "title" | "lang" | "dir" | "tabindex" | "width" | "height" | "target"
-        | "rel" => name.to_string(),
+        | "placeholder" | "style" | "title" | "lang" | "dir" | "tabindex" | "width" | "height"
+        | "target" | "rel" => name.to_string(),
         n if n.starts_with("aria_") => n.replace('_', "-"),
         n => format!("data-{}", n.replace('_', "-")),
     })
@@ -423,6 +427,26 @@ fn unquote(written: &str) -> &str {
         .unwrap_or(written)
 }
 
+/// One `{…}` body: a plain path, or integer arithmetic (RFC-0017 §6).
+fn interpolated(c: &Component, env: &Env, body: &str) -> Result<String, RenderError> {
+    let expr = crate::viewexpr::parse(body)
+        .map_err(|e| RenderError::Unresolved(format!("{{{body}}}: {}", e.say)))?;
+    if expr.is_path() {
+        return path_text(c, env, body)?
+            .ok_or_else(|| RenderError::Unresolved(format!("{body} (absent)")));
+    }
+    let get = |path: &str| -> Result<i64, String> {
+        match path_text(c, env, path) {
+            Ok(Some(t)) => t.parse().map_err(|_| format!("`{path}` is not an int")),
+            Ok(None) => Err(format!("`{path}` is absent")),
+            Err(e) => Err(e.to_string()),
+        }
+    };
+    expr.eval(&get)
+        .map(|n| n.to_string())
+        .map_err(|e| RenderError::Arithmetic(format!("{{{body}}}: {e:?}")))
+}
+
 /// An attribute's value, interpolated, or `None` when it is an absent option.
 fn attr_value(c: &Component, env: &Env, attr: &Attr) -> Result<Option<String>, RenderError> {
     let v = attr.value.as_str();
@@ -436,8 +460,7 @@ fn attr_value(c: &Component, env: &Env, attr: &Attr) -> Result<Option<String>, R
                 .map(|p| p + open)
                 .ok_or_else(|| RenderError::Unresolved(v.to_string()))?;
             let body = &rest[open + 1..close];
-            let text = path_text(c, env, body)?
-                .ok_or_else(|| RenderError::Unresolved(format!("{body} (absent)")))?;
+            let text = interpolated(c, env, body)?;
             out.push_str(&text);
             rest = &rest[close + 1..];
         }

@@ -343,7 +343,7 @@ pub const FEATURES: &[Feature] = &[
         grammar: &[
             "component <name>\n  prop …\n  view\n    …\n  end\n  contract\n    …\n  end\nend component <name>",
         ],
-        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
+        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. A `{…}` in a view string holds a path or `int` arithmetic (`+ - * / %`, parentheses, `min`, `max`; RFC-0017 §6). Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
         types: "",
         codes: &[],
         examples: &[checked(COMPONENT)],
