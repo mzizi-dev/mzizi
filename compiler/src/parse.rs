@@ -2021,6 +2021,73 @@ impl Parser {
             ));
         }
 
+        // `render [with <prop> = <value> …] [of <attr>] <predicate>` — a claim about the
+        // markup the component renders to (RFC-0017 §7). `render` opens this form only when
+        // `with`, `of` or a render predicate follows, so a prop called `render` still reads
+        // as a name.
+        if matches!(self.peek(), Tok::Ident(w) if w == "render")
+            && matches!(
+                self.tokens.get(self.pos + 1).map(|t| &t.kind),
+                Some(Tok::Ident(w)) if matches!(w.as_str(), "with" | "of" | "contains" | "omits" | "not_empty")
+            )
+        {
+            self.bump();
+            let mut props = Vec::new();
+            if matches!(self.peek(), Tok::Ident(w) if w == "with") {
+                self.bump();
+                while matches!(self.peek(), Tok::Ident(w) if !PREDICATE_WORDS.contains(&w.as_str()) && w != "of")
+                {
+                    let name = self.expect_ident("`render with`")?;
+                    if !matches!(self.peek(), Tok::Equals) {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0601",
+                            &self.file,
+                            span,
+                            format!(
+                                "`render with {name}` needs `= <value>`, found {}",
+                                describe(self.peek())
+                            ),
+                        ));
+                        return None;
+                    }
+                    self.bump();
+                    let Some(value) = self.value() else {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0601",
+                            &self.file,
+                            span,
+                            format!(
+                                "`render with {name} =` needs a value, found {}",
+                                describe(self.peek())
+                            ),
+                        ));
+                        return None;
+                    };
+                    props.push((name, value));
+                }
+                if props.is_empty() {
+                    let span = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0601",
+                        &self.file,
+                        span,
+                        "`render with` needs at least one `<prop> = <value>`",
+                    ));
+                    return None;
+                }
+            }
+            let target = if matches!(self.peek(), Tok::Ident(w) if w == "of") {
+                self.bump();
+                Some(self.expect_ident("`render … of`")?)
+            } else {
+                None
+            };
+            let predicate = self.parse_predicate()?;
+            return Some((Subject::Render { props, target }, predicate));
+        }
+
         // Everything else opens with a name.
         let head = self.expect_ident("a contract clause")?;
         let subject = if matches!(self.peek(), Tok::Dot) {
@@ -2124,6 +2191,10 @@ impl Parser {
                 "min_height" => {
                     self.bump();
                     self.expect_int("`min_height`").map(Predicate::MinHeight)
+                }
+                "omits" => {
+                    self.bump();
+                    self.expect_string("`omits`").map(Predicate::Omits)
                 }
                 _ => self.missing_predicate(),
             },
