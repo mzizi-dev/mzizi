@@ -1138,13 +1138,36 @@ impl<'a> Resolver<'a> {
                         && !seg.starts_with(|c: char| c.is_ascii_digit())
                 });
             if !valid {
-                self.err(
-                    "MZ0714",
-                    span,
-                    format!(
-                        "`{{{body}}}` — interpolation holds one name or dotted path, e.g. `{{state.label}}`; there are no operators"
-                    ),
-                );
+                match crate::viewexpr::parse(&body) {
+                    Ok(expr) if !body.is_empty() => {
+                        // Integer arithmetic (RFC-0017 §6): every name it reads is an int.
+                        for path in expr.paths() {
+                            let segs = vec![span; path.split('.').count()];
+                            let ty = self.path(path, &segs, span, scope);
+                            if !matches!(ty, Ty::Int | Ty::Unknown) {
+                                self.err(
+                                    "MZ0711",
+                                    span,
+                                    format!(
+                                        "`{path}` is {ty} — arithmetic in a view takes `int` values"
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    Ok(_) | Err(_) => {
+                        let why = crate::viewexpr::parse(&body)
+                            .err()
+                            .map_or_else(|| "it is empty".to_string(), |e| e.say);
+                        self.err(
+                            "MZ0714",
+                            span,
+                            format!(
+                                "`{{{body}}}` — {why}; an interpolation holds one name or dotted path, e.g. `{{state.label}}`, or `int` arithmetic such as `{{100 - value}}`"
+                            ),
+                        );
+                    }
+                }
                 continue;
             }
             // Segment spans, from offsets within the string.
