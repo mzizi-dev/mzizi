@@ -341,7 +341,7 @@ pub const FEATURES: &[Feature] = &[
         grammar: &[
             "component <name>\n  prop …\n  view\n    …\n  end\n  contract\n    …\n  end\nend component <name>",
         ],
-        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
+        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
         types: "",
         codes: &[],
         examples: &[checked(COMPONENT)],
@@ -790,9 +790,9 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "mz check",
         word: "check",
-        usage: "mz check [--agent] <file.mz>",
+        usage: "mz check [--agent] <file.mz | dir>",
         takes_file: true,
-        teach: "Check one file: every diagnostic, in source order, one per true error. `--agent` prints RFC-0001 §4's NDJSON, one diagnostic per line and then a summary line. Exits 0 with no errors (warnings allowed), 1 with errors, 2 for a usage or I/O problem.",
+        teach: "Check one file: every diagnostic, in source order, one per true error. `--agent` prints RFC-0001 §4's NDJSON, one diagnostic per line and then a summary line. Exits 0 with no errors (warnings allowed), 1 with errors, 2 for a usage or I/O problem. Given a directory, it checks every `.mz` file under it, recursively, in sorted path order (hidden directories and `target` are skipped): the diagnostics of each file in turn, each with its own `file` path, and one summary line at the end that adds a `files` count and sums the rest. An unreadable file or a directory with no `.mz` file exits 2, after every readable file has been checked.",
         rfc: "RFC-0001 §4",
     },
     Command {
@@ -806,9 +806,9 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "mz contract",
         word: "contract",
-        usage: "mz contract [--agent] <file.mz>",
+        usage: "mz contract [--agent] <file.mz | dir>",
         takes_file: true,
-        teach: "Check the file, then evaluate its `contract` block: a component's against its own declarations, a service's by running it in process. A failed assertion exits 1, as an error does. A program's contract block is not built.",
+        teach: "Check the file, then evaluate its `contract` block: a component's against its own declarations, a service's by running it in process. A failed assertion exits 1, as an error does. A program's contract block is not built. Given a directory, it does this for every `.mz` file under it, as `mz check` does, and the one summary line sums `contract_clauses` and `contract_failures` over the files.",
         rfc: "RFC-0006, RFC-0010, RFC-0011 §7",
     },
     Command {

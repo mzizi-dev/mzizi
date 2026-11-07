@@ -305,33 +305,65 @@ impl CheckReport {
         contract: Option<(usize, usize)>,
         tested: Option<usize>,
     ) -> String {
+        let mut out = self.diagnostics_ndjson();
+        let warnings = self.diagnostics.len() - self.error_count();
+        out.push_str(&summary_ndjson(
+            None,
+            self.error_count(),
+            warnings,
+            self.exact_fixable(),
+            contract,
+            tested,
+            elapsed_ms,
+        ));
+        out
+    }
+
+    /// Every diagnostic as one NDJSON line each, with no summary line. `mz` on a directory
+    /// prints these per file and one [`summary_ndjson`] at the end.
+    pub fn diagnostics_ndjson(&self) -> String {
         let mut out = String::new();
         for d in &self.diagnostics {
             out.push_str(&d.to_ndjson());
             out.push('\n');
         }
-        let warnings = self.diagnostics.len() - self.error_count();
-        write!(
-            out,
-            r#"{{"summary":true,"errors":{},"warnings":{},"exact_fixable":{}"#,
-            self.error_count(),
-            warnings,
-            self.exact_fixable(),
-        )
-        .unwrap();
-        if let Some((clauses, failed)) = contract {
-            write!(
-                out,
-                r#","contract_clauses":{clauses},"contract_failures":{failed}"#
-            )
-            .unwrap();
-        }
-        if let Some(n) = tested {
-            write!(out, r#","contract_tested":{n}"#).unwrap();
-        }
-        writeln!(out, r#","ms":{elapsed_ms}}}"#).unwrap();
         out
     }
+}
+
+/// RFC-0001 §4.4's summary line, with its newline. `files` is the number of files a
+/// directory run read, and is absent for a run on one file, so a single-file line is
+/// unchanged. The contract keys are written only when contracts were evaluated.
+pub fn summary_ndjson(
+    files: Option<usize>,
+    errors: usize,
+    warnings: usize,
+    exact_fixable: usize,
+    contract: Option<(usize, usize)>,
+    tested: Option<usize>,
+    elapsed_ms: u128,
+) -> String {
+    let mut out = String::from(r#"{"summary":true"#);
+    if let Some(n) = files {
+        write!(out, r#","files":{n}"#).unwrap();
+    }
+    write!(
+        out,
+        r#","errors":{errors},"warnings":{warnings},"exact_fixable":{exact_fixable}"#
+    )
+    .unwrap();
+    if let Some((clauses, failed)) = contract {
+        write!(
+            out,
+            r#","contract_clauses":{clauses},"contract_failures":{failed}"#
+        )
+        .unwrap();
+    }
+    if let Some(n) = tested {
+        write!(out, r#","contract_tested":{n}"#).unwrap();
+    }
+    writeln!(out, r#","ms":{elapsed_ms}}}"#).unwrap();
+    out
 }
 
 #[cfg(test)]

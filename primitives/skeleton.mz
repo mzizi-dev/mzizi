@@ -1,0 +1,26 @@
+## A loading placeholder on the muted token, with the card-scale corner. Sized by the caller.
+## Corpus reference: n2-primitives/skeleton.tsx. The caller's `class` is a pass-through
+## attribute, which the language does not have yet (LANGUAGE-TRACKER U3), so this file holds
+## the placeholder itself and not the sizing.
+component skeleton
+
+  view
+    row
+      slot = "skeleton"
+      portal = "https://mzizi.dev/components/skeleton"
+      class = "animate-pulse rounded-[var(--radius-xl,17px)] bg-muted"
+    end
+  end
+
+  contract
+    slot is "skeleton"
+    class contains "animate-pulse"
+    class contains "bg-muted"
+    class uses "--radius-xl"
+    render of slot is "skeleton"
+    render of class contains "animate-pulse"
+    render contains "data-portal"
+    render omits "<script"
+  end
+
+end component skeleton
