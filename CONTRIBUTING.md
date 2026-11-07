@@ -419,8 +419,9 @@ before committing there, or commit with `--no-verify`.
 ## Things that are out of scope right now
 
 The charter's §5 is a list of non-goals and it is enforced, not aspirational: no competing
-tensor runtime (Candle is the dependency), no native cross-platform renderer before Dioxus
-interop has been tried and found insufficient, no post-quantum cryptography. Phase 1
+tensor runtime (Candle is the dependency), no native cross-platform renderer (the charter's
+"Dioxus interop first" condition is withdrawn: Dioxus is out of the stack, owner decision 2026-11-04,
+[`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)), no post-quantum cryptography. Phase 1
 rendering work does not start until Phase 0 has a benchmark number attached to it. A pull
 request implementing a later phase will be held, not merged, however good it is — that is
 what "research portfolios ship one thread at a time or nothing ships" means in practice.

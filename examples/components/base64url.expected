@@ -1,0 +1,12 @@
+empty: [] round trip true
+f: [Zg] round trip true
+fo: [Zm8] round trip true
+foo: [Zm9v] round trip true
+foob: [Zm9vYg] round trip true
+fooba: [Zm9vYmE] round trip true
+foobar: [Zm9vYmFy] round trip true
+url-safe bytes: [-_--] round trip true
+Zg== rejected: = is not in the base64url alphabet
+Zm9vY rejected: a length of 4n + 1 is not base64url
+Zm+v rejected: + is not in the base64url alphabet
+[102, 111, 111]
