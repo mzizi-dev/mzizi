@@ -10,9 +10,10 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use crate::expr::Ty;
+use crate::expr::{FnSig, Ty};
 
 static PAIRS: Mutex<Vec<&'static (Ty, Ty)>> = Mutex::new(Vec::new());
+static SIGS: Mutex<Vec<&'static FnSig>> = Mutex::new(Vec::new());
 static ONES: Mutex<Vec<&'static Ty>> = Mutex::new(Vec::new());
 
 /// A lock that a panic elsewhere cannot poison for good: the list only ever grows, so what
@@ -41,6 +42,17 @@ pub fn one(t: Ty) -> &'static Ty {
     }
     let leaked: &'static Ty = Box::leak(Box::new(t));
     ones.push(leaked);
+    leaked
+}
+
+/// A function type's signature, as one that lives as long as the process (RFC-0018).
+pub fn sig(s: FnSig) -> &'static FnSig {
+    let mut sigs = lock(&SIGS);
+    if let Some(&have) = sigs.iter().find(|p| ***p == s) {
+        return have;
+    }
+    let leaked: &'static FnSig = Box::leak(Box::new(s));
+    sigs.push(leaked);
     leaked
 }
 

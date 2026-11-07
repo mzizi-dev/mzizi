@@ -468,6 +468,13 @@ impl Lower<'_> {
                 self.rust_type(v)
             ),
             Ty::Set(t) => format!("::std::collections::BTreeSet<{}>", self.rust_type(*t)),
+            Ty::Func(sig) => {
+                let params: Vec<String> = sig.params.iter().map(|p| self.rust_type(*p)).collect();
+                match sig.ret {
+                    Ty::Nothing => format!("fn({})", params.join(", ")),
+                    r => format!("fn({}) -> {}", params.join(", "), self.rust_type(r)),
+                }
+            }
             Ty::Nothing | Ty::Error => "()".to_string(),
         }
     }
@@ -626,7 +633,14 @@ impl Lower<'_> {
             ExprKind::Text(_) => Ty::Text,
             ExprKind::Name(n) => match self.types.get(n) {
                 Some(t) => *t,
-                None => self.variant_type(n, None),
+                None => match self.fns.get(n.as_str()) {
+                    // A bare `fn` name is a function value (RFC-0018 §2).
+                    Some(f) => Ty::func(
+                        f.params.iter().map(|p| p.ty.ty).collect(),
+                        f.ret.map_or(Ty::Nothing, |r| r.ty),
+                    ),
+                    None => self.variant_type(n, None),
+                },
             },
             ExprKind::Variant { enum_name, .. } => self.variant_type("", Some(enum_name)),
             ExprKind::When { arms, .. } => arms.first().map_or(Ty::Error, |(_, v)| self.ty(v)),
@@ -714,6 +728,7 @@ impl Lower<'_> {
             ExprKind::Name(n) => match self.types.get(n) {
                 Some(t) if !t.is_copy() => format!("{}.clone()", ident(n)),
                 Some(_) => ident(n),
+                None if self.fns.contains_key(n.as_str()) => fn_ident(n),
                 None => self.variant_path(n, None),
             },
             ExprKind::Variant {
@@ -755,17 +770,25 @@ impl Lower<'_> {
                         .unwrap_or_default();
                     return format!("Err({arg})");
                 }
-                let params: Vec<Ty> = self
-                    .fns
-                    .get(name.as_str())
-                    .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
-                    .unwrap_or_default();
+                let through_value = match self.types.get(name) {
+                    Some(Ty::Func(sig)) => Some(sig.params.clone()),
+                    _ => None,
+                };
+                let params: Vec<Ty> = match &through_value {
+                    Some(p) => p.clone(),
+                    None => self
+                        .fns
+                        .get(name.as_str())
+                        .map(|f| f.params.iter().map(|p| p.ty.ty).collect())
+                        .unwrap_or_default(),
+                };
                 let args: Vec<String> = args
                     .iter()
                     .enumerate()
                     .map(|(k, a)| self.expr_want(a, params.get(k).copied().unwrap_or(Ty::Error)))
                     .collect();
                 let callee = match self.fns.get(name.as_str()) {
+                    _ if through_value.is_some() => ident(name),
                     Some(f) if errors::is_result_main(f) => "mz_main_result".to_string(),
                     _ => fn_ident(name),
                 };

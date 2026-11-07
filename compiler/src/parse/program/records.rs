@@ -155,6 +155,7 @@ impl P {
         }
         self.bump();
         let ty = self.type_ref("a field's `:`");
+        let ty = self.no_fn(ty, "the type of a record's field");
         self.finish_line(&format!("field `{name}`"));
         Some(RecordField { name, span, ty })
     }

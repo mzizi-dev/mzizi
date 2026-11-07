@@ -111,9 +111,11 @@ impl P {
     pub(super) fn constructor_type(&mut self, name: &str, at: Span) -> TypeRef {
         self.bump(); // `(`
         let first = self.type_ref(&format!("`{name}(`"));
+        let first = self.no_fn(first, "the element of a collection");
         let second = if name == "map" && matches!(self.peek(), Tok::Comma) {
             self.bump();
-            Some(self.type_ref("`map(…,`"))
+            let v = self.type_ref("`map(…,`");
+            Some(self.no_fn(v, "the element of a collection"))
         } else {
             None
         };

@@ -258,6 +258,8 @@ const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
 const FIB: &str = include_str!("../../examples/fib.mz");
 const RECORDS: &str = include_str!("../../examples/records.mz");
 const RECORDS_OUT: &str = include_str!("../../examples/records.expected");
+const FN_VALUES: &str = include_str!("../../examples/fn_values.mz");
+const FN_VALUES_OUT: &str = include_str!("../../examples/fn_values.expected");
 const TEXT_OPS: &str = include_str!("../../examples/text.mz");
 const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
 const FIB_OUT: &str = include_str!("../../examples/fib.expected");
@@ -664,6 +666,21 @@ pub const FEATURES: &[Feature] = &[
         types: "The value has the field's type. The record is a `var` and is changed in place.",
         codes: &["MZ0960", "MZ0711", "MZ0708", "MZ0971", "MZ0970", "MZ0991"],
         examples: &[run(RECORDS, RECORDS_OUT)],
+    },
+    Feature {
+        name: "function values",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0018 §1, §2, §3",
+        grammar: &[
+            "fn <name>(<param>: fn(<type>, …): <type>, …)",
+            "let <name>: fn(<type>, …): <type> = <fn name>",
+            "<name>(<arguments>)",
+        ],
+        teach: "A parameter or a `let` or `var` may have a function type, `fn(int): bool`, or `fn(text)` for a function that returns nothing. A `fn` of the program is a value by its bare name where a function type is expected: an argument to a parameter of that type, or the value of a `let` or `var` that declares it. A function value is called like any function, `check(x)`, with the arguments its type gives by position. It carries nothing: a value is the name of one `fn`, so it reads no local of the code around it (inline functions and captures are designed, not built). A function type is not a record field, a collection element, a payload or a return type (`MZ0977`), and a bare `fn` name anywhere else, or one whose signature does not fit the type expected, is `MZ0909`. A function value has no text form and no equality. Lowers to Rust's `fn(…) -> …` pointer.",
+        types: "`fn(T, …): R`: `T` and `R` any types a `fn` parameter and result have; no `R` for a function that returns nothing. Lowers to `fn(…) -> …`.",
+        codes: &["MZ0909", "MZ0977", "MZ0905", "MZ0306"],
+        examples: &[run(FN_VALUES, FN_VALUES_OUT)],
     },
     Feature {
         name: "result",
@@ -1183,7 +1200,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.4, §16",
         NONE_EXACT,
         PROGRAM,
-        "a `fn` used as a value outside `map`, `filter` and the folds (exact fix `()` when it takes no parameters), a function argument that is not a named `fn` or whose signature does not fit (the say quotes both), or a lambda",
+        "a `fn` used as a value where no function type is expected (exact fix `()` when it takes no parameters), a function argument that is not a named `fn` or whose signature does not fit (the say quotes both), or a lambda",
         "program t\n  fn main\n    print(one)\n  end fn main\n  fn one: int\n    return 1\n  end fn one\nend program t\n",
     ),
     code(
@@ -1511,6 +1528,14 @@ pub const CODES: &[Code] = &[
         "program t\n  record span\n    field low: int\n    field high: int\n    contract\n      always low <= high\n    end\n  end\n  fn main\n    print(span(low = 3, high = 1))\n  end fn main\nend program t\n",
     ),
     code(
+        "MZ0977",
+        "RFC-0018 §1, §4",
+        NONE,
+        PROGRAM,
+        "a function type where it is not allowed yet (as a record's field, a collection's element, the payload of a result, or the return type of a `fn`; it is the type of a parameter or of a `let`), or a function value compared with `is` or an ordering operator",
+        "program t\n  fn make: fn(int): int\n    return 1\n  end fn make\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0980",
         "RFC-0013 §1, §16",
         NONE_EXACT,
@@ -1733,7 +1758,8 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
         | Ty::Option(_)
         | Ty::Map(_)
         | Ty::Set(_)
-        | Ty::Record(_) => None,
+        | Ty::Record(_)
+        | Ty::Func(_) => None,
     }
 }
 
