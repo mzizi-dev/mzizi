@@ -129,11 +129,13 @@ impl P {
                 span: s,
             }
         } else {
-            self.type_ref("`result(`")
+            let t = self.type_ref("`result(`");
+            self.no_fn(t, "the payload of a result")
         };
         let err = if matches!(self.peek(), Tok::Comma) {
             self.bump();
-            Some(self.type_ref("`result(…,`"))
+            let t = self.type_ref("`result(…,`");
+            Some(self.no_fn(t, "the payload of a result"))
         } else {
             None
         };
