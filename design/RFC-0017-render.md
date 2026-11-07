@@ -104,9 +104,29 @@ acquire one. The renderer has no code path from `text` to unescaped output.
 ## 6. Conditional attributes and expressions in a view
 
 Writing `separator` against the registry's contract showed two things the view could not say:
-`role="none"` versus `role="separator"` chosen by a `bool` prop (U10, still open), and
+`role="none"` versus `role="separator"` chosen by a `bool` prop (U10), and
 `progress`'s `transform: translateX(-{100 - value}%)`, because an interpolation held one name and
 no operators.
+
+**Conditional attributes (U10), built.** An attribute line may carry a condition:
+
+```mz
+role = "none" when decorative else "separator"
+aria_orientation = none when decorative else "vertical" when axis is vertical
+```
+
+`<value> when <condition> [else <value> when <condition>]… [else <value>]`. A condition is a `when`
+element's: `<name>` (a `bool`), `not <name>`, or `<name> is <variant or none>`. The first link
+whose condition holds is the attribute's value; with no plain final `else`, the attribute is
+absent when none holds, and `none` as a value omits it. `text = …` takes the same form. The checker
+reads every condition and every value (`MZ0707`, `MZ0708`, `MZ0711`, `MZ0712`); an `else` with no
+`when` before it, or after a plain `else`, is `MZ0404`. The chain is part of the attribute's
+canonical value, so the IR hash of a component moves when a condition does and is unchanged for
+every component without one. A static contract clause about a conditional attribute is
+unevaluable (there is no single value), and a `render` clause tests it. `separator` is written
+with it and now renders `role="none"` or `role="separator"` and an `aria-orientation` only for a
+semantic vertical rule, as the registry's contract has it; `data-decorative` is gone. Not covered:
+`and` and `or` in a condition, and option narrowing inside the chain.
 
 **Expressions in a view string (U11), built.** A `{…}` in a view attribute string holds a path, or
 `int` arithmetic: integer literals, prop and enum-column paths, unary `-`, `+ - * / %` with the
@@ -153,8 +173,7 @@ element-to-tag table of §1.1 stands. **Q2 is not decided**, so children and slo
   unlisted tag; it costs one table edit per new word.
 - **Q2.** Call-site syntax for composing one component inside another (`uses button` is read today
   but not rendered).
-- **Q3.** `data-decorative="true"` is not an accessibility attribute. Until U10, the registry's
-  `role` rule is not reproduced; the TypeScript and Rust siblings remain the reference for it.
+- **Q3.** Answered by U10: `separator` reproduces the registry's `role` rule.
 
 ## 9. Waves
 
@@ -162,6 +181,7 @@ element-to-tag table of §1.1 stands. **Q2 is not decided**, so children and slo
 | ---- | ------------------------------------------------------------------------------------ | ------- | ----------------------------------------------------------- |
 | 0    | Element tree, serialiser, escaping, typed props, `when`/`else`, the closed tag table | U1, U9  | built, `compiler/tests/render.rs`                           |
 | 1    | Render-backed contract clauses                                                       | U7      | built, `compiler/tests/contracts.rs`                        |
+| 1c   | Conditional attributes (`value when c else value`)                                   | U10     | built, `primitives/separator.mz`                            |
 | 1b   | Integer arithmetic in a view string                                                  | U11     | built, `compiler/src/viewexpr.rs`, `primitives/progress.mz` |
 | 2    | `content` props, named placement                                                     | U2      | designed; waits for the owner's call-site decision (Q2)     |
 | 3    | `attrs` pass-through with an allow list                                              | U3      | designed                                                    |

@@ -204,4 +204,41 @@ pub struct Attr {
     pub span: Span,
     /// Each dotted segment's span, for a path; empty for a literal.
     pub segments: Vec<Span>,
+    /// For a view attribute written `value when <condition>`: the condition's words, as a
+    /// `when` element's attributes are (RFC-0017 §6, tracker U10). `None` for an
+    /// unconditional attribute, which is every attribute but those.
+    pub guard: Option<Vec<Attr>>,
+    /// The attribute's later alternatives, in source order: `value when <c> else <value>
+    /// when <c> else <value>`. Each is an [`Attr`] with the same name; the last has no
+    /// guard when the chain ends in a plain `else <value>`. Empty for an attribute with no
+    /// `else`. With no final `else`, the attribute is absent when no guard holds.
+    pub otherwise: Vec<Attr>,
+}
+
+impl Attr {
+    /// The value in one canonical spelling, conditions included. Equal to [`Attr::value`]
+    /// for an unconditional attribute, so existing hashes do not move.
+    pub fn canonical_value(&self) -> String {
+        fn guard_text(out: &mut String, guard: &Option<Vec<Attr>>) {
+            if let Some(words) = guard {
+                out.push_str(" when");
+                for word in words {
+                    if !word.name.is_empty() {
+                        out.push(' ');
+                        out.push_str(&word.name);
+                    }
+                    out.push(' ');
+                    out.push_str(&word.value);
+                }
+            }
+        }
+        let mut out = self.value.clone();
+        guard_text(&mut out, &self.guard);
+        for alt in &self.otherwise {
+            out.push_str(" else ");
+            out.push_str(&alt.value);
+            guard_text(&mut out, &alt.guard);
+        }
+        out
+    }
 }
