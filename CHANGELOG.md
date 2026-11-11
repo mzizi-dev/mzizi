@@ -28,6 +28,21 @@ carry no pull request number.
 
 - **`benchmarks/probe`'s readiness wait sends `GET /` and requires an HTTP status line.** A container runtime that publishes a port accepts connections before the server inside listens, so a bare connect started probing early (a known-bad Go candidate failed all 59 facts for that reason before the change, and 35 after). The probe crate's tests (`cargo test -p mzizi-benchmark-probe`) pass; the change affects no reference started by `mzprobe verify`.
 
+### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
+
+- **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
+- **`design/RFC-0013-core-language.md`:** a dated note under §6.4 and on §20 Q7 pointing to RFC-0018. Its rules are unchanged.
+- **`LANGUAGE-TRACKER.md`:** row K5 names RFC-0018 as its design. Its mark stays ❌.
+
+### Added — integer arithmetic in a view string, and `progress` in Mzizi (RFC-0017 §6, U11, #153, 2026-11-07)
+
+- **A `{…}` in a view attribute string may hold `int` arithmetic** (`compiler/src/viewexpr.rs`, new): integer literals, prop and enum-column paths, unary `-`, `+ - * / %`, parentheses, `min(a, b)` and `max(a, b)`. The checker and the renderer read a body with the same parser. A name that is not an `int` is `MZ0711`; a malformed body is `MZ0714` (whose text now says what was wrong and names the arithmetic form). `{a + a}` on a `text` prop was `MZ0714`; it is now `MZ0711`. Rendering uses checked arithmetic: division by zero or overflow is `RenderError::Arithmetic`, not a wrapped number. `style` now passes through to markup. Service and program text interpolation are unchanged.
+- **`primitives/progress.mz` (new):** `aria-valuemin`, `aria-valuemax`, `aria-valuenow` and the indicator's `translateX(-{100 - min(max(value, 0), 100)}%)`. Nine contract clauses, including render clauses at 0, 40, 100 and 150, pass under `mz contract`. Not covered: `max`, the indeterminate state, `data-state` (U10) and the caller's `class` (U3).
+- **Tested:** 5 unit tests in `viewexpr.rs` (precedence, clamp, errors), checker tests in `compiler/tests/types.rs`, render tests in `compiler/tests/render.rs` (progress at 0, 40, 100, 150, -5; divide by zero refused).
+- **`LANGUAGE-TRACKER.md` U11:** ❌ to 🟡 with evidence. **RFC-0017:** §6 built; §8 Q1 (the closed element table) accepted by the owner on #153, Q2 (call-site composition) undecided.
+- **Not claimed:** nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
+- **Site/docs impact:** a view string may hold `int` arithmetic; the primitives list gains `progress`; the tracker's U11 moves.
+
 ### Added — `mz check` and `mz contract` take a directory (toolchain, 2026-11-04)
 
 - `mz check [--agent] <dir>` and `mz contract [--agent] <dir>` read every `.mz` file under the directory, recursively, in sorted path order (hidden directories, `target` and symlinked directories are skipped), and print each file's diagnostics with its own `file` path. The last line is one summary: in `--agent` mode the usual summary object with a new `files` key and every count summed (`errors`, `warnings`, `exact_fixable`, and for `contract` `contract_clauses`, `contract_failures`, `contract_tested`); a run on one file prints exactly what it printed before. Exit status: 0 with no errors, 1 when any file has an error or a failed clause, 2 for a directory with no `.mz` file or an unreadable file (after every readable file has run). `outline`, `hash`, `ir`, `fix`, `build` and `run` still take one file and say so (exit 2).
