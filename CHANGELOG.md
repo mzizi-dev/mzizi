@@ -26,6 +26,12 @@ carry no pull request number.
 - **`LANGUAGE-TRACKER.md` U10:** ❌ to 🟡 with evidence. **RFC-0017** §6 updated. Not claimed: nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
 - **Site/docs impact:** the view grammar gains `value when <condition> else <value>`; `separator`'s rendered attributes change.
 
+### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
+
+- **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
+- **`design/RFC-0013-core-language.md`:** a dated note under §6.4 and on §20 Q7 pointing to RFC-0018. Its rules are unchanged.
+- **`LANGUAGE-TRACKER.md`:** row K5 names RFC-0018 as its design. Its mark stays ❌.
+
 ### Added — integer arithmetic in a view string, and `progress` in Mzizi (RFC-0017 §6, U11, #153, 2026-11-07)
 
 - **A `{…}` in a view attribute string may hold `int` arithmetic** (`compiler/src/viewexpr.rs`, new): integer literals, prop and enum-column paths, unary `-`, `+ - * / %`, parentheses, `min(a, b)` and `max(a, b)`. The checker and the renderer read a body with the same parser. A name that is not an `int` is `MZ0711`; a malformed body is `MZ0714` (whose text now says what was wrong and names the arithmetic form). `{a + a}` on a `text` prop was `MZ0714`; it is now `MZ0711`. Rendering uses checked arithmetic: division by zero or overflow is `RenderError::Arithmetic`, not a wrapped number. `style` now passes through to markup. Service and program text interpolation are unchanged.
