@@ -304,3 +304,69 @@ fn conditional_text_and_an_option_guard_render_the_chosen_value() {
         "<span title=\"no note\">!</span>"
     );
 }
+
+fn css(s: &str) -> Value {
+    Value::Css(mzizi_lang_compiler::render::Css::new(s).expect("accepted css"))
+}
+
+#[test]
+fn raw_css_is_the_only_unescaped_output_and_it_is_sanitised_first() {
+    let c = load("primitives/theme_style.mz");
+    // Written as given: `>` and `'` are not escaped inside the style element.
+    let html = render(&c, &[("rules", css("a > b{content:'x'}"))]).unwrap();
+    assert_eq!(
+        html,
+        "<style data-slot=\"theme-style\">a > b{content:'x'}</style>"
+    );
+}
+
+#[test]
+fn the_sanitiser_refuses_what_could_leave_the_style_element() {
+    use mzizi_lang_compiler::render::Css;
+    for bad in [
+        "a{} </style><script>x()</script>",
+        "<!-- a{}",
+        "a{background:url(http://x/y)}",
+        "a{background:URL (x)}",
+        "@import 'x.css';",
+        "@  import 'x';",
+        "a{width:expression(alert(1))}",
+        "a{behavior:x}",
+        "a{-moz-binding:x}",
+        "a{x:javascript:y}",
+        "a{content:\"\\3c script\"}",
+        "a{}\u{0}",
+    ] {
+        assert!(Css::new(bad).is_err(), "{bad:?} must be refused");
+    }
+    for good in [
+        ":root{--radius:14px}",
+        "a > b + c ~ d{margin:0 auto}",
+        ".x:hover{color:var(--primary)}",
+        "",
+    ] {
+        assert!(Css::new(good).is_ok(), "{good:?} must be accepted");
+    }
+}
+
+#[test]
+fn text_is_still_escaped_everywhere_else() {
+    // No path from a text prop to unescaped output: the badge's label stays escaped.
+    let c = load("primitives/badge.mz");
+    let html = render(&c, &[("label", text("<style>a{}</style>"))]).unwrap();
+    assert!(html.contains("&#60;style&#62;"), "{html}");
+    assert!(!html.contains("<style>"));
+}
+
+#[test]
+fn a_css_prop_must_be_given_a_css_value() {
+    let c = load("primitives/theme_style.mz");
+    assert!(matches!(
+        render(&c, &[("rules", text("a{}"))]),
+        Err(RenderError::WrongType { .. })
+    ));
+    assert_eq!(
+        render(&c, &[]),
+        Err(RenderError::MissingProp("rules".into()))
+    );
+}

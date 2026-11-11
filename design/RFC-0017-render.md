@@ -93,13 +93,28 @@ list is a render error, so a pass-through is never an open door for `onclick` or
 escaped like any other attribute. Without the declaration, extra attributes are
 `RenderError::UnknownProp`, as in Wave 0.
 
-## 5. Explicit raw output (U5) — designed, not built
+## 5. Explicit raw output (U5) — built
 
-One narrow door, for a pre-sanitised CSS string in a `<style>` element (`mzizi-theme-provider`), and
-nothing else: a `raw` text attribute, legal only on the `style` element word, whose value must come
-from a prop of type `css` — a newtype that only a sanitising constructor makes. A `raw` anywhere
-else is a diagnostic. There is no raw HTML, so `markdown-renderer`, which has none by design, cannot
-acquire one. The renderer has no code path from `text` to unescaped output.
+One narrow door, for a pre-sanitised CSS string in a `<style>` element (the registry's
+`mzizi-theme-provider` uses `dangerous_inner_html` for it), and nothing else.
+
+- **The type.** `css` is a prop type, and only a prop type (`MZ0717` as a record field, a list item
+  or an option payload). A `css` prop has no default (`MZ0706`), and it cannot be interpolated or
+  used as an attribute value (`MZ0711`).
+- **The value.** In the library, `render::Css` is a newtype with a private field whose only
+  constructor is `Css::new`, a refusal list and not a CSS parser: it refuses `<` (so no `</style>`
+  and no `<!--`), a backslash, `@import`, `url(`, `expression(`, `javascript:`, `behavior`,
+  `-moz-binding` (matched regardless of case or inserted ASCII whitespace), and control characters
+  other than tab, newline and carriage return. In a `render` contract clause, a quoted value for a
+  `css` prop goes through the same constructor, so the contract cannot hand the renderer anything
+  the library would refuse.
+- **The door.** `raw = <css prop>` on a `style` element, and nowhere else: on any other element, with
+  a string, with a condition, or from a non-`css` prop it is `MZ0717`. The renderer's `Node::Raw`
+  holds a `Css` and is the only node serialised unescaped. There is no path from `text` or any
+  other value to unescaped output (tested), so `markdown-renderer`, which has no raw path by
+  design, cannot acquire one.
+- `primitives/theme_style.mz` is the style element only; the provider's token resolution is not
+  written in Mzizi.
 
 ## 6. Conditional attributes and expressions in a view
 

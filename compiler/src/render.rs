@@ -37,6 +37,81 @@ pub enum Node {
     },
     /// A run of text. Unescaped here; [`to_html`] escapes it.
     Text(String),
+    /// Sanitised CSS, written as it is: the only node [`to_html`] does not escape, and the
+    /// only way to make one is [`Css::new`] (RFC-0017 §5).
+    Raw(Css),
+}
+
+/// CSS that has passed [`Css::new`]. The field is private, so a `Css` cannot be built any
+/// other way, and the renderer writes unescaped only what is one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Css(String);
+
+/// Why [`Css::new`] refused a string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CssError(pub String);
+
+impl fmt::Display for CssError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for CssError {}
+
+impl Css {
+    /// The sanitising constructor: the one way to make a [`Css`].
+    ///
+    /// It is a refusal list, not a CSS parser, and it is defence in depth for a value that
+    /// already comes from a trusted place (a theme). It refuses `<` (so no `</style>`, no
+    /// `<!--`), a backslash (CSS escapes can spell anything), `@import`, `url(`,
+    /// `expression(`, `javascript:`, `behavior` and `-moz-binding`, matched without regard to
+    /// case or to ASCII whitespace inserted inside the word, and control characters other
+    /// than tab, newline and carriage return. Everything else is written as given.
+    pub fn new(css: &str) -> Result<Css, CssError> {
+        if let Some(c) = css
+            .chars()
+            .find(|c| c.is_control() && !matches!(c, '\t' | '\n' | '\r'))
+        {
+            return Err(CssError(format!(
+                "a control character (U+{:04X}) is not allowed",
+                c as u32
+            )));
+        }
+        if css.contains('<') {
+            return Err(CssError(
+                "`<` is not allowed: it could close the `<style>` element".to_string(),
+            ));
+        }
+        if css.contains('\\') {
+            return Err(CssError(
+                "a backslash is not allowed: a CSS escape can spell anything".to_string(),
+            ));
+        }
+        let squashed: String = css
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        for banned in [
+            "@import",
+            "url(",
+            "expression(",
+            "javascript:",
+            "behavior",
+            "-moz-binding",
+        ] {
+            if squashed.contains(banned) {
+                return Err(CssError(format!("`{banned}` is not allowed")));
+            }
+        }
+        Ok(Css(css.to_string()))
+    }
+
+    /// The accepted text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 /// A prop value supplied to [`render`], typed.
@@ -52,6 +127,8 @@ pub enum Value {
     Variant(String),
     /// An `option(T)` that is absent.
     None,
+    /// A `css` prop's value, already sanitised by [`Css::new`].
+    Css(Css),
 }
 
 /// Why a component could not be rendered. Every case is a refusal: a render that cannot be
@@ -127,6 +204,7 @@ pub fn tag_for(word: &str) -> Option<&'static str> {
         "figure" => "figure",
         "picture" => "img",
         "button" => "button",
+        "style" => "style",
         _ => return None,
     })
 }
@@ -183,6 +261,7 @@ pub fn to_html(nodes: &[Node]) -> String {
 fn write_node(out: &mut String, node: &Node) {
     match node {
         Node::Text(t) => out.push_str(&escape(t)),
+        Node::Raw(css) => out.push_str(css.as_str()),
         Node::Element {
             tag,
             attrs,
@@ -248,6 +327,7 @@ fn describe(v: &Value) -> String {
         Value::Text(t) => format!("the text \"{t}\""),
         Value::Variant(n) => format!("the variant `{n}`"),
         Value::None => "none".to_string(),
+        Value::Css(_) => "a css value".to_string(),
     }
 }
 
@@ -273,6 +353,7 @@ fn check_value(
         (TypeKind::Name(n), Value::Bool(_)) if n == "bool" => Ok(()),
         (TypeKind::Name(n), Value::Int(_)) if n == "int" => Ok(()),
         (TypeKind::Name(n), Value::Text(_)) if n == "text" => Ok(()),
+        (TypeKind::Name(n), Value::Css(_)) if n == "css" => Ok(()),
         (TypeKind::Name(n), Value::Variant(variant)) => match find_enum(c, n) {
             Some(decl) if decl.variants.iter().any(|x| &x.name == variant) => Ok(()),
             Some(_) => Err(RenderError::UnknownVariant {
@@ -281,7 +362,9 @@ fn check_value(
             }),
             None => Err(wrong()),
         },
-        (TypeKind::Name(n), _) if matches!(n.as_str(), "bool" | "int" | "text") => Err(wrong()),
+        (TypeKind::Name(n), _) if matches!(n.as_str(), "bool" | "int" | "text" | "css") => {
+            Err(wrong())
+        }
         (TypeKind::Name(n), _) if find_enum(c, n).is_some() => Err(wrong()),
         _ => Err(RenderError::Unsupported(format!(
             "prop `{}` has type {}, which the static renderer cannot take a value for",
@@ -516,7 +599,7 @@ fn holds_words(env: &Env, cond: &[&Attr]) -> Result<bool, RenderError> {
                 (Value::Bool(b), w) => b.to_string() == w,
                 (Value::Int(i), w) => i.to_string() == w,
                 (Value::Text(t), w) => format!("\"{t}\"") == w,
-                (Value::None, _) => false,
+                (Value::None, _) | (Value::Css(_), _) => false,
             })
         }
         _ => Err(RenderError::Unsupported(
@@ -577,6 +660,21 @@ fn element(c: &Component, env: &Env, el: &Element, out: &mut Vec<Node>) -> Resul
                         children.push(Node::Text(t));
                     }
                     continue;
+                }
+                if attr.name == "raw" {
+                    // The one unescaped door (RFC-0017 §5): a `css` prop, on `style`.
+                    match env.get(&attr.value) {
+                        Some(Value::Css(css)) if tag == "style" => {
+                            children.push(Node::Raw(css.clone()));
+                            continue;
+                        }
+                        _ => {
+                            return Err(RenderError::Unresolved(format!(
+                                "raw = {}: `raw` takes a css prop, on a `style` element",
+                                attr.value
+                            )));
+                        }
+                    }
                 }
                 let Some(name) = markup_attr(&attr.name) else {
                     continue;

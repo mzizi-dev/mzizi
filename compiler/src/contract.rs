@@ -705,6 +705,15 @@ fn render_value(component: &Component, prop: &str, written: &str) -> Result<Valu
             .parse()
             .map(Value::Int)
             .map_err(|_| format!("`{prop}` is an int: `{written}` is not a number")),
+        TypeKind::Name(n) if n == "css" => written
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .ok_or_else(|| format!("`{prop}` is css: write it in quotes"))
+            .and_then(|s| {
+                render::Css::new(s)
+                    .map(Value::Css)
+                    .map_err(|e| format!("`{prop}` is css the sanitiser refuses: {e}"))
+            }),
         TypeKind::Name(n) if n == "text" => written
             .strip_prefix('"')
             .and_then(|s| s.strip_suffix('"'))
@@ -751,6 +760,7 @@ fn judge_render(
                     .iter()
                     .filter_map(|c| match c {
                         render::Node::Text(t) => Some(t.as_str()),
+                        render::Node::Raw(css) => Some(css.as_str()),
                         render::Node::Element { .. } => None,
                     })
                     .collect::<String>()

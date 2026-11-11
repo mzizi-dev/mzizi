@@ -32,6 +32,8 @@ pub enum Ty {
     Int,
     /// `text`.
     Text,
+    /// `css`: pre-sanitised CSS, placed only with `raw` on a `style` element (RFC-0017 §5).
+    Css,
     /// A declared enum.
     Enum(String),
     /// A declared record.
@@ -55,6 +57,7 @@ impl fmt::Display for Ty {
             Ty::Bool => f.write_str("bool"),
             Ty::Int => f.write_str("int"),
             Ty::Text => f.write_str("text"),
+            Ty::Css => f.write_str("css"),
             Ty::Enum(name) | Ty::Record(name) => f.write_str(name),
             Ty::List(t) => write!(f, "list({t})"),
             Ty::Option(t) => write!(f, "option({t})"),
@@ -76,7 +79,7 @@ impl Ty {
     }
 }
 
-const BUILTINS: &[&str] = &["bool", "int", "text"];
+const BUILTINS: &[&str] = &["bool", "int", "text", "css"];
 const CONSTRUCTORS: &[&str] = &["list", "option", "event"];
 
 /// Type names other languages use for Mzizi's built-ins. Each maps to exactly one Mzizi
@@ -512,6 +515,15 @@ impl<'a> Resolver<'a> {
             "bool" => return Ty::Bool,
             "int" => return Ty::Int,
             "text" => return Ty::Text,
+            "css" if ctx == TyCtx::Prop => return Ty::Css,
+            "css" => {
+                self.err(
+                    "MZ0717",
+                    span,
+                    "`css` is the type of a prop only: it is placed with `raw` on a `style` element, so it cannot be a record field, a list item or an option payload".to_string(),
+                );
+                return Ty::Unknown;
+            }
             "list" | "option" => {
                 self.err(
                     "MZ0702",
@@ -670,6 +682,11 @@ impl<'a> Resolver<'a> {
             }
             Ty::Int if value.parse::<i64>().is_ok() => {}
             Ty::Int => self.err("MZ0706", value_span, wrong("an integer")),
+            Ty::Css => self.err(
+                "MZ0706",
+                value_span,
+                format!("`prop {name}: css` has no default — a `css` value comes from the sanitiser, not from the source"),
+            ),
             Ty::Text if value.starts_with('"') => {}
             Ty::Text => self.err_fix(
                 "MZ0706",
@@ -996,6 +1013,11 @@ impl<'a> Resolver<'a> {
         match (ty, use_) {
             (Ty::Unknown, _) => {}
             (Ty::Option(_), _) => self.unnarrowed(path, ty, span),
+            (Ty::Css, _) => self.err(
+                "MZ0711",
+                span,
+                format!("`{shown}` is css — it is placed with `raw = {shown}` on a `style` element, nowhere else"),
+            ),
             (Ty::Event(_) | Ty::Fn, Use::Attr | Use::Wire) => {}
             (_, Use::Wire) => self.err(
                 "MZ0711",
@@ -1045,6 +1067,10 @@ impl<'a> Resolver<'a> {
                     if attr.name.is_empty() || !is_ident(&attr.name) {
                         continue;
                     }
+                    if attr.name == "raw" {
+                        self.raw(el, attr, scope);
+                        continue;
+                    }
                     let use_ = match attr.name.as_str() {
                         "tap" | "change" => Use::Wire,
                         _ => Use::Attr,
@@ -1056,6 +1082,43 @@ impl<'a> Resolver<'a> {
                     self.element(child, scope);
                 }
             }
+        }
+    }
+
+    /// `raw = <css prop>` (RFC-0017 §5): the one door to unescaped output. It is legal on a
+    /// `style` element only, and its value must be a `css` prop, so the text that reaches the
+    /// page unescaped is text the sanitiser has already accepted.
+    fn raw(&mut self, el: &Element, attr: &Attr, scope: &Scope) {
+        if el.tag != "style" {
+            self.err(
+                "MZ0717",
+                attr.span,
+                format!(
+                    "`raw` is legal on a `style` element only, not on `{}` — text elsewhere is always escaped",
+                    el.tag
+                ),
+            );
+            return;
+        }
+        if attr.value.starts_with('"') || attr.guard.is_some() || !attr.otherwise.is_empty() {
+            self.err(
+                "MZ0717",
+                attr.span,
+                "`raw` takes a `css` prop by name, not a string or a condition".to_string(),
+            );
+            return;
+        }
+        let ty = self.path(&attr.value, &attr.segments, attr.span, scope);
+        if !matches!(ty, Ty::Css | Ty::Unknown) {
+            self.err(
+                "MZ0717",
+                attr.span,
+                format!(
+                    "`raw = {}` — `{}` is {ty}, and `raw` takes a `css` prop",
+                    clip(&attr.value),
+                    clip(&attr.value)
+                ),
+            );
         }
     }
 

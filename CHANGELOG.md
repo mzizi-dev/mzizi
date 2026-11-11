@@ -17,6 +17,15 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — explicit raw output: a `css` prop placed with `raw` on a `style` element (RFC-0017 §5, U5, #153, 2026-11-07)
+
+- **`css` is a prop type** (`compiler/src/resolve.rs`): only a prop (`MZ0717` as a record field, list item or option payload), no default (`MZ0706`), never interpolated or used as an attribute value (`MZ0711`). **`raw = <css prop>`** is legal on a `style` element only; on any other element, with a string, with a condition or from a non-`css` prop it is **`MZ0717`** (new, registered in the harness with a trigger).
+- **`render::Css`** (`compiler/src/render.rs`): a newtype whose only constructor, `Css::new`, refuses `<`, a backslash, `@import`, `url(`, `expression(`, `javascript:`, `behavior`, `-moz-binding` (any case, with ASCII whitespace squashed) and control characters; `Node::Raw(Css)` is the only node `to_html` writes unescaped. A `render` contract clause's quoted `css` value goes through the same constructor. `style` is in the element table.
+- **`primitives/theme_style.mz` (new):** the style element only; 7 contract clauses pass under `mz contract`.
+- **Tested:** `compiler/tests/render.rs` (output written as given, twelve refused inputs, accepted inputs, text elsewhere still escaped, wrong value type), `compiler/tests/types.rs` (every `MZ0717`, `MZ0711` and `MZ0706` case), the harness drift test with the new code.
+- **`LANGUAGE-TRACKER.md` U5:** 📝 to 🟡 with evidence. **RFC-0017** §5 built. Not claimed: the theme provider's token resolution is not in Mzizi; the sanitiser is a refusal list, defence in depth for a trusted value, not a CSS parser; nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
+- **Site/docs impact:** the view grammar gains `raw` and the `css` prop type; the primitives list gains `theme_style`; `MZ0717` joins the codes.
+
 ### Added — conditional attributes: `separator` sets `role` from `decorative` (RFC-0017 §6, U10, #153, 2026-11-07)
 
 - **A view attribute (or `text`) may be conditional:** `role = "none" when decorative else "separator"`, with `else <value> when <condition>` links and an optional plain final `else`. Conditions are a `when` element's (`<bool>`, `not <bool>`, `<name> is <variant or none>`). With no final `else` the attribute is absent when no guard holds; `none` as a value omits it. `ast::Attr` gains `guard` and `otherwise`; `Attr::canonical_value` puts the chain in the IR, so a component's hash moves when a condition does and no existing hash moves.

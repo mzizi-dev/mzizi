@@ -341,7 +341,7 @@ pub const FEATURES: &[Feature] = &[
         grammar: &[
             "component <name>\n  prop …\n  view\n    …\n  end\n  contract\n    …\n  end\nend component <name>",
         ],
-        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. A `{…}` in a view string holds a path or `int` arithmetic (`+ - * / %`, parentheses, `min`, `max`; RFC-0017 §6). An attribute may be conditional: `role = \"none\" when decorative else \"separator\"`, with `else … when …` links, and absent when no guard holds and there is no plain `else` (RFC-0017 §6, tracker U10); `none` as a value omits it. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
+        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. A `{…}` in a view string holds a path or `int` arithmetic (`+ - * / %`, parentheses, `min`, `max`; RFC-0017 §6). An attribute may be conditional: `role = \"none\" when decorative else \"separator\"`, with `else … when …` links, and absent when no guard holds and there is no plain `else` (RFC-0017 §6, tracker U10); `none` as a value omits it. A `css` prop is placed unescaped only with `raw = <prop>` on a `style` element (RFC-0017 §5, tracker U5); every other value is escaped. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
         types: "",
         codes: &[],
         examples: &[checked(COMPONENT)],
@@ -1105,6 +1105,14 @@ pub const CODES: &[Code] = &[
         ALL_KINDS,
         "a malformed `{…}` in text: empty, unclosed, a stray `}`, or more than one value",
         "program t\n  fn main\n    print(\"{}\")\n  end fn main\nend program t\n",
+    ),
+    code(
+        "MZ0717",
+        "RFC-0017 §5",
+        NONE,
+        &["component"],
+        "`raw` anywhere but on a `style` element with a `css` prop, or a `css` type anywhere but a prop: the one door to unescaped output stays narrow",
+        "component t\n  prop name: text\n  view\n    row\n      raw = name\n    end\n  end\nend component t\n",
     ),
     code(
         "MZ0808",

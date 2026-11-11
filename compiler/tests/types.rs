@@ -1201,3 +1201,62 @@ fn a_conditional_attribute_checks_its_condition_and_every_value() {
     );
     one(&with("role = \"a\" when on else nope"), "MZ0707");
 }
+
+#[test]
+fn raw_is_the_one_door_and_it_is_narrow() {
+    let with = |decls: &str, view: &str| component(&format!("{decls}  view\n{view}  end\n"));
+    // The only legal form: a css prop, on a style element.
+    clean(&with(
+        "  prop rules: css\n",
+        "    style\n      raw = rules\n    end\n",
+    ));
+    // On any other element, from text, from a string, with a condition, or a css prop
+    // anywhere else, it is one MZ0717 (or the type error of using css as a value).
+    one(
+        &with(
+            "  prop rules: css\n",
+            "    row\n      raw = rules\n    end\n",
+        ),
+        "MZ0717",
+    );
+    one(
+        &with("  prop t: text\n", "    style\n      raw = t\n    end\n"),
+        "MZ0717",
+    );
+    one(
+        &with("", "    style\n      raw = \"a{b:c}\"\n    end\n"),
+        "MZ0717",
+    );
+    one(
+        &with(
+            "  prop rules: css\n  prop on: bool = true\n",
+            "    style\n      raw = rules when on\n    end\n",
+        ),
+        "MZ0717",
+    );
+    one(
+        &with(
+            "  prop rules: css\n",
+            "    row\n      class = rules\n    end\n",
+        ),
+        "MZ0711",
+    );
+    one(
+        &with(
+            "  prop rules: css\n",
+            "    row\n      class = \"x {rules}\"\n    end\n",
+        ),
+        "MZ0711",
+    );
+    one(
+        &with("  prop xs: list(css)\n", "    row\n    end\n"),
+        "MZ0717",
+    );
+    one(
+        &with(
+            "  prop rules: css = \"a{b:c}\"\n",
+            "    style\n      raw = rules\n    end\n",
+        ),
+        "MZ0706",
+    );
+}

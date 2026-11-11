@@ -1,0 +1,28 @@
+## A `<style>` element carrying one block of already-sanitised CSS, for a theme provider.
+## The only component whose output is not escaped, and only for a `css` prop placed with
+## `raw` on a `style` element (LANGUAGE-TRACKER U5, RFC-0017 §5). A `css` value is made by
+## the sanitiser (`render::Css::new`), never typed into a view or a default.
+## Corpus reference: the registry's `mzizi-theme-provider` (`dangerous_inner_html`); this file
+## is the style element only, not the provider's token resolution.
+component theme_style
+
+  prop rules: css
+
+  view
+    style
+      slot = "theme-style"
+      raw = rules
+    end
+  end
+
+  contract
+    slot is "theme-style"
+    render with rules = ":root{--radius:14px}" of slot is "theme-style"
+    render with rules = ":root{--radius:14px}" contains ":root{--radius:14px}"
+    render with rules = "a > b{margin:0}" contains "a > b{margin:0}"
+    render with rules = ":root{--radius:14px}" omits "&#"
+    render with rules = ":root{--radius:14px}" contains "<style"
+    render with rules = ":root{--radius:14px}" contains "</style>"
+  end
+
+end component theme_style
