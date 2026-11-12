@@ -1,0 +1,124 @@
+## A token-bucket rate gate as pure functions: the bucket holds up to `limit + burst` tokens
+## and refills at exactly `limit` tokens per `window_ms`, so the sustained rate is `limit`
+## per window whatever the burst. A denial says how long to wait. It is the algorithm of the
+## registry's `mzizi-resilience` rate limiter (N4 safety rails, N5 resilience), written in
+## Mzizi so a component can be built from it. Time is a number the caller passes in.
+## `mz run examples/components/rate_gate.mz` prints what rate_gate.expected holds.
+program rate_gate
+
+  record bucket
+    field capacity: float
+    field per_ms: float
+    field tokens: float
+    field last: int
+  end
+
+  enum decision_kind
+    allowed
+    denied
+    impossible
+  end
+
+  record decision
+    field kind: decision_kind
+    field retry_after_ms: int
+  end
+
+  fn new_bucket(limit: int, window_ms: int, burst: int, now: int): result(bucket, text)
+    when limit < 1
+      return error("limit must be at least 1")
+    end
+    when window_ms < 1
+      return error("window_ms must be at least 1")
+    end
+    let capacity = (limit + burst).to_float()
+    return bucket(capacity = capacity, per_ms = limit.to_float() / window_ms.to_float(), tokens = capacity, last = now)
+  end fn new_bucket
+
+  ## The bucket brought forward to `now`: tokens refilled, never past capacity.
+  fn refilled(b: bucket, now: int): bucket
+    when now <= b.last
+      return b
+    end
+    let elapsed = (now - b.last).to_float()
+    let grown = b.tokens + elapsed * b.per_ms
+    when grown > b.capacity
+      return b with (tokens = b.capacity, last = now)
+    end
+    return b with (tokens = grown, last = now)
+  end fn refilled
+
+  ## What asking for `n` tokens at `now` gets.
+  fn decide(b: bucket, now: int, n: int): decision
+    let want = n.to_float()
+    when want > b.capacity
+      return decision(kind = impossible, retry_after_ms = 0)
+    end
+    let ready = refilled(b, now)
+    when ready.tokens >= want
+      return decision(kind = allowed, retry_after_ms = 0)
+    end
+    let wait = ((want - ready.tokens) / ready.per_ms).ceil()
+    return decision(kind = denied, retry_after_ms = wait.to_int())
+  end fn decide
+
+  ## The bucket after the same request: the tokens are taken only when it is allowed.
+  fn after(b: bucket, now: int, n: int): bucket
+    let ready = refilled(b, now)
+    when decide(b, now, n).kind is allowed
+      return ready with (tokens = ready.tokens - n.to_float())
+    end
+    return ready
+  end fn after
+
+  ## Whole tokens available at `now`.
+  fn available(b: bucket, now: int): int
+    return refilled(b, now).tokens.floor().to_int()
+  end fn available
+
+  fn main
+    match new_bucket(0, 1000, 0, 0)
+      case ok unused
+        print("accepted bad settings")
+      case error why
+        print("rejected: {why}")
+    end
+    match new_bucket(10, 1000, 5, 0)
+      case ok fresh
+        run(fresh)
+      case error why
+        print("rejected: {why}")
+    end
+  end fn main
+
+  fn run(fresh: bucket)
+    print("-- the sustained rate is limit per window even with a burst")
+    var b = fresh
+    for each i in range(0, to = 15)
+      b = after(b, 0, 1)
+    end
+    print("drained: {available(b, 0)} left")
+    var granted = 0
+    for each t in range(1, to = 1001)
+      when decide(b, t, 1).kind is allowed
+        granted = granted + 1
+      end
+      b = after(b, t, 1)
+    end
+    print("one window later {granted} were allowed")
+    print("-- a denial counts the part of a token already refilled")
+    var d = fresh
+    for each i in range(0, to = 15)
+      d = after(d, 0, 1)
+    end
+    let denied_now = decide(d, 0, 1)
+    print("at 0: {denied_now.kind}, wait {denied_now.retry_after_ms} ms")
+    let later = decide(d, 40, 1)
+    print("at 40: {later.kind}, wait {later.retry_after_ms} ms")
+    print("-- more tokens than the bucket can ever hold")
+    print(decide(fresh, 0, 16).kind)
+    print("-- time never runs backwards")
+    print(available(after(fresh, 500, 3), 100))
+  end fn run
+
+end program rate_gate

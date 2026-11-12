@@ -1,5 +1,9 @@
 # Mzizi: a general-purpose programming language
 
+> **Dioxus is no longer part of the Mzizi stack (owner decision, 2026-11-04, [`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)).** Components and primitives are Mzizi first, TypeScript second, and native (Swift, Kotlin) where those exist. What replaces Dioxus as the Rust-side rendering target is open for the owner; this charter does not name one. The text below is kept as written and is history where it names Dioxus as the interop or rendering target.
+
+<!-- -->
+
 > **Mzizi is built to make Rust better, the way TypeScript makes JavaScript better.** That is
 > the goal Phase 0 exists to test (§4), not a result. Nothing in this charter has been measured
 > against it yet.

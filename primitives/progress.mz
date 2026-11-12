@@ -1,0 +1,40 @@
+## A determinate progress bar: a pill track on muted with a primary indicator.
+## The indicator's offset is `100 - value` percent, clamped to 0 to 100, written as integer
+## arithmetic in the view string (LANGUAGE-TRACKER U11). Not covered: the registry's `max`
+## prop, the indeterminate state and `data-state` (an absent value, and an attribute chosen
+## by a condition, tracker U10), and the caller's `class` (U3).
+## Siblings: progress.tsx (React) and progress.rs (Mzizi Roots). One contract.
+component progress
+
+  prop value: int = 0
+
+  view
+    row
+      slot = "progress"
+      portal = "https://mzizi.dev/components/progress"
+      role = "progressbar"
+      aria_valuemin = 0
+      aria_valuemax = 100
+      aria_valuenow = value
+      class = "relative flex h-3 w-full items-center overflow-x-hidden rounded-full bg-muted"
+      row
+        slot = "progress-indicator"
+        class = "size-full flex-1 bg-primary transition-all"
+        style = "transform: translateX(-{100 - min(max(value, 0), 100)}%);"
+      end
+    end
+  end
+
+  contract
+    slot is "progress"
+    value at_least 0
+    render of role is "progressbar"
+    render of aria_valuenow is "0"
+    render with value = 40 of aria_valuenow is "40"
+    render with value = 40 contains "translateX(-60%)"
+    render with value = 100 contains "translateX(-0%)"
+    render with value = 150 contains "translateX(-0%)"
+    render omits "NaN"
+  end
+
+end component progress

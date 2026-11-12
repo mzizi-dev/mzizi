@@ -54,6 +54,7 @@ cd compiler
 cargo test                                                              # 634 tests (765 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
+cargo run --bin mz -- check --agent  ../primitives                      # every .mz under a directory, one summary line
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
 cargo run --bin mz -- outline        ../primitives/alert.mz

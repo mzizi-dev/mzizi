@@ -125,6 +125,13 @@ clause = "B4.6"
 request = { method = "POST", path = "/v1/ui/card/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/truncated.body" }
 expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry" }, json = { "/error" = "Not found" } }
 
+# A percent-encoded CR LF in the name is an unknown name, and no header is injected.
+[[probe]]
+id = "name-encoded-crlf"
+clause = "B4.6"
+request = { method = "POST", path = "/v1/ui/badge%0D%0AX-Injected:%20yes/versions", headers = { "content-type" = "application/json" }, body_file = "fixtures/v1.json" }
+expect = { status = 404, headers = { "content-type" = "application/json", "x-mzizi-source" = "registry", "x-injected" = false }, json = { "/error" = "Not found" } }
+
 [[probe]]
 id = "unknown-options"
 clause = "B4.6"

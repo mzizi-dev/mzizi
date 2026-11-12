@@ -17,6 +17,71 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
+
+- **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
+- **`design/RFC-0013-core-language.md`:** a dated note under §6.4 and on §20 Q7 pointing to RFC-0018. Its rules are unchanged.
+- **`LANGUAGE-TRACKER.md`:** row K5 names RFC-0018 as its design. Its mark stays ❌.
+
+### Added — integer arithmetic in a view string, and `progress` in Mzizi (RFC-0017 §6, U11, #153, 2026-11-07)
+
+- **A `{…}` in a view attribute string may hold `int` arithmetic** (`compiler/src/viewexpr.rs`, new): integer literals, prop and enum-column paths, unary `-`, `+ - * / %`, parentheses, `min(a, b)` and `max(a, b)`. The checker and the renderer read a body with the same parser. A name that is not an `int` is `MZ0711`; a malformed body is `MZ0714` (whose text now says what was wrong and names the arithmetic form). `{a + a}` on a `text` prop was `MZ0714`; it is now `MZ0711`. Rendering uses checked arithmetic: division by zero or overflow is `RenderError::Arithmetic`, not a wrapped number. `style` now passes through to markup. Service and program text interpolation are unchanged.
+- **`primitives/progress.mz` (new):** `aria-valuemin`, `aria-valuemax`, `aria-valuenow` and the indicator's `translateX(-{100 - min(max(value, 0), 100)}%)`. Nine contract clauses, including render clauses at 0, 40, 100 and 150, pass under `mz contract`. Not covered: `max`, the indeterminate state, `data-state` (U10) and the caller's `class` (U3).
+- **Tested:** 5 unit tests in `viewexpr.rs` (precedence, clamp, errors), checker tests in `compiler/tests/types.rs`, render tests in `compiler/tests/render.rs` (progress at 0, 40, 100, 150, -5; divide by zero refused).
+- **`LANGUAGE-TRACKER.md` U11:** ❌ to 🟡 with evidence. **RFC-0017:** §6 built; §8 Q1 (the closed element table) accepted by the owner on #153, Q2 (call-site composition) undecided.
+- **Not claimed:** nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
+- **Site/docs impact:** a view string may hold `int` arithmetic; the primitives list gains `progress`; the tracker's U11 moves.
+
+### Added — `mz check` and `mz contract` take a directory (toolchain, 2026-11-04)
+
+- `mz check [--agent] <dir>` and `mz contract [--agent] <dir>` read every `.mz` file under the directory, recursively, in sorted path order (hidden directories, `target` and symlinked directories are skipped), and print each file's diagnostics with its own `file` path. The last line is one summary: in `--agent` mode the usual summary object with a new `files` key and every count summed (`errors`, `warnings`, `exact_fixable`, and for `contract` `contract_clauses`, `contract_failures`, `contract_tested`); a run on one file prints exactly what it printed before. Exit status: 0 with no errors, 1 when any file has an error or a failed clause, 2 for a directory with no `.mz` file or an unreadable file (after every readable file has run). `outline`, `hash`, `ir`, `fix`, `build` and `run` still take one file and say so (exit 2).
+- Why: the component streams of [#153](https://github.com/mzizi-dev/mzizi/issues/153) add hundreds of files, and `mz` took one, so CI and agents looped in shell and read one summary per file.
+- Tested: `compiler/tests/directory.rs` (eight cases against the shipped binary: clean, sorted order, one failing file, human form, skipped directories, no source file, other commands refuse a directory, and `primitives/` and `examples/` as directories). The `mz check` and `mz contract` entries in the language harness name the directory form. Tracker row T1 notes it. Nothing is measured; this is a convenience, not a claim about speed or quality.
+- Site/docs impact: the compiler page's `mz check` and `mz contract` sections gain the directory form and the `files` summary key; the protocol version is unchanged (a key was added to the summary line, nothing was removed or renamed).
+
+### Added — three server components written in Mzizi, and seven gaps they found (2026-11-04, Refs #153)
+
+- **`examples/components/`:** `circuit_breaker.mz` (closed, open and half-open, a sliding failure window, one probe, epochs), `base64url.mz` (RFC 4648 §5 without padding, over a byte list, with a decoder that rejects what is not base64url) and `rate_gate.mz` (a token bucket with a burst and a wait time). They port the algorithms of the registry's `mzizi-resilience` crate and `server-base64url`. Each is a `program` with a `main` that exercises it, checked and run in CI (`compiler/tests/components.rs`, and the two `examples/` loops in `ci.yml` now include `examples/components/`). `mz run` of each prints its committed `.expected`; the tests pin the lines worked out by hand (`Zm9vYmFy`, 499 ms left of a 500 ms cooldown, exactly 10 allowed in the window after a drained 15-token bucket).
+- **`LANGUAGE-TRACKER.md`:** a new section, "Components written in Mzizi, and the gaps they found", with the three components as evidence and seven rows, K1 to K7, for what building them found missing: importable libraries (K1, which is P1), payload enums (K2), `option(T)` as a type (K3), text to bytes (K4), closures (K5, which RFC-0013 §6.4 leaves out of M1 on purpose), time (K6) and concurrency (K7). All seven are ❌. The count toward the Phase 0 exit criteria ("components built with no gap") is **none yet**; this adds no capability and changes no existing row.
+- **Not claimed:** none of the three is a library another file can import, none is installed with `mzizi add`, none lowers as a component, and nothing here has been measured against another language. Mzizi stays Phase 0 (`CHARTER.md`).
+
+### Added — `render` contract clauses: `mz contract` checks a component against its rendered markup; `label` and `skeleton` primitives (RFC-0017 Wave 1, #153, 2026-11-04)
+
+- **Contract clause `render [with <prop> = <value> …] [of <attr>] <predicate>`** (`compiler/src/contract.rs`, `compiler/src/parse.rs`): renders the component with the named props (`render::tree`) and tests the markup with `is`, `contains`, `not_empty` or the new `omits "<text>"`; `of <attr>` reads one attribute of the root element (by its view name) or `text`. A clause whose component cannot render (missing prop with no default, unknown prop, wrong type, an unsupported view) is `MZ0605`, never a pass; a failed one is `MZ0603`. `omits` is rejected on any other subject. A prop named `render` still reads as a name.
+- **`primitives/separator.mz`, `badge.mz`, `alert.mz`** gain render clauses; **`primitives/label.mz`** (from the registry's `label.mz`) and **`primitives/skeleton.mz`** (new, no sizing: the caller's `class` is tracker U3) are added with them. `mz contract` passes on all of them; `alert`'s summary now counts 6 clauses (was 4).
+- **Tested** in `compiler/tests/contracts.rs`: clauses that hold, clauses that fail, each unevaluable case, the `render` prop-name case, `omits` elsewhere, and malformed clauses (one diagnostic each).
+- **`LANGUAGE-TRACKER.md` U7** records the clause; it stays 🟡 (no `for each`, composition or handlers in a rendered view). **`design/RFC-0017-render.md` §7** is now built.
+- **Not claimed:** no component renders in a browser or on a server; the registry's own `.mz` copies do not use `render` clauses until they sync. Mzizi stays Phase 0.
+- **Site/docs impact:** the contract grammar gains the `render` subject and `omits`; the primitives list gains `label` and `skeleton`.
+
+### Added — a component's view renders to escaped markup in the library: the element tree (RFC-0017 Wave 0, #153, 2026-11-04)
+
+- **`compiler/src/render.rs` (new, `mzizi_lang_compiler::render`):** `tree(component, props)` evaluates a component's static view against typed prop values to an element tree (`Node`), and `to_html` / `render` serialise it with every text node and attribute value escaped (`&`, `<`, `>`, `"`, `'` as decimal references). Covers elements, attributes, `text`, `{path}` interpolation, `when` / `else` and `nothing`. One closed table maps the view's words to tags (`strip`, `notice`, `row`, `surface`, `rule`, `field` to `div`; `mark`, `busy` to `span`; `caption`, `figure`, `picture`, `button`); a word outside it is `RenderError::UnknownElement`. `slot` and `portal` become `data-slot` and `data-portal`; event wires (`tap`, `change`) are left out. Props are supplied as `Value`s and checked before rendering: a wrong type, an unknown variant, an unknown prop and a missing prop with no default are distinct errors. `for each`, composition and an event prop given a value return `RenderError::Unsupported`.
+- **Tested** by `compiler/tests/render.rs` (13 tests): expected markup written by hand from `separator.mz`, `badge.mz`, `alert.mz`, `avatar.mz` and `spinner.mz`, escaping in text and in attribute values after interpolation, branch choice by `when`, determinism, and each refusal.
+- **Designed, not built:** `design/RFC-0017-render.md` (draft): children and slots, pass-through attributes, explicit raw output and render-backed contract clauses, each with the tracker row that tracks it.
+- **`LANGUAGE-TRACKER.md`:** a new Tier U (UI components) with rows U1 to U12 from #153's gap list and two gaps found writing `separator` and `progress`: U10, attributes conditional on a prop (so `separator` renders `data-decorative`, not the registry's `role`), and U11, expressions in a view interpolation (so `progress` is not written in Mzizi yet). U1, U7 and U9 are 🟡; nothing is ✅.
+- **Not claimed:** no component renders in a browser or on a server, no component lowers to Rust, there is no `mz` command for `render`, and nothing was measured. Mzizi stays Phase 0.
+- **Site/docs impact:** the tracker gains Tier U; the compiler page may mention the `render` library function and RFC-0017 as a draft.
+
+### Changed — Dioxus is out of the stack; notes on the documents that name it as the target (2026-11-04)
+
+- Owner decision, 2026-11-04 ([`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)): "dioxus is out!!!"; components and primitives are Mzizi first, TypeScript second, native (Swift, Kotlin) where those exist. **`CHARTER.md`, `design/RFC-0001-syntax.md`, `design/RFC-0002-runtime-and-prior-art.md` and `design/RFC-0009-comparison-benchmark.md`** each open with a dated note saying so; their bodies are unchanged and stay as written. **`design/ROADMAP.md`**'s Phase 3 row and **`CONTRIBUTING.md`**'s out-of-scope paragraph no longer name Dioxus interop as the route. No replacement Rust rendering target is named: that is open for the owner.
+- Documentation only. Nothing is built or removed. The Dioxus and Leptos benchmark arms (`benchmarks/arms/dioxus`, `benchmarks/harness`, `benchmarks/runner`), the workspace `Cargo.toml` and CI comments that mention them, and the pilot results are unchanged: the arms are comparison arms and the results are dated records. Whether the Dioxus arm stays in the benchmark is open for the owner.
+
+## 2026-11-02
+
+### Changed — release prep for 2026-11-02
+
+- **`CHANGELOG.md`:** the two `[Unreleased]` entries, the B4 and B5 Python header fix (#147) and the range-too-long trap test (#149), move under `## 2026-11-02`. Docs only; no code changed.
+
+### Fixed — the range-too-long trap test asks for a length every host refuses (2026-11-01, #135)
+
+- **`compiler/tests/program_collections.rs`'s `range_huge` case now builds `range(0, to = 576460752303423488)`**, 2^59 elements (2^62 bytes), instead of `range(0, to = 100000000000)` (800 GB). The old length fits `isize`, so whether `try_reserve_exact` refused it was the host's call: Linux's default heuristic overcommit refused it (exit 101, `MZ0991`, as the test expects), but macOS reserved it, and the process was killed while filling it (exit 137 after about 160 s). 2^62 bytes is still under `isize::MAX`, so it reaches the allocator, and it is larger than any 64-bit user address space, so every allocator refuses it. Measured on Linux x86-64: `try_reserve_exact` returns the allocator's error for 10^11 and for 2^59 elements. The runtime is unchanged. RFC-0013's note on the reservation now names macOS beside Linux: a length that fits the address space but not memory can still be killed (exit 137), not trapped. Not run on macOS here.
+
+### Fixed — the B4 and B5 Python references never write a request-built header with a line break (2026-11-01)
+
+- **`benchmarks/tasks/b4-state/reference-python/server.py` and `b5-errors/reference-python/server.py`** strip CR and LF from every response header value before `send_header`, and B4's `Location` now comes from a constant per accepted name instead of the request path. CodeQL reported both as HTTP response splitting (header values built from request input). Raw CR or LF cannot arrive in a request line, so no answer changes. **New probes**: B4 `name-encoded-crlf` and B5 `encoded-crlf` send a percent-encoded CR LF and expect no `x-injected` header (B4 a `404`, B5 a `308` whose `Location` keeps the encoding). Tested: `mzprobe verify` holds all 145 (B4) and 121 (B5) facts on both the Rust and Python references. The axum references are unchanged. Benchmark reference servers only; nothing about Mzizi was measured.
+
 ## 2026-11-01
 
 ### Changed — release prep for 2026-11-01
