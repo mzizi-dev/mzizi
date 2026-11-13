@@ -1,0 +1,2 @@
+# The local runtime's build cache (install.sh); the container image has its own.
+/gocache/
