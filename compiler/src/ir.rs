@@ -291,7 +291,7 @@ fn lower_element(el: &Element, store: &mut Store) -> Hash {
         } else {
             attr.name.as_str()
         };
-        node = node.field(key, attr.value.clone());
+        node = node.field(key, attr.canonical_value());
     }
     let mut children = Vec::new();
     for child in &el.children {

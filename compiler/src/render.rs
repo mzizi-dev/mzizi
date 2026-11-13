@@ -476,13 +476,18 @@ fn attr_value(c: &Component, env: &Env, attr: &Attr) -> Result<Option<String>, R
     path_text(c, env, v)
 }
 
-/// Whether a `when` condition holds.
+/// Whether a `when` element's condition holds.
 fn holds(env: &Env, el: &Element) -> Result<bool, RenderError> {
     let cond: Vec<&Attr> = el
         .attrs
         .iter()
         .filter(|a| a.name.is_empty() || matches!(a.name.as_str(), "not" | "is"))
         .collect();
+    holds_words(env, &cond)
+}
+
+/// Whether a condition holds, from its words: `<name>`, `not <name>`, `<name> is <v>`.
+fn holds_words(env: &Env, cond: &[&Attr]) -> Result<bool, RenderError> {
     let shape: Vec<&str> = cond.iter().map(|a| a.name.as_str()).collect();
     let value_of = |a: &Attr| -> Result<Value, RenderError> {
         let head = a.value.split('.').next().unwrap_or_default();
@@ -520,6 +525,26 @@ fn holds(env: &Env, el: &Element) -> Result<bool, RenderError> {
     }
 }
 
+/// The alternative of a conditional attribute that applies, or `None` when no guard holds
+/// and there is no plain `else` (RFC-0017 §6).
+fn chosen<'a>(env: &Env, attr: &'a Attr) -> Result<Option<&'a Attr>, RenderError> {
+    let mut link = Some(attr);
+    let mut rest = attr.otherwise.iter();
+    while let Some(a) = link {
+        match &a.guard {
+            None => return Ok(Some(a)),
+            Some(words) => {
+                let words: Vec<&Attr> = words.iter().collect();
+                if holds_words(env, &words)? {
+                    return Ok(Some(a));
+                }
+            }
+        }
+        link = rest.next();
+    }
+    Ok(None)
+}
+
 fn element(c: &Component, env: &Env, el: &Element, out: &mut Vec<Node>) -> Result<(), RenderError> {
     match el.tag.as_str() {
         "nothing" => Ok(()),
@@ -546,12 +571,17 @@ fn element(c: &Component, env: &Env, el: &Element, out: &mut Vec<Node>) -> Resul
                     continue;
                 }
                 if attr.name == "text" {
-                    if let Some(t) = attr_value(c, env, attr)? {
+                    if let Some(a) = chosen(env, attr)?
+                        && let Some(t) = attr_value(c, env, a)?
+                    {
                         children.push(Node::Text(t));
                     }
                     continue;
                 }
                 let Some(name) = markup_attr(&attr.name) else {
+                    continue;
+                };
+                let Some(attr) = chosen(env, attr)? else {
                     continue;
                 };
                 if let Some(value) = attr_value(c, env, attr)? {

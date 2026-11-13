@@ -263,7 +263,101 @@ impl Parser {
             value,
             span,
             segments,
+            guard: None,
+            otherwise: Vec::new(),
         })
+    }
+
+    /// The tail of a conditional attribute: `value when <condition> [else <value> when
+    /// <condition>]… [else <value>]` (RFC-0017 §6, tracker U10). `first` is the attribute with
+    /// its first value already read; the guards and alternatives are attached to it. A
+    /// condition is read by the same words as a `when` element's: `<name>`, `not <name>`,
+    /// `<name> is <variant>`. A tail that is not a `when` or `else` is left for the line
+    /// recovery that follows, as before.
+    fn attr_guards(&mut self, first: &mut Attr) {
+        if matches!(self.peek(), Tok::Keyword("else")) {
+            let at = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0404",
+                &self.file,
+                at,
+                format!(
+                    "`else` after `{} = …` needs a `when` first: write `{} = <value> when <condition> else <value>`",
+                    first.name, first.name
+                ),
+            ));
+            return;
+        }
+        if !matches!(self.peek(), Tok::Keyword("when")) {
+            return;
+        }
+        let name = first.name.clone();
+        first.guard = Some(self.guard_words());
+        while matches!(self.peek(), Tok::Keyword("else")) {
+            self.bump();
+            match self.attr(&name) {
+                Some(mut alt) => {
+                    if matches!(self.peek(), Tok::Keyword("when")) {
+                        alt.guard = Some(self.guard_words());
+                        first.otherwise.push(alt);
+                    } else {
+                        first.otherwise.push(alt);
+                        if matches!(self.peek(), Tok::Keyword("else")) {
+                            let at = self.peek_span();
+                            self.diags.push(Diagnostic::error(
+                                "MZ0404",
+                                &self.file,
+                                at,
+                                format!(
+                                    "`{name} = …` already ended in a plain `else`; a second `else` can never be reached"
+                                ),
+                            ));
+                        }
+                        break;
+                    }
+                }
+                None => {
+                    let at = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0403",
+                        &self.file,
+                        at,
+                        format!("`{name} = … else` needs a value after the `else`"),
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+
+    /// `when` and the condition words after it, up to an `else` or the end of the line.
+    fn guard_words(&mut self) -> Vec<Attr> {
+        self.bump(); // `when`
+        let mut words = Vec::new();
+        while !matches!(self.peek(), Tok::Newline | Tok::Eof | Tok::Keyword("else")) {
+            match self.peek().clone() {
+                Tok::Keyword(k) if !matches!(k, "true" | "false" | "nothing" | "none") => {
+                    let at = self.peek_span();
+                    self.bump();
+                    let rhs = self.attr(k).unwrap_or(Attr {
+                        name: k.to_string(),
+                        value: String::new(),
+                        span: at,
+                        segments: Vec::new(),
+                        guard: None,
+                        otherwise: Vec::new(),
+                    });
+                    words.push(rhs);
+                }
+                _ => match self.attr("") {
+                    Some(v) => words.push(v),
+                    None => {
+                        self.bump();
+                    }
+                },
+            }
+        }
+        words
     }
 
     /// A type expression: a name, `none`, or `<ctor>(<type>)` (RFC-0008 §1).
@@ -1426,6 +1520,8 @@ impl Parser {
                         value: String::new(),
                         span: at,
                         segments: Vec::new(),
+                        guard: None,
+                        otherwise: Vec::new(),
                     });
                     attrs.push(rhs);
                 }
@@ -1701,7 +1797,10 @@ impl Parser {
                 self.bump();
                 self.bump(); // `=`
                 match self.attr(&key) {
-                    Some(v) => attrs.push(v),
+                    Some(mut v) => {
+                        self.attr_guards(&mut v);
+                        attrs.push(v);
+                    }
                     None => {
                         let vspan = self.peek_span();
                         self.diags.push(Diagnostic::error(

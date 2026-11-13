@@ -15,7 +15,8 @@ component separator
       slot = "separator"
       portal = "https://mzizi.dev/components/separator"
       axis = axis
-      decorative = decorative
+      role = "none" when decorative else "separator"
+      aria_orientation = none when decorative else "vertical" when axis is vertical
       class = "shrink-0 bg-border {axis.class}"
     end
   end
@@ -28,7 +29,12 @@ component separator
     render of axis is "horizontal"
     render with axis = vertical of axis is "vertical"
     render with axis = vertical of class contains "self-stretch"
-    render with decorative = false of decorative is "false"
+    render of role is "none"
+    render with decorative = false of role is "separator"
+    render with decorative = false axis = vertical of aria_orientation is "vertical"
+    render with decorative = false omits "aria-orientation"
+    render with axis = vertical omits "aria-orientation"
+    render omits "data-decorative"
   end
 
 end component separator

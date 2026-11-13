@@ -1050,11 +1050,115 @@ impl<'a> Resolver<'a> {
                         _ => Use::Attr,
                     };
                     self.value(attr, use_, scope);
+                    self.attr_alternatives(attr, use_, scope);
                 }
                 for child in &el.children {
                     self.element(child, scope);
                 }
             }
+        }
+    }
+
+    /// A conditional attribute's guards and alternatives (RFC-0017 §6, tracker U10): each
+    /// condition is `<name>`, `not <name>` or `<name> is <variant or none>`, and each later
+    /// value is checked as the first is. A plain attribute has neither and costs nothing.
+    fn attr_alternatives(&mut self, attr: &Attr, use_: Use, scope: &Scope) {
+        if attr.guard.is_none() && attr.otherwise.is_empty() {
+            return;
+        }
+        if use_ == Use::Wire {
+            self.err(
+                "MZ0712",
+                attr.span,
+                format!(
+                    "`{} = …` is an event attribute, which takes no `when`",
+                    attr.name
+                ),
+            );
+            return;
+        }
+        let mut links: Vec<&Attr> = vec![attr];
+        links.extend(attr.otherwise.iter());
+        for (i, link) in links.iter().enumerate() {
+            if i > 0 {
+                self.value(link, use_, scope);
+            }
+            if let Some(words) = &link.guard {
+                self.attr_condition(words, link.span, scope);
+            }
+        }
+        // `when` on the last alternative is fine (the attribute is absent when none holds),
+        // and a plain `else` must be last: a guard-less link followed by more is dead text.
+        for pair in links.windows(2) {
+            if pair[0].guard.is_none() {
+                self.err(
+                    "MZ0712",
+                    pair[1].span,
+                    format!(
+                        "`{} = … else` follows a value with no `when`, so it can never be reached",
+                        attr.name
+                    ),
+                );
+            }
+        }
+    }
+
+    /// One attribute condition. The shapes are a `when` element's; `is some` is not offered.
+    fn attr_condition(&mut self, words: &[Attr], at: Span, scope: &Scope) {
+        let shape: Vec<&str> = words.iter().map(|a| a.name.as_str()).collect();
+        match shape.as_slice() {
+            [""] | ["not"] if !is_literal(&words[0].value) => {
+                let p = &words[0];
+                let ty = self.path(&p.value, &p.segments, p.span, scope);
+                self.truth_test(&ty, p, shape[0] == "not");
+            }
+            ["", "is"] if !is_literal(&words[0].value) => {
+                let (p, v) = (&words[0], &words[1]);
+                let ty = self.path(&p.value, &p.segments, p.span, scope);
+                match &ty {
+                    Ty::Enum(e) => {
+                        let variants: Vec<String> = self
+                            .find_enum(e)
+                            .map(|d| d.variants.iter().map(|x| x.name.clone()).collect())
+                            .unwrap_or_default();
+                        if v.value == "none" {
+                            self.err(
+                                "MZ0712",
+                                v.span,
+                                format!("`{}` is a `{e}`, which is never none", p.value),
+                            );
+                        } else if !variants.contains(&v.value) {
+                            let fix = nearest(&v.value, variants.iter().map(String::as_str));
+                            let say = format!(
+                                "`when {} is {}` — `{}` is not a variant of `{e}`: {}",
+                                p.value,
+                                clip(&v.value),
+                                clip(&v.value),
+                                list_names(variants.iter().map(String::as_str))
+                            );
+                            self.unknown("MZ0708", v.span, say, fix.map(|(to, c)| (v.span, to, c)));
+                        }
+                    }
+                    Ty::Option(_) if v.value == "none" => {}
+                    Ty::Unknown => {}
+                    other => self.err(
+                        "MZ0712",
+                        v.span,
+                        format!(
+                            "`when {} is {}` — `{}` is {other}; an attribute condition tests an enum's variant or `none` on an option",
+                            p.value,
+                            clip(&v.value),
+                            p.value
+                        ),
+                    ),
+                }
+            }
+            _ => self.err(
+                "MZ0712",
+                at,
+                "an attribute's `when` condition is `<name>`, `not <name>`, or `<name> is <variant or none>`"
+                    .to_string(),
+            ),
         }
     }
 

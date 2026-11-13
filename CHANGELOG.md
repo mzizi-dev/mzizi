@@ -36,6 +36,15 @@ carry no pull request number.
 
 - **`benchmarks/probe`'s readiness wait sends `GET /` and requires an HTTP status line.** A container runtime that publishes a port accepts connections before the server inside listens, so a bare connect started probing early (a known-bad Go candidate failed all 59 facts for that reason before the change, and 35 after). The probe crate's tests (`cargo test -p mzizi-benchmark-probe`) pass; the change affects no reference started by `mzprobe verify`.
 
+### Added — conditional attributes: `separator` sets `role` from `decorative` (RFC-0017 §6, U10, #153, 2026-11-07)
+
+- **A view attribute (or `text`) may be conditional:** `role = "none" when decorative else "separator"`, with `else <value> when <condition>` links and an optional plain final `else`. Conditions are a `when` element's (`<bool>`, `not <bool>`, `<name> is <variant or none>`). With no final `else` the attribute is absent when no guard holds; `none` as a value omits it. `ast::Attr` gains `guard` and `otherwise`; `Attr::canonical_value` puts the chain in the IR, so a component's hash moves when a condition does and no existing hash moves.
+- **Diagnostics, no new codes:** the checker reads each condition and value with `MZ0707`, `MZ0708`, `MZ0711` and `MZ0712`; an `else` with no `when` before it, or after a plain `else`, is `MZ0404`. Before, `role = "x" when y` was accepted and the tail silently dropped.
+- **`primitives/separator.mz`:** renders `role="none"` when decorative and `role="separator"` otherwise, and `aria-orientation="vertical"` only for a semantic vertical rule, as the registry's contract has it; `data-decorative` is gone. A static clause about a conditional attribute is unevaluable and a `render` clause tests it (`mz contract` passes, 11 clauses).
+- **Tested:** `compiler/tests/render.rs` (both axes and both settings, conditional `text`, an option guard), `compiler/tests/types.rs` (each diagnostic).
+- **`LANGUAGE-TRACKER.md` U10:** ❌ to 🟡 with evidence. **RFC-0017** §6 updated. Not claimed: nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
+- **Site/docs impact:** the view grammar gains `value when <condition> else <value>`; `separator`'s rendered attributes change.
+
 ### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
 
 - **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
