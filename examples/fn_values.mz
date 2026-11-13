@@ -1,0 +1,62 @@
+## Function values, RFC-0018 wave 1: a function type, a named `fn` as a value, and a call
+## through one. A parameter or a `let` may have a function type; a `fn` of the program is
+## passed by name; nothing is captured, because a value is the name of one `fn`.
+## `mz run examples/fn_values.mz` prints what fn_values.expected holds; CI compares the two.
+program fn_values
+
+  fn double(x: int): int
+    return x * 2
+  end fn double
+
+  fn negate(x: int): int
+    return 0 - x
+  end fn negate
+
+  fn is_even(n: int): bool
+    return n % 2 is 0
+  end fn is_even
+
+  fn shout(s: text)
+    print("{s}!")
+  end fn shout
+
+  fn apply_twice(f: fn(int): int, x: int): int
+    return f(f(x))
+  end fn apply_twice
+
+  ## A check applied to every value, reporting how many passed.
+  fn count_passing(xs: list(int), check: fn(int): bool): int
+    var passed = 0
+    for each x in xs
+      when check(x)
+        passed = passed + 1
+      end
+    end
+    return passed
+  end fn count_passing
+
+  fn each_word(words: list(text), say: fn(text))
+    for each w in words
+      say(w)
+    end
+  end fn each_word
+
+  fn combine(a: fn(int): int, b: fn(int): int, x: int): int
+    return a(b(x))
+  end fn combine
+
+  fn main
+    print(apply_twice(double, 5))
+    print(apply_twice(negate, 5))
+    let chosen: fn(int): int = double
+    print(chosen(21))
+    print(count_passing([1, 2, 3, 4, 5, 6], is_even))
+    each_word(["habari", "dunia"], shout)
+    print(combine(double, negate, 4))
+    var current: fn(int): int = double
+    print(current(3))
+    current = negate
+    print(current(3))
+  end fn main
+
+end program fn_values

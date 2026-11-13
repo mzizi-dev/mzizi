@@ -1007,7 +1007,8 @@ impl P {
                 Confidence::Exact,
             );
         }
-        Some(self.type_ref("`:`"))
+        let r = self.type_ref("`:`");
+        Some(self.no_fn(r, "the return type of a function"))
     }
 
     /// A type: `int`, `float`, `bool`, `text`, one of the program's enums, `result(T, E)`
@@ -1045,6 +1046,9 @@ impl P {
         if matches!(self.peek(), Tok::LBracket) {
             let t = self.bracket_type(at, after);
             return self.list_suffix(t);
+        }
+        if word(self.peek()) == Some("fn") && matches!(self.peek_at(1), Tok::LParen) {
+            return self.fn_type(at);
         }
         let Some(name) = word(self.peek()).map(str::to_string) else {
             let found = describe(self.peek());
@@ -1148,6 +1152,80 @@ impl P {
         };
         self.question_after_type();
         self.list_suffix(TypeRef { ty, span })
+    }
+
+    /// A function type (RFC-0018 §1): `fn(<types>)` or `fn(<types>): <type>`, the cursor on
+    /// `fn`. Its result is never a function type (`MZ0977`, §1).
+    fn fn_type(&mut self, at: Span) -> TypeRef {
+        self.bump(); // `fn`
+        self.bump(); // `(`
+        let mut params = Vec::new();
+        while !matches!(self.peek(), Tok::RParen | Tok::Newline | Tok::Eof) {
+            params.push(self.type_ref("`fn(`").ty);
+            if matches!(self.peek(), Tok::Comma) {
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        if matches!(self.peek(), Tok::RParen) {
+            self.bump();
+        } else {
+            if !self.failed {
+                let s = self.span();
+                self.err(
+                    "MZ0306",
+                    join(at, s),
+                    "a function type names its parameter types: `fn(<type>, …)` or `fn(<type>, …): <type>`",
+                );
+            }
+            while !matches!(
+                self.peek(),
+                Tok::RParen | Tok::Newline | Tok::Eof | Tok::Equals
+            ) {
+                self.bump();
+            }
+            if matches!(self.peek(), Tok::RParen) {
+                self.bump();
+            }
+            return TypeRef {
+                ty: Ty::Error,
+                span: join(at, self.prev()),
+            };
+        }
+        let mut ret = Ty::Nothing;
+        if matches!(self.peek(), Tok::Colon) && !matches!(self.peek_at(1), Tok::Newline | Tok::Eof)
+        {
+            self.bump();
+            let r = self.type_ref("`:`");
+            ret = self.no_fn(r, "the result of a function type").ty;
+        }
+        let span = join(at, self.prev());
+        let ty = if params.contains(&Ty::Error) || ret == Ty::Error {
+            Ty::Error
+        } else {
+            Ty::func(params, ret)
+        };
+        TypeRef { ty, span }
+    }
+
+    /// `MZ0977`: a function type where wave 1 does not allow one (RFC-0018 §1), in `position`.
+    /// The type is [`Ty::Error`] from here on, so it is reported once.
+    pub(super) fn no_fn(&mut self, t: TypeRef, position: &str) -> TypeRef {
+        if !matches!(t.ty, Ty::Func(_)) {
+            return t;
+        }
+        self.err(
+            "MZ0977",
+            t.span,
+            format!(
+                "a function type cannot be {position} yet — it is the type of a parameter or of a `let`; pass the function as an argument, or declare a named `fn` (RFC-0018 §1)"
+            ),
+        );
+        TypeRef {
+            ty: Ty::Error,
+            span: t.span,
+        }
     }
 
     /// `MZ0937`: a trailing `:` on a block line (Python). The fix deletes it.
