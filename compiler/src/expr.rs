@@ -94,6 +94,19 @@ pub enum Ty {
     /// A record declared in the program, by name (RFC-0013 §11). Like [`Ty::Enum`], the
     /// program's own type; its fields and methods are read from its declaration.
     Record(&'static str),
+    /// `fn(T, …): R` (RFC-0018): a function value, the name of one `fn` of the program, so
+    /// one machine address and `Copy`. A function that returns nothing has [`Ty::Nothing`]
+    /// as its result. Interned.
+    Func(&'static FnSig),
+}
+
+/// A function type's parameter types and result type ([`Ty::Func`]).
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FnSig {
+    /// The parameter types, in order.
+    pub params: Vec<Ty>,
+    /// The result type, [`Ty::Nothing`] when the function returns nothing.
+    pub ret: Ty,
 }
 
 impl Ty {
@@ -120,7 +133,8 @@ impl Ty {
             | Ty::List(_)
             | Ty::Option(_)
             | Ty::Map(_)
-            | Ty::Set(_) => false,
+            | Ty::Set(_)
+            | Ty::Func(_) => false,
         }
     }
 
@@ -171,7 +185,21 @@ impl Ty {
             Ty::Option(t) => intern(&format!("option({})", t.name())),
             Ty::Map((k, v)) => intern(&format!("map({}, {})", k.name(), v.name())),
             Ty::Set(t) => intern(&format!("set({})", t.name())),
+            Ty::Func(sig) => {
+                let params: Vec<&str> = sig.params.iter().map(|p| p.name()).collect();
+                let ret = if sig.ret == Ty::Nothing {
+                    String::new()
+                } else {
+                    format!(": {}", sig.ret.name())
+                };
+                intern(&format!("fn({}){ret}", params.join(", ")))
+            }
         }
+    }
+
+    /// `fn(params): ret`, interned.
+    pub fn func(params: Vec<Ty>, ret: Ty) -> Ty {
+        Ty::Func(crate::intern::sig(FnSig { params, ret }))
     }
 
     /// `list(t)`, interned.
@@ -224,7 +252,7 @@ impl Ty {
     pub fn is_copy(self) -> bool {
         matches!(
             self,
-            Ty::Int | Ty::Float | Ty::Bool | Ty::Enum(_) | Ty::Nothing | Ty::Error
+            Ty::Int | Ty::Float | Ty::Bool | Ty::Enum(_) | Ty::Nothing | Ty::Error | Ty::Func(_)
         )
     }
 
@@ -234,6 +262,7 @@ impl Ty {
             Ty::Error => true,
             Ty::List(t) | Ty::Option(t) | Ty::Set(t) => t.has_error(),
             Ty::Map((a, b)) | Ty::Result((a, b)) => a.has_error() || b.has_error(),
+            Ty::Func(sig) => sig.ret.has_error() || sig.params.iter().any(|p| p.has_error()),
             _ => false,
         }
     }
@@ -944,6 +973,8 @@ pub fn has_text_form(t: Ty) -> bool {
         Ty::Map((k, v)) => has_inner_text_form(*k) && has_inner_text_form(*v),
         // An option has none at the top level (`MZ0710`), and a result none at all (§3.8).
         Ty::Option(_) | Ty::Result(_) | Ty::Nothing => false,
+        // A function value has none (RFC-0018 §4): the name of a function is not data.
+        Ty::Func(_) => false,
     }
 }
 

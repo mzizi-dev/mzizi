@@ -1482,6 +1482,17 @@ impl<'a> FnCheck<'a> {
                 Ty::Bool
             };
         }
+        if op.is_comparison() && (matches!(l, Ty::Func(_)) || matches!(r, Ty::Func(_))) {
+            self.err(
+                "MZ0977",
+                e.span,
+                format!(
+                    "`{}`: a function value has no equality — two paths to one `fn`, or two `fn`s with one body, would differ by an accident of the lowering (RFC-0018 §4)",
+                    canonical(e)
+                ),
+            );
+            return Ty::Bool;
+        }
         match binary_type(op, l, r) {
             Ok(t) => {
                 if t == Ty::Int {
@@ -1640,7 +1651,7 @@ impl<'a> FnCheck<'a> {
         }
         if let Some(f) = self.fns.get(name).copied() {
             let say = format!(
-                "`{name}` is a function — a function is called, `{name}(…)`, and is not a value in a program yet"
+                "`{name}` is a function — a function is called, `{name}(…)`, or passed by name where a function type is expected, `f: fn(…)` (RFC-0018 §2); anywhere else it is not a value"
             );
             if f.params.is_empty() {
                 self.err_fix(
@@ -1711,6 +1722,9 @@ impl<'a> FnCheck<'a> {
             self.ret_result()
                 .map(|(_, err)| vec![err])
                 .unwrap_or_default()
+        } else if let Some(Ty::Func(sig)) = self.visible(name).map(|i| self.bindings[i].ty) {
+            // A call through a function value (RFC-0018 §3).
+            sig.params.clone()
         } else {
             self.fns
                 .get(name)
@@ -1770,6 +1784,41 @@ impl<'a> FnCheck<'a> {
                 .or_else(|| self.free_numeric(name, args, &types, at))
         {
             return t;
+        }
+        if let Some(i) = self.visible(name)
+            && let Ty::Func(sig) = self.bindings[i].ty
+        {
+            self.bindings[i].read = true;
+            if args.len() != sig.params.len() {
+                self.err(
+                    "MZ0905",
+                    at,
+                    format!(
+                        "`{name}` is `{}`, which takes {} argument{}, and this call gives {}",
+                        self.bindings[i].ty.name(),
+                        sig.params.len(),
+                        if sig.params.len() == 1 { "" } else { "s" },
+                        args.len()
+                    ),
+                );
+                return sig.ret;
+            }
+            for ((a, t), p) in args.iter().zip(&types).zip(&sig.params) {
+                if !t.has_error() && !p.has_error() && *t != *p {
+                    self.err(
+                        "MZ0905",
+                        a.span,
+                        format!(
+                            "`{}` is {}, and `{name}` takes {} — `{}`",
+                            canonical(a),
+                            t.name(),
+                            p.name(),
+                            self.bindings[i].ty.name()
+                        ),
+                    );
+                }
+            }
+            return sig.ret;
         }
         if self.visible(name).is_some() {
             self.err(
@@ -2019,7 +2068,7 @@ impl<'a> FnCheck<'a> {
             Ty::Result(_) => return self.method_on_result(e, recv, rt, name, args, called),
             // Dispatched above, to the collections' methods.
             Ty::List(_) | Ty::Option(_) | Ty::Map(_) | Ty::Set(_) => return Ty::Error,
-            Ty::Bool | Ty::Nothing => {
+            Ty::Bool | Ty::Nothing | Ty::Func(_) => {
                 self.err(
                     "MZ0708",
                     name_span,

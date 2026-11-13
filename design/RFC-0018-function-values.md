@@ -1,8 +1,8 @@
 # RFC-0018 — Function values: a function type, a named `fn` as a value, and inline functions that capture nothing
 
-**Status:** draft for review. **Nothing in this RFC is implemented** until a wave in §8 says so.
-Every form below is designed, not built: `mz check` today answers `MZ0909` to a function used as a
-value outside `map`, `filter` and the folds. Each wave names the tests that would make a form
+**Status:** draft for review. **Wave 1 is implemented** (§8); every other form is designed, not
+built. Wave 1 is a function type in a parameter or a `let` or `var`, a named `fn` passed by name, and
+a call through a value. Inline functions (§5) are not built. Each wave names the tests that would make a form
 true, and the tracker's row K5 stays ❌ until a wave's tests are on `main`.
 **Author:** the machine author (Claude), for the owner, on issue
 [#153](https://github.com/mzizi-dev/mzizi/issues/153) (stream 2, the server components).
@@ -48,8 +48,7 @@ end fn apply_twice
 ```
 
 - **Spelling.** `fn(<types>): <type>`, the signature of a `fn` declaration without names, and
-  `fn(<types>)` for a function that returns nothing. It adds no keyword (`fn` is read by position,
-  as `program` and `record` are, so `KEYWORDS` in `compiler/src/lex.rs` stays at 23). A
+  `fn(<types>)` for a function that returns nothing. It adds no keyword (`fn` is already one of the 23 in `KEYWORDS`, `compiler/src/lex.rs`). A
   parameter's type is any type a `fn` parameter has. A default value, a label and `changes self`
   are not part of a type.
 - **Where it may stand (wave 1).** The type of a `fn` **parameter**, and the declared type of a
@@ -77,7 +76,8 @@ end fn main
 
 - **A bare `fn` name is a function value where a function type is expected**: an argument to a
   parameter of function type, and the right side of a `let` or `var` that declares one. A `let`
-  with no declared type may infer it from a bare name (`let g = double` is `fn(int): int`).
+  with no declared type does not infer one: `let g = double` is `MZ0909`, whose `say` names the
+  declared form (a later wave may infer it).
 - **Elsewhere it is still `MZ0909`**, as RFC-0013 §6.4 says: a `return`, an operand, a record field,
   a collection element, an argument to a method that takes none. The zero-parameter case keeps its
   `exact` fix appending `()`.
@@ -99,7 +99,8 @@ stops a local from taking a `fn`'s name (`MZ0921`).
 
 ## 4. What a function value is not (wave 1)
 
-- It has no equality, no text form and no JSON form: `f is g`, `print(f)` and `"{f}"` are `MZ0977`.
+- It has no equality, no text form and no JSON form: `f is g` is `MZ0977`, and `print(f)` and
+  `"{f}"` are the existing `MZ0905` and `MZ0711` ("has no text form").
   Two paths to one function, or two functions with one body, would otherwise differ by an accident of
   the lowering.
 - It is not a map key, a set member or a field, for the same reason (§1).
@@ -156,11 +157,11 @@ window filter is its first test. Until then every capture is `MZ0978`.
 
 ## 8. Waves, and what makes each true
 
-| Wave | Builds                                                                                                                            | Tests that would make it true                                                                                                                                                                               |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | the function type in parameters and `let`/`var`, a bare `fn` name as a value, a call through a value, `MZ0977`, `MZ0909` narrowed | `examples/fn_values.mz` runs through `mz run` against its `.expected`; one test per diagnostic in `compiler/tests/program_fn_values.rs`; the harness entry `fn_type` and codes in `compiler/src/harness.rs` |
-| 2    | the inline form of §5, `MZ0978`, the inline form accepted by `map`, `filter` and the folds                                        | a test per method with an inline function; a capture of a parameter, a `let` and a `var` each `MZ0978`; the canonical form                                                                                  |
-| 3    | later, by a decision: function values in records and collections, and as results                                                  | not designed here                                                                                                                                                                                           |
+| Wave      | Builds                                                                                                                            | Tests that would make it true                                                                                                                                                                               |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 (built) | the function type in parameters and `let`/`var`, a bare `fn` name as a value, a call through a value, `MZ0977`, `MZ0909` narrowed | `examples/fn_values.mz` runs through `mz run` against its `.expected`; one test per diagnostic in `compiler/tests/program_fn_values.rs`; the harness entry `fn_type` and codes in `compiler/src/harness.rs` |
+| 2         | the inline form of §5, `MZ0978`, the inline form accepted by `map`, `filter` and the folds                                        | a test per method with an inline function; a capture of a parameter, a `let` and a `var` each `MZ0978`; the canonical form                                                                                  |
+| 3         | later, by a decision: function values in records and collections, and as results                                                  | not designed here                                                                                                                                                                                           |
 
 Each wave updates the tracker's K5 row with its evidence in the same pull request. K5 turns ✅ only
 when waves 1 and 2 are on `main` and a component uses them where it had a workaround. The window
@@ -171,7 +172,7 @@ filter of the breaker stays a loop until captures exist, and says so.
 | Code     | Phase      | Meaning                                                                                                                                                             |
 | -------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MZ0909` | `mz check` | (narrowed) a function used as a value where no function type is expected, an argument that does not fit its type, a method as a value, or another language's lambda |
-| `MZ0977` | `mz check` | a function type where wave 1 does not allow one (§1), or a function value compared, printed or interpolated (§4)                                                    |
+| `MZ0977` | `mz check` | a function type where wave 1 does not allow one (§1), or a function value compared with `is` or an ordering operator (§4)                                           |
 | `MZ0978` | `mz check` | an inline function that reads a local, a parameter or a `var` of the code around it (§5); wave 2                                                                    |
 
 ## 10. Open questions for the owner

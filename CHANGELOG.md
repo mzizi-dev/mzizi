@@ -45,6 +45,12 @@ carry no pull request number.
 - **`LANGUAGE-TRACKER.md` U10:** ❌ to 🟡 with evidence. **RFC-0017** §6 updated. Not claimed: nothing renders in a browser or on a server and nothing lowers to Rust. Mzizi stays Phase 0.
 - **Site/docs impact:** the view grammar gains `value when <condition> else <value>`; `separator`'s rendered attributes change.
 
+### Added — function values, RFC-0018 wave 1 (2026-11-07, Refs #153)
+
+- **In a `program`:** a parameter, `let` or `var` may have a function type, `fn(int): bool` (or `fn(text)` for a function that returns nothing); a `fn` of the program is passed by its bare name where one is expected; a value is called like a function, `check(x)`. A user `fn` can now take a function, which `map`, `filter` and the folds already could. Lowered to Rust `fn(…) -> …` pointers. `examples/fn_values.mz` runs in CI against `fn_values.expected`; `compiler/tests/program_fn_values.rs` has a test per diagnostic.
+- **Diagnostics:** new `MZ0977` for a function type in a record field, a collection, a result or a return type (not allowed yet), and for comparing function values. `MZ0909` is narrowed: a bare `fn` name is an error only where no function type is expected, and its `say` names the passed-by-name form. All registered in the language harness (a "function values" feature and the `MZ0977` code).
+- **Not built, and not claimed:** inline functions (RFC-0018 wave 2), captures, a function type in a record, collection or return, and `map`, `filter` and the folds taking anything but a named `fn`. `LANGUAGE-TRACKER.md` K5 moves from ❌ to 🟡 on exactly this; the circuit breaker's window filter still loops, because it needs a capture. Mzizi stays Phase 0.
+
 ### Added — RFC-0018, function values (draft), and a note on RFC-0013 §6.4 (2026-11-07, Refs #153)
 
 - **`design/RFC-0018-function-values.md`:** designs a function type (`fn(int): bool`), a named `fn` as a value, a call through a value, and an inline function that captures nothing, answering the owner's 2026-11-07 decision to reopen RFC-0013 §20 Q7 with non-capturing function values first. Captures are explicitly out of scope and are `MZ0978`. New codes `MZ0977` and `MZ0978` are reserved. **Draft: nothing is built.** `mz check` still answers `MZ0909` to a function used as a value outside `map`, `filter` and the folds.
