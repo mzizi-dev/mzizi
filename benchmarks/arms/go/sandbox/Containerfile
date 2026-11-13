@@ -1,0 +1,7 @@
+# The Go backend arm's sandbox image: the Go 1.24 toolchain (go1.24.13 at the pinned digest)
+# and the standard library, nothing else. A candidate imports only the standard library, so
+# there is no module to fetch and no lockfile. Built once by ../setup.sh; every check runs
+# with --network none.
+FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191
+COPY . /opt/arm
+RUN sh /opt/arm/install.sh
