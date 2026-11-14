@@ -17,15 +17,19 @@ carry no pull request number.
 
 ## [Unreleased]
 
-### Security — the Python benchmark arm pins `opentelemetry-api` 1.45.2 (2026-11-14, No issue: advisory fix)
-
-- **`benchmarks/arms/python/sandbox/requirements.txt`:** `opentelemetry-api` moves from 1.45.1 to 1.45.2 (a patch), which clears CVE-2026-126360. The org lockfile audit (`pip-audit`) failed on the 1.45.1 pin, first seen on the release PR #171. Checked: `pip-audit` 2.10.1 on the new file reports no known vulnerabilities, and the full pinned set installs with no other version change. The image was not rebuilt here, and the arm's `self-test.sh` was not re-run. Benchmark sandbox only; no compiler, language or RFC change, and nothing about Mzizi was measured.
-
 ## 2026-11-14
+
+### Changed — release prep for 2026-11-14 (second)
+
+- **`CHANGELOG.md`:** the `[Unreleased]` entry for the Python arm's `opentelemetry-api` 1.45.2 pin (#172) moves under `## 2026-11-14`, which the release re-cut carries. Docs only; no code changed.
 
 ### Changed — release prep for 2026-11-14
 
 - **`CHANGELOG.md`:** the 13 `[Unreleased]` entries, from the 2026-11-04 render and contract work through function values (RFC-0018 wave 1, #169), conditional attributes (#168), the incumbent backend arms (#167) and the Dependabot rule (#166), move under `## 2026-11-14`, the day they are released to `main`. Docs only; no code changed.
+
+### Security — the Python benchmark arm pins `opentelemetry-api` 1.45.2 (2026-11-14, No issue: advisory fix)
+
+- **`benchmarks/arms/python/sandbox/requirements.txt`:** `opentelemetry-api` moves from 1.45.1 to 1.45.2 (a patch), which clears CVE-2026-126360. The org lockfile audit (`pip-audit`) failed on the 1.45.1 pin, first seen on the release PR #171. Checked: `pip-audit` 2.10.1 on the new file reports no known vulnerabilities, and the full pinned set installs with no other version change. The image was not rebuilt here, and the arm's `self-test.sh` was not re-run. Benchmark sandbox only; no compiler, language or RFC change, and nothing about Mzizi was measured.
 
 ### Changed — Dependabot opens no major version bumps (2026-11-13, No issue: repository maintenance)
 
