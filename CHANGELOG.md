@@ -17,6 +17,11 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — the TypeScript benchmark arm pins `hono` 4.13.18 and `@hono/node-server` 2.1.6 (2026-11-14, Refs #175, Refs #176)
+
+- **`benchmarks/arms/ts/sandbox/package.json` and `package-lock.json`:** `hono` moves from 4.13.10 to 4.13.18 and `@hono/node-server` from 2.1.5 to 2.1.6 (patches), the versions Dependabot proposed in #176 and #175 against `main`, which only takes release pull requests. They clear GHSA-jpvv-r467-5p4w, GHSA-7v5p-43qr-wch5, GHSA-qv5m-9pm6-hqp3, GHSA-92p4-j3wq-jmqx, GHSA-39q9-qp46-w8xg, GHSA-h25j-2p75-qj33 and GHSA-74fm-fwc7-3fwp. `npm install --package-lock-only` changed no other package. `benchmarks/arms/ts/README.md`'s pin table says why each version moved.
+- Checked: `npm audit` on the sandbox reports 0 vulnerabilities; `sandbox/install.sh` (`npm ci`) installs the lockfile unchanged; `benchmarks/arms/lib/self-test.sh ts` with `MZ_ARM_RUNTIME=local` holds as on 2026-10-29 (`b1-good` checks clean and 59 of 59 probe facts hold, `b1-bad-type` fails the check, `b1-bad-behaviour` fails 38 of 59 facts). The container image was not rebuilt. Benchmark sandbox only; no compiler, language or RFC change, and nothing about Mzizi was measured.
+
 ## 2026-11-14
 
 ### Changed — release prep for 2026-11-14 (second)
