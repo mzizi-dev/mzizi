@@ -17,6 +17,12 @@ carry no pull request number.
 
 ## [Unreleased]
 
+## 2026-11-14
+
+### Changed — release prep for 2026-11-14
+
+- **`CHANGELOG.md`:** the 13 `[Unreleased]` entries, from the 2026-11-04 render and contract work through function values (RFC-0018 wave 1, #169), conditional attributes (#168), the incumbent backend arms (#167) and the Dependabot rule (#166), move under `## 2026-11-14`, the day they are released to `main`. Docs only; no code changed.
+
 ### Changed — Dependabot opens no major version bumps (2026-11-13, No issue: repository maintenance)
 
 - **`.github/dependabot.yml`:** the `github-actions` ecosystem now ignores `version-update:semver-major`, so a major bump arrives only when someone chooses it (owner, 2026-11-12). Security updates are not blocked by an `ignore` rule. No compiler, language, benchmark or RFC change.
