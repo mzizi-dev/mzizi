@@ -258,6 +258,8 @@ const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
 const FIB: &str = include_str!("../../examples/fib.mz");
 const RECORDS: &str = include_str!("../../examples/records.mz");
 const RECORDS_OUT: &str = include_str!("../../examples/records.expected");
+const FN_VALUES: &str = include_str!("../../examples/fn_values.mz");
+const FN_VALUES_OUT: &str = include_str!("../../examples/fn_values.expected");
 const TEXT_OPS: &str = include_str!("../../examples/text.mz");
 const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
 const FIB_OUT: &str = include_str!("../../examples/fib.expected");
@@ -341,7 +343,7 @@ pub const FEATURES: &[Feature] = &[
         grammar: &[
             "component <name>\n  prop …\n  view\n    …\n  end\n  contract\n    …\n  end\nend component <name>",
         ],
-        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
+        teach: "A component is a UI unit: props, records and enums, a view, and a contract block that `mz contract` evaluates against the component's own declarations. A component checks, has an outline, IR and hash (`mz outline`, `mz ir`, `mz hash`), and does not lower to Rust. Its static view also evaluates to an element tree and serialises to escaped markup in the compiler's library (`render`, RFC-0017 Wave 0, tracker U1); there is no `mz` command for that and no browser or server target. A `{…}` in a view string holds a path or `int` arithmetic (`+ - * / %`, parentheses, `min`, `max`; RFC-0017 §6). An attribute may be conditional: `role = \"none\" when decorative else \"separator\"`, with `else … when …` links, and absent when no guard holds and there is no plain `else` (RFC-0017 §6, tracker U10); `none` as a value omits it. Its full harness entry, with its grammar and codes, is a later slice; its codes are on the pending list.",
         types: "",
         codes: &[],
         examples: &[checked(COMPONENT)],
@@ -666,6 +668,21 @@ pub const FEATURES: &[Feature] = &[
         examples: &[run(RECORDS, RECORDS_OUT)],
     },
     Feature {
+        name: "function values",
+        kind: Kind::Declaration,
+        depth: Depth::Full,
+        rfc: "RFC-0018 §1, §2, §3",
+        grammar: &[
+            "fn <name>(<param>: fn(<type>, …): <type>, …)",
+            "let <name>: fn(<type>, …): <type> = <fn name>",
+            "<name>(<arguments>)",
+        ],
+        teach: "A parameter or a `let` or `var` may have a function type, `fn(int): bool`, or `fn(text)` for a function that returns nothing. A `fn` of the program is a value by its bare name where a function type is expected: an argument to a parameter of that type, or the value of a `let` or `var` that declares it. A function value is called like any function, `check(x)`, with the arguments its type gives by position. It carries nothing: a value is the name of one `fn`, so it reads no local of the code around it (inline functions and captures are designed, not built). A function type is not a record field, a collection element, a payload or a return type (`MZ0977`), and a bare `fn` name anywhere else, or one whose signature does not fit the type expected, is `MZ0909`. A function value has no text form and no equality. Lowers to Rust's `fn(…) -> …` pointer.",
+        types: "`fn(T, …): R`: `T` and `R` any types a `fn` parameter and result have; no `R` for a function that returns nothing. Lowers to `fn(…) -> …`.",
+        codes: &["MZ0909", "MZ0977", "MZ0905", "MZ0306"],
+        examples: &[run(FN_VALUES, FN_VALUES_OUT)],
+    },
+    Feature {
         name: "result",
         kind: Kind::Declaration,
         depth: Depth::Full,
@@ -790,9 +807,9 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "mz check",
         word: "check",
-        usage: "mz check [--agent] <file.mz>",
+        usage: "mz check [--agent] <file.mz | dir>",
         takes_file: true,
-        teach: "Check one file: every diagnostic, in source order, one per true error. `--agent` prints RFC-0001 §4's NDJSON, one diagnostic per line and then a summary line. Exits 0 with no errors (warnings allowed), 1 with errors, 2 for a usage or I/O problem.",
+        teach: "Check one file: every diagnostic, in source order, one per true error. `--agent` prints RFC-0001 §4's NDJSON, one diagnostic per line and then a summary line. Exits 0 with no errors (warnings allowed), 1 with errors, 2 for a usage or I/O problem. Given a directory, it checks every `.mz` file under it, recursively, in sorted path order (hidden directories and `target` are skipped): the diagnostics of each file in turn, each with its own `file` path, and one summary line at the end that adds a `files` count and sums the rest. An unreadable file or a directory with no `.mz` file exits 2, after every readable file has been checked.",
         rfc: "RFC-0001 §4",
     },
     Command {
@@ -806,9 +823,9 @@ pub const COMMANDS: &[Command] = &[
     Command {
         name: "mz contract",
         word: "contract",
-        usage: "mz contract [--agent] <file.mz>",
+        usage: "mz contract [--agent] <file.mz | dir>",
         takes_file: true,
-        teach: "Check the file, then evaluate its `contract` block: a component's against its own declarations, a service's by running it in process. A failed assertion exits 1, as an error does. A program's contract block is not built.",
+        teach: "Check the file, then evaluate its `contract` block: a component's against its own declarations, a service's by running it in process. A failed assertion exits 1, as an error does. A program's contract block is not built. Given a directory, it does this for every `.mz` file under it, as `mz check` does, and the one summary line sums `contract_clauses` and `contract_failures` over the files.",
         rfc: "RFC-0006, RFC-0010, RFC-0011 §7",
     },
     Command {
@@ -1183,7 +1200,7 @@ pub const CODES: &[Code] = &[
         "RFC-0013 §6.4, §16",
         NONE_EXACT,
         PROGRAM,
-        "a `fn` used as a value outside `map`, `filter` and the folds (exact fix `()` when it takes no parameters), a function argument that is not a named `fn` or whose signature does not fit (the say quotes both), or a lambda",
+        "a `fn` used as a value where no function type is expected (exact fix `()` when it takes no parameters), a function argument that is not a named `fn` or whose signature does not fit (the say quotes both), or a lambda",
         "program t\n  fn main\n    print(one)\n  end fn main\n  fn one: int\n    return 1\n  end fn one\nend program t\n",
     ),
     code(
@@ -1511,6 +1528,14 @@ pub const CODES: &[Code] = &[
         "program t\n  record span\n    field low: int\n    field high: int\n    contract\n      always low <= high\n    end\n  end\n  fn main\n    print(span(low = 3, high = 1))\n  end fn main\nend program t\n",
     ),
     code(
+        "MZ0977",
+        "RFC-0018 §1, §4",
+        NONE,
+        PROGRAM,
+        "a function type where it is not allowed yet (as a record's field, a collection's element, the payload of a result, or the return type of a `fn`; it is the type of a parameter or of a `let`), or a function value compared with `is` or an ordering operator",
+        "program t\n  fn make: fn(int): int\n    return 1\n  end fn make\n  fn main\n    print(1)\n  end fn main\nend program t\n",
+    ),
+    code(
         "MZ0980",
         "RFC-0013 §1, §16",
         NONE_EXACT,
@@ -1733,7 +1758,8 @@ fn type_teach(t: Ty) -> Option<(&'static [&'static str], &'static str, &'static 
         | Ty::Option(_)
         | Ty::Map(_)
         | Ty::Set(_)
-        | Ty::Record(_) => None,
+        | Ty::Record(_)
+        | Ty::Func(_) => None,
     }
 }
 

@@ -46,7 +46,7 @@ jobs:
           toolchain: stable
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: compiler
 
@@ -74,7 +74,7 @@ jobs:
       - name: mz check every example
         working-directory: compiler
         run: |
-          for f in ../examples/*.mz; do
+          for f in ../examples/*.mz ../examples/components/*.mz; do
             echo "checking $f"
             cargo run --quiet --bin mz -- check "$f"
           done
@@ -117,7 +117,7 @@ jobs:
           toolchain: stable
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: cargo fmt --check (workspace)
         run: cargo fmt --all -- --check
@@ -152,7 +152,7 @@ jobs:
         with:
           toolchain: stable
 
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             .
@@ -237,7 +237,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo build --quiet -p mzizi-lang-compiler --bin mz
-          for program in examples/*.mz; do
+          for program in examples/*.mz examples/components/*.mz; do
             grep -q '^program ' "$program" || continue
             expected="${program%.mz}.expected"
             test -f "$expected" || { echo "$program has no $expected"; exit 1; }

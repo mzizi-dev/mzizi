@@ -689,6 +689,11 @@ named function is also a unit a contract can attach to (RFC-0010 §2) and an IR 
 patch by name (RFC-0002 §2.1). The cost is real: a one-use helper takes three lines. Whether M2
 adds a lambda form is open (§20, Q7).
 
+> **Note, 2026-11-07.** Owner decision on #153: Q7 is reopened, with non-capturing function values
+> first. [RFC-0018](./RFC-0018-function-values.md) designs a function type, a named `fn` as a value
+> and a non-capturing inline function, and would narrow this section. It is a draft: nothing in it is
+> built, and the text above is still what `mz check` does.
+
 ### 6.5 Named arguments and defaults — _survey F3_
 
 ```mz
@@ -2577,7 +2582,7 @@ nothing measured.
     it with `try_reserve_exact`. A list too long for memory is `MZ0991` (exit 101), not a
     capacity-overflow panic or the allocator's abort (exit 134). `xs.map(f)` reserves its
     result the same way. The reservation is only as good as the host's: on Linux with
-    overcommit, a reservation that succeeds can still be killed for memory later. Other
+    overcommit (and on macOS), a reservation that succeeds can still be killed for memory later (exit 137, #135). Other
     growth is not checked: a loop of `push`, `filter`, `sort_by` and `group_by` copies,
     each bounded by a collection the program already holds.
   - `.find(f)` gets a `guess` `first`, not `exact`: `first` returns an option, which the
@@ -2671,7 +2676,8 @@ owner's yes, no or change before the wave that builds it.**
    `changes self`, is called as a statement, and only on a `var` (§11.2). Accept, or keep every
    method read-only?
 7. **No lambdas in M1.** `map`, `filter` and `fold` take a named `fn` (§6.4). Add a lambda form
-   for M2, or never?
+   for M2, or never? _Reopened by the owner, 2026-11-07, non-capturing first; see
+   [RFC-0018](./RFC-0018-function-values.md)._
 8. **C8 and M1.** Q21 makes this a concrete proposal. C8's "Done when" includes a generic function
    and an interface, which the owner deferred past M1. Split C8 into a methods row (in M1) and a
    generics row (after it), or change M1's definition from "all of Tier 1 ✅"?

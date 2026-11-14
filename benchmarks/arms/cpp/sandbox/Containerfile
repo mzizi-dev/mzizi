@@ -1,0 +1,8 @@
+# The C++ backend arm's sandbox image: clang and libstdc++ from Alpine 3.22 (pinned by
+# digest; `apk` resolves the compiler version from that release, and the image records it
+# when built, ../README.md), plus the vendored single headers in include/. Built once by
+# ../setup.sh (the only step that uses the network); every check runs --network none.
+FROM alpine:3.22@sha256:2e0b81d60597f449baa56dc25d355367869d2dca4cd57e866f1e2b52af3eb55f
+RUN apk add --no-cache clang g++ musl-dev
+COPY . /opt/arm
+RUN sh /opt/arm/install.sh

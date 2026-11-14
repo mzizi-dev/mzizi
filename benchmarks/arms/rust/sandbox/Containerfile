@@ -1,0 +1,8 @@
+# The Rust backend arm's sandbox image: the official `rust:1` image (rustc 1.99.1 at the
+# pinned digest) with `jq` for the check's diagnostics, and the dependency tree of Cargo.lock
+# fetched and compiled once, so a check and a build are offline. Built once by ../setup.sh
+# (the only step that uses the network); every check runs with --network none.
+FROM rust:1@sha256:09027f873d45b8ecd1dc86f1fa13b7a62b875c961f017a0e331267b350430137
+RUN apt-get update && apt-get install -y --no-install-recommends jq && rm -rf /var/lib/apt/lists/*
+COPY . /opt/arm
+RUN sh /opt/arm/install.sh
