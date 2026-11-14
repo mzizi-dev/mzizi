@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Security — the Python benchmark arm pins `opentelemetry-api` 1.45.2 (2026-11-14, No issue: advisory fix)
+
+- **`benchmarks/arms/python/sandbox/requirements.txt`:** `opentelemetry-api` moves from 1.45.1 to 1.45.2 (a patch), which clears CVE-2026-126360. The org lockfile audit (`pip-audit`) failed on the 1.45.1 pin, first seen on the release PR #171. Checked: `pip-audit` 2.10.1 on the new file reports no known vulnerabilities, and the full pinned set installs with no other version change. The image was not rebuilt here, and the arm's `self-test.sh` was not re-run. Benchmark sandbox only; no compiler, language or RFC change, and nothing about Mzizi was measured.
+
 ## 2026-11-14
 
 ### Changed — release prep for 2026-11-14
