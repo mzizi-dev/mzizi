@@ -716,6 +716,34 @@ impl FnCheck<'_> {
     /// `return`, an argument): a bare variant is read against `want`'s enum, as RFC-0008 §5
     /// reads one, so a variant two enums share needs no qualifying there.
     pub(super) fn expr_want(&mut self, e: &Expr, want: Ty) -> Ty {
+        // A bare `fn` name is a function value where a function type is expected
+        // (RFC-0018 §2); anywhere else it is `MZ0909`, in `read`.
+        if let Ty::Func(_) = want
+            && let ExprKind::Name(n) = &e.kind
+            && self.visible(n).is_none()
+            && let Some(f) = self.fns.get(n.as_str()).copied()
+        {
+            let have = Ty::func(
+                f.params.iter().map(|p| p.ty.ty).collect(),
+                f.ret.map_or(Ty::Nothing, |r| r.ty),
+            );
+            if have.has_error() || want.has_error() {
+                return Ty::Error;
+            }
+            if have != want {
+                self.err(
+                    "MZ0909",
+                    e.span,
+                    format!(
+                        "`{n}` is `{}`, and a `{}` is expected here",
+                        f.signature(),
+                        want.name()
+                    ),
+                );
+                return Ty::Error;
+            }
+            return want;
+        }
         if let ExprKind::Name(n) = &e.kind
             && self.may_be_variant(n)
             && let Ty::Enum(en) = want

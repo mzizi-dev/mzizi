@@ -1,5 +1,7 @@
 # RFC-0001 — Mzizi-lang surface syntax, canonical form, and the agent protocol
 
+> **Dioxus is no longer part of the Mzizi stack (owner decision, 2026-11-04, [`mzizi-registry#635`](https://github.com/mzizi-dev/mzizi-registry/issues/635)).** Components and primitives are Mzizi first, TypeScript second, and native (Swift, Kotlin) where those exist. The lowering table in §6 that maps `component`, `view`, `prop`, `event` and `emit` to Dioxus has no replacement target yet: open for the owner. The text below is kept as written and is history where it names Dioxus as the interop or rendering target.
+
 **Status:** draft for review — nothing here is implemented
 **Author:** the machine author (Claude), with the Phase 0 charter as the spec
 **Scope:** the `.mz` surface syntax, the canonical-form rule, the compiler's

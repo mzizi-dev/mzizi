@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Verify every code block in a prompt guide against the checker that arm really runs.
 #
-# ```mz blocks go through `mz check --agent` and `mz contract --agent`; ```rust and ```tsx
-# blocks through the arm's own check.sh (benchmarks/arms/<arm>/check.sh, where <arm> is the
+# ```mz blocks go through `mz check --agent` and `mz contract --agent`; ```rust, ```tsx,
+# ```ts, ```python, ```go and ```cpp blocks through the arm's own check.sh (benchmarks/arms/<arm>/check.sh, where <arm> is the
 # guide's file name before `-guide.md`). A block is expected to pass (exit 0; for `mz`,
 # contract too), unless its first line contains "WRONG ON PURPOSE". Then the check must
 # exit 1, and its output must equal the guide's next ```text block exactly, so the output a
 # guide shows the model is what the checker prints. The file name is taken from that text
 # block (`tag.rs`, `"file":"tag.mz"`); `mz`'s "ms" timing is compared as 0.
 #
-# The Rust and React checks need their arm's toolchain installed (arms/*/README.md). They
+# The Rust, React and backend-arm checks need their arm's toolchain or sandbox installed
+# (arms/*/README.md; each backend arm's setup.sh builds a container image). They
 # run only when a guide is being changed, never in CI (RFC-0009 §9).
 #
 # usage: benchmarks/prompts/verify-guide.sh [guide.md] [out-dir]
@@ -27,7 +28,7 @@ mz="$root/target/debug/mz"
 
 # Split the guide into block-<n>.<lang>, recording each block's language in order.
 awk -v out="$out" '
-  /^```(mz|rust|tsx|text)$/ && !inblock {
+  /^```(mz|rust|tsx|ts|python|go|cpp|text)$/ && !inblock {
     n++; inblock = 1; lang = substr($0, 4)
     file = sprintf("%s/block-%03d.%s", out, n, lang); printf "" > file
     print n, lang > (out "/index"); next
@@ -50,7 +51,9 @@ check() {
 }
 
 status=0
-mapfile -t blocks <"$out/index"
+# A read loop, not `mapfile`, so the script also runs under the bash 3.2 macOS ships.
+blocks=()
+while IFS= read -r line; do blocks+=("$line"); done <"$out/index"
 for ((i = 0; i < ${#blocks[@]}; i++)); do
   read -r n lang <<<"${blocks[$i]}"
   [ "$lang" = text ] && continue
@@ -64,7 +67,7 @@ for ((i = 0; i < ${#blocks[@]}; i++)); do
       status=1
       continue
     fi
-    file=$(grep -oE '[A-Za-z0-9_-]+\.(mz|rs|tsx)' "$expected" | head -n 1)
+    file=$(grep -oE '[A-Za-z0-9_-]+\.(mz|rs|tsx|ts|py|go|cpp)' "$expected" | head -n 1)
     dir="$out/wrong-$n"
     mkdir -p "$dir"
     cp "$block" "$dir/$file"
@@ -79,7 +82,7 @@ for ((i = 0; i < ${#blocks[@]}; i++)); do
     fi
   else
     ext=$lang
-    [ "$lang" = rust ] && ext=rs
+    case "$lang" in rust) ext=rs ;; python) ext=py ;; esac
     dir="$out/ok-$n"
     mkdir -p "$dir"
     cp "$block" "$dir/candidate.$ext"

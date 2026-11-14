@@ -1,0 +1,239 @@
+## A circuit breaker as pure functions: closed, open and half-open, with a sliding failure
+## window, one probe in half-open, and an epoch that makes a late outcome change nothing.
+## It is the state machine of the registry's `mzizi-resilience` breaker (N5 resilience),
+## written in Mzizi so a component can be built from it. Time is a number the caller passes
+## in (milliseconds); there is no clock in the language yet (tracker P2, P9).
+## `mz run examples/components/circuit_breaker.mz` prints what circuit_breaker.expected holds.
+program circuit_breaker
+
+  enum state
+    closed
+    open
+    half_open
+  end
+
+  record breaker
+    field failure_threshold: int
+    field window_ms: int
+    field cooldown_ms: int
+    field state: state
+    field failures: list(int)
+    field opened_at: int
+    field epoch: int
+    field probe_out: bool
+  end
+
+  ## A permit remembers the epoch it was granted in and whether it is the half-open probe.
+  record permit
+    field epoch: int
+    field probe: bool
+  end
+
+  ## The answer to a request to make a call.
+  ## Payload enums are not built (tracker row C13), so the answer is a kind and the numbers
+  ## that go with it: `epoch` and `probe` mean something only for `allowed`, and
+  ## `retry_after_ms` only for `turned_away`.
+  enum admission_kind
+    allowed
+    turned_away
+    probe_in_flight
+  end
+
+  record admission
+    field kind: admission_kind
+    field epoch: int
+    field probe: bool
+    field retry_after_ms: int
+  end
+
+  fn new_breaker(failure_threshold: int, window_ms: int, cooldown_ms: int): result(breaker, text)
+    when failure_threshold < 1
+      return error("failure_threshold must be at least 1")
+    end
+    when window_ms < 1
+      return error("window_ms must be at least 1")
+    end
+    when cooldown_ms < 1
+      return error("cooldown_ms must be at least 1")
+    end
+    return breaker(failure_threshold = failure_threshold, window_ms = window_ms, cooldown_ms = cooldown_ms, state = closed, failures = [], opened_at = 0, epoch = 0, probe_out = false)
+  end fn new_breaker
+
+  fn cooldown_left(b: breaker, now: int): int
+    let elapsed = now - b.opened_at
+    when elapsed >= b.cooldown_ms
+      return 0
+    end
+    return b.cooldown_ms - elapsed
+  end fn cooldown_left
+
+  ## The state at `now`: an open circuit whose cooldown has passed reports half-open.
+  fn state_at(b: breaker, now: int): state
+    when b.state is open and cooldown_left(b, now) is 0
+      return half_open
+    end
+    return b.state
+  end fn state_at
+
+  ## The breaker after a request to make a call: an open circuit past its cooldown
+  ## becomes half-open, and the first call through it is the probe.
+  fn after_acquire(b: breaker, now: int): breaker
+    when b.state is open and cooldown_left(b, now) is 0
+      return b with (state = half_open, probe_out = true)
+    end
+    when b.state is half_open and not b.probe_out
+      return b with (probe_out = true)
+    end
+    return b
+  end fn after_acquire
+
+  fn acquire(b: breaker, now: int): admission
+    when b.state is open
+      let left = cooldown_left(b, now)
+      when left > 0
+        return admission(kind = turned_away, epoch = b.epoch, probe = false, retry_after_ms = left)
+      end
+      return admission(kind = allowed, epoch = b.epoch, probe = true, retry_after_ms = 0)
+    end
+    when b.state is half_open
+      when b.probe_out
+        return admission(kind = probe_in_flight, epoch = b.epoch, probe = false, retry_after_ms = 0)
+      end
+      return admission(kind = allowed, epoch = b.epoch, probe = true, retry_after_ms = 0)
+    end
+    return admission(kind = allowed, epoch = b.epoch, probe = false, retry_after_ms = 0)
+  end fn acquire
+
+  fn reopened(b: breaker, now: int): breaker
+    return b with (state = open, failures = [], opened_at = now, epoch = b.epoch + 1, probe_out = false)
+  end fn reopened
+
+  ## The call succeeded. A late outcome (another epoch) changes nothing.
+  fn success(b: breaker, p: permit): breaker
+    when p.epoch is not b.epoch
+      return b
+    end
+    when p.probe and b.state is half_open
+      return b with (state = closed, failures = [], epoch = b.epoch + 1, probe_out = false)
+    end
+    return b
+  end fn success
+
+  ## The call failed in a way that counts.
+  fn failure(b: breaker, now: int, p: permit): breaker
+    when p.epoch is not b.epoch
+      return b
+    end
+    when p.probe
+      when b.state is half_open
+        return reopened(b, now)
+      end
+      return b
+    end
+    when b.state is not closed
+      return b
+    end
+    var kept: list(int) = []
+    for each t in b.failures
+      when now - t < b.window_ms
+        kept.push(t)
+      end
+    end
+    kept.push(now)
+    when kept.length() >= b.failure_threshold
+      return reopened(b, now)
+    end
+    return b with (failures = kept)
+  end fn failure
+
+  ## The call ended in a way that says nothing about the dependency: free the probe slot.
+  fn release(b: breaker, p: permit): breaker
+    when p.epoch is b.epoch and p.probe and b.state is half_open
+      return b with (probe_out = false)
+    end
+    return b
+  end fn release
+
+  fn permit_of(a: admission): permit
+    return permit(epoch = a.epoch, probe = a.probe)
+  end fn permit_of
+
+  ## One call that fails: ask, then report the failure if the call was let through.
+  fn fail_at(b: breaker, t: int): breaker
+    let a = acquire(b, t)
+    let admitted = after_acquire(b, t)
+    when a.kind is allowed
+      return failure(admitted, t, permit_of(a))
+    end
+    return admitted
+  end fn fail_at
+
+  fn note(b: breaker, t: int): text
+    let a = acquire(b, t)
+    return "t={t} {state_at(b, t)} {a.kind} retry_after={a.retry_after_ms} failures={b.failures.length()}"
+  end fn note
+
+  fn trip(b: breaker, first: int): breaker
+    var cur = b
+    for each t in [first, first + 1, first + 2]
+      cur = fail_at(cur, t)
+    end
+    return cur
+  end fn trip
+
+  fn main
+    match new_breaker(0, 1000, 500)
+      case ok unused
+        print("accepted bad settings")
+      case error why
+        print("rejected: {why}")
+    end
+    match new_breaker(3, 1000, 500)
+      case ok fresh
+        run(fresh)
+      case error why
+        print("rejected: {why}")
+    end
+  end fn main
+
+  fn run(fresh: breaker)
+    print("-- opens on the failing call, not the next")
+    var b = fail_at(fresh, 0)
+    b = fail_at(b, 10)
+    print(note(b, 15))
+    b = fail_at(b, 20)
+    print(note(b, 21))
+    print("-- old failures leave the window")
+    var w = fail_at(fresh, 0)
+    w = fail_at(w, 10)
+    w = fail_at(w, 2000)
+    print(note(w, 2000))
+    print("-- half-open admits exactly one probe")
+    var h = trip(fresh, 0)
+    print(note(h, 600))
+    let probe = acquire(h, 600)
+    h = after_acquire(h, 600)
+    print(note(h, 600))
+    h = success(h, permit_of(probe))
+    print(note(h, 602))
+    print("-- a failed probe reopens for a full cooldown")
+    var f = trip(fresh, 0)
+    let try_probe = acquire(f, 600)
+    f = after_acquire(f, 600)
+    f = failure(f, 600, permit_of(try_probe))
+    print(note(f, 601))
+    print("-- a released probe frees the slot without judging the dependency")
+    var r = trip(fresh, 0)
+    let held = acquire(r, 600)
+    r = after_acquire(r, 600)
+    r = release(r, permit_of(held))
+    print(note(r, 600))
+    print("-- a late outcome from before opening changes nothing")
+    let slow = permit_of(acquire(fresh, 0))
+    var late = trip(fresh, 1)
+    late = success(late, slow)
+    late = failure(late, 5, slow)
+    print(note(late, 5))
+  end fn run
+
+end program circuit_breaker

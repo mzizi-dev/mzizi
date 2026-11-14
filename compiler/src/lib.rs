@@ -43,11 +43,13 @@ pub mod numbers;
 pub mod outline;
 pub mod parse;
 pub mod program;
+pub mod render;
 pub mod resolve;
 pub mod run;
 pub mod serve;
 pub mod service;
 pub mod text;
+pub mod viewexpr;
 
 use diagnostic::{CheckReport, Severity};
 

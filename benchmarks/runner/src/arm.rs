@@ -584,25 +584,32 @@ class_accessor = "each with classes"
         assert!(ArmConfig::load(&repo(), "../x").is_err());
     }
 
-    /// RFC-0009 §4.2: every UI guide within ±5% of one token budget. The counts cannot be
-    /// taken in CI (no tokenizer there), so `benchmarks/prompts/BUDGET.md` records them with
-    /// each guide's SHA-256. This fails when a guide changes without being re-measured, or
-    /// when a recorded count leaves the band.
+    /// RFC-0009 §4.2: every guide in a family within ±5% of that family's token budget. The
+    /// counts cannot be taken in CI (no tokenizer there), so `benchmarks/prompts/BUDGET.md`
+    /// records them with each guide's SHA-256, and each family's budget as
+    /// `budget is **N tokens**` (the `ui` family's first, the `backend` family's second).
+    /// This fails when a guide changes without being re-measured, or when a recorded count
+    /// leaves the band.
     #[test]
-    fn every_ui_guide_is_measured_and_within_the_budget() {
+    fn every_guide_is_measured_and_within_its_familys_budget() {
         let r = repo();
         let budget_md = std::fs::read_to_string(r.join("benchmarks/prompts/BUDGET.md")).unwrap();
-        let budget: f64 = budget_md
-            .split("budget is **")
-            .nth(1)
-            .and_then(|t| t.split_whitespace().next())
-            .and_then(|n| n.replace(',', "").parse().ok())
-            .expect("BUDGET.md states the budget as `budget is **N tokens**`");
+        let budget_of = |family: &str, nth: usize| -> f64 {
+            budget_md
+                .split("budget is **")
+                .nth(nth)
+                .and_then(|t| t.split_whitespace().next())
+                .and_then(|n| n.replace(',', "").parse().ok())
+                .unwrap_or_else(|| panic!("BUDGET.md states no budget for `{family}`"))
+        };
+        let (ui, backend) = (budget_of("ui", 1), budget_of("backend", 2));
         for id in list_arms(&r).unwrap() {
             let a = ArmConfig::load(&r, &id).unwrap();
-            if a.family != "ui" {
-                continue;
-            }
+            let budget = match a.family.as_str() {
+                "ui" => ui,
+                "backend" => backend,
+                other => panic!("{id}: no budget for family `{other}`"),
+            };
             let file = Path::new(&a.guide).file_name().unwrap().to_string_lossy();
             let want = format!("`{file}`");
             let cells: Vec<&str> = budget_md
