@@ -19,6 +19,7 @@
 
 use crate::ast::{Component, Element, EnumDecl, Variant};
 use crate::diagnostic::{Diagnostic, Span};
+use crate::render::{self, Value};
 
 /// A parsed `contract` block: the assertions, in source order.
 ///
@@ -76,6 +77,16 @@ pub enum Subject {
     },
     /// `when <variant>` — the branch of the view guarded on that variant.
     WhenVariant(String),
+    /// `render [with <prop> = <value> …] [of <attr>]` — the component rendered to markup with
+    /// those props (RFC-0017 §7), and either all of it or one thing on its root element.
+    Render {
+        /// `(prop, value as written)` pairs. A prop not named takes its default.
+        props: Vec<(String, String)>,
+        /// What is read from the rendered root element: an attribute by its view name
+        /// (`role`, `slot`, `class`), or `text` for its own text. `None` is the whole
+        /// markup string.
+        target: Option<String>,
+    },
     /// The component itself, for clauses like `uses button`.
     Whole,
 }
@@ -111,6 +122,8 @@ pub enum Predicate {
     },
     /// `min_height <int>` — the element's height floor, in CSS pixels.
     MinHeight(i64),
+    /// `omits "<text>"` — the text is not in the value. Only a `render` subject takes it.
+    Omits(String),
 }
 
 /// The words that open a predicate. `is` and `in` are language keywords; the rest are
@@ -125,6 +138,7 @@ pub const PREDICATE_WORDS: &[&str] = &[
     "uses",
     "min_height",
     "shows",
+    "omits",
 ];
 
 impl Clause {
@@ -146,6 +160,19 @@ impl Clause {
             Subject::Named(name) => name.clone(),
             Subject::Element { tag, text } => format!("{tag} \"{text}\""),
             Subject::WhenVariant(variant) => format!("when {variant}"),
+            Subject::Render { props, target } => {
+                let mut out = "render".to_string();
+                if !props.is_empty() {
+                    out.push_str(" with");
+                    for (name, value) in props {
+                        out.push_str(&format!(" {name} = {value}"));
+                    }
+                }
+                if let Some(target) = target {
+                    out.push_str(&format!(" of {target}"));
+                }
+                out
+            }
             Subject::Whole => String::new(),
         };
         let predicate = match &self.predicate {
@@ -164,6 +191,7 @@ impl Clause {
             Predicate::Composes(name) => format!("uses {name}"),
             Predicate::Shows { tag, text } => format!("shows {tag} \"{text}\""),
             Predicate::MinHeight(n) => format!("min_height {n}"),
+            Predicate::Omits(text) => format!("omits \"{text}\""),
         };
         if subject.is_empty() {
             predicate
@@ -247,6 +275,10 @@ fn judge(component: &Component, clause: &Clause) -> Verdict {
             } else {
                 Verdict::Fail(format!("the view has no `{name}` element"))
             }
+        }
+        // `render … <predicate>` — checked against the rendered markup (RFC-0017 §7).
+        (Subject::Render { props, target }, predicate) => {
+            judge_render(component, props, target, predicate)
         }
         (Subject::Whole, _) => {
             Verdict::Unevaluable("the component as a whole takes only `uses <name>`".to_string())
@@ -446,6 +478,9 @@ fn check(predicate: &Predicate, value: &str) -> Verdict {
         Predicate::Composes(name) => Verdict::Unevaluable(format!(
             "`uses {name}` is a clause about the whole component, so it takes no subject"
         )),
+        Predicate::Omits(_) => {
+            Verdict::Unevaluable("`omits` is for a `render` clause only".to_string())
+        }
         Predicate::Shows { .. } => {
             Verdict::Unevaluable("`shows` needs a `when <variant>` subject".to_string())
         }
@@ -516,7 +551,13 @@ fn outermost_attr<'a>(view: &'a [Element], name: &str) -> Option<&'a str> {
     let mut level: Vec<&'a Element> = view.iter().collect();
     while !level.is_empty() {
         for el in &level {
-            if let Some(attr) = el.attrs.iter().find(|a| a.name == name) {
+            // A conditional attribute has no single value to compare, so it is skipped: a
+            // static clause about it is unevaluable, and a `render` clause tests it.
+            if let Some(attr) = el
+                .attrs
+                .iter()
+                .find(|a| a.name == name && a.guard.is_none() && a.otherwise.is_empty())
+            {
                 return Some(attr.value.as_str());
             }
         }
@@ -635,6 +676,111 @@ fn bracketed_pixels(class: &str, prefix: &str) -> Option<i64> {
     let rest = &class[start..];
     let end = rest.find(']')?;
     rest[..end].strip_suffix("px")?.parse::<i64>().ok()
+}
+
+/// A written prop value, read as the value of the declared prop type.
+fn render_value(component: &Component, prop: &str, written: &str) -> Result<Value, String> {
+    use crate::ast::TypeKind;
+    let decl = component
+        .props
+        .iter()
+        .find(|p| p.name == prop)
+        .ok_or_else(|| format!("the component has no prop `{prop}`"))?;
+    let mut ty = &decl.ty;
+    if let TypeKind::Apply(ctor, inner) = &ty.kind
+        && ctor == "option"
+    {
+        if written == "none" {
+            return Ok(Value::None);
+        }
+        ty = inner;
+    }
+    match &ty.kind {
+        TypeKind::Name(n) if n == "bool" => match written {
+            "true" => Ok(Value::Bool(true)),
+            "false" => Ok(Value::Bool(false)),
+            _ => Err(format!("`{prop}` is a bool: write `true` or `false`")),
+        },
+        TypeKind::Name(n) if n == "int" => written
+            .parse()
+            .map(Value::Int)
+            .map_err(|_| format!("`{prop}` is an int: `{written}` is not a number")),
+        TypeKind::Name(n) if n == "text" => written
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .map(|s| Value::Text(s.to_string()))
+            .ok_or_else(|| format!("`{prop}` is text: write it in quotes")),
+        TypeKind::Name(n) if find_enum(component, n).is_some() => {
+            Ok(Value::Variant(written.to_string()))
+        }
+        _ => Err(format!(
+            "`{prop}` has a type a render cannot be given a value for"
+        )),
+    }
+}
+
+/// Evaluate a `render` clause by rendering the component and testing what comes out.
+fn judge_render(
+    component: &Component,
+    written: &[(String, String)],
+    target: &Option<String>,
+    predicate: &Predicate,
+) -> Verdict {
+    let mut props = Vec::new();
+    for (name, value) in written {
+        match render_value(component, name, value) {
+            Ok(v) => props.push((name.as_str(), v)),
+            Err(why) => return Verdict::Unevaluable(why),
+        }
+    }
+    let nodes = match render::tree(component, &props) {
+        Ok(nodes) => nodes,
+        Err(e) => return Verdict::Unevaluable(format!("it does not render: {e}")),
+    };
+    let value = match target {
+        None => render::to_html(&nodes),
+        Some(what) => {
+            let Some(render::Node::Element {
+                attrs, children, ..
+            }) = nodes.first()
+            else {
+                return Verdict::Unevaluable("the view renders no root element".to_string());
+            };
+            if what == "text" {
+                children
+                    .iter()
+                    .filter_map(|c| match c {
+                        render::Node::Text(t) => Some(t.as_str()),
+                        render::Node::Element { .. } => None,
+                    })
+                    .collect::<String>()
+            } else {
+                let Some(name) = render::markup_attr(what) else {
+                    return Verdict::Unevaluable(format!(
+                        "`{what}` is not rendered as an attribute"
+                    ));
+                };
+                match attrs.iter().find(|(n, _)| *n == name) {
+                    Some((_, v)) => v.clone(),
+                    None => {
+                        return Verdict::Fail(format!(
+                            "the root element has no `{what}` attribute"
+                        ));
+                    }
+                }
+            }
+        }
+    };
+    match predicate {
+        Predicate::Omits(text) if !value.contains(text.as_str()) => Verdict::Pass,
+        Predicate::Omits(text) => Verdict::Fail(format!("the render contains \"{text}\"")),
+        Predicate::Is(_) | Predicate::Contains(_) | Predicate::NotEmpty => {
+            check(predicate, &format!("\"{value}\""))
+        }
+        _ => Verdict::Unevaluable(
+            "a `render` clause takes `is`, `contains`, `omits` or `not_empty`".to_string(),
+        ),
+    }
 }
 
 #[cfg(test)]

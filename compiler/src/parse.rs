@@ -263,7 +263,101 @@ impl Parser {
             value,
             span,
             segments,
+            guard: None,
+            otherwise: Vec::new(),
         })
+    }
+
+    /// The tail of a conditional attribute: `value when <condition> [else <value> when
+    /// <condition>]… [else <value>]` (RFC-0017 §6, tracker U10). `first` is the attribute with
+    /// its first value already read; the guards and alternatives are attached to it. A
+    /// condition is read by the same words as a `when` element's: `<name>`, `not <name>`,
+    /// `<name> is <variant>`. A tail that is not a `when` or `else` is left for the line
+    /// recovery that follows, as before.
+    fn attr_guards(&mut self, first: &mut Attr) {
+        if matches!(self.peek(), Tok::Keyword("else")) {
+            let at = self.peek_span();
+            self.diags.push(Diagnostic::error(
+                "MZ0404",
+                &self.file,
+                at,
+                format!(
+                    "`else` after `{} = …` needs a `when` first: write `{} = <value> when <condition> else <value>`",
+                    first.name, first.name
+                ),
+            ));
+            return;
+        }
+        if !matches!(self.peek(), Tok::Keyword("when")) {
+            return;
+        }
+        let name = first.name.clone();
+        first.guard = Some(self.guard_words());
+        while matches!(self.peek(), Tok::Keyword("else")) {
+            self.bump();
+            match self.attr(&name) {
+                Some(mut alt) => {
+                    if matches!(self.peek(), Tok::Keyword("when")) {
+                        alt.guard = Some(self.guard_words());
+                        first.otherwise.push(alt);
+                    } else {
+                        first.otherwise.push(alt);
+                        if matches!(self.peek(), Tok::Keyword("else")) {
+                            let at = self.peek_span();
+                            self.diags.push(Diagnostic::error(
+                                "MZ0404",
+                                &self.file,
+                                at,
+                                format!(
+                                    "`{name} = …` already ended in a plain `else`; a second `else` can never be reached"
+                                ),
+                            ));
+                        }
+                        break;
+                    }
+                }
+                None => {
+                    let at = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0403",
+                        &self.file,
+                        at,
+                        format!("`{name} = … else` needs a value after the `else`"),
+                    ));
+                    break;
+                }
+            }
+        }
+    }
+
+    /// `when` and the condition words after it, up to an `else` or the end of the line.
+    fn guard_words(&mut self) -> Vec<Attr> {
+        self.bump(); // `when`
+        let mut words = Vec::new();
+        while !matches!(self.peek(), Tok::Newline | Tok::Eof | Tok::Keyword("else")) {
+            match self.peek().clone() {
+                Tok::Keyword(k) if !matches!(k, "true" | "false" | "nothing" | "none") => {
+                    let at = self.peek_span();
+                    self.bump();
+                    let rhs = self.attr(k).unwrap_or(Attr {
+                        name: k.to_string(),
+                        value: String::new(),
+                        span: at,
+                        segments: Vec::new(),
+                        guard: None,
+                        otherwise: Vec::new(),
+                    });
+                    words.push(rhs);
+                }
+                _ => match self.attr("") {
+                    Some(v) => words.push(v),
+                    None => {
+                        self.bump();
+                    }
+                },
+            }
+        }
+        words
     }
 
     /// A type expression: a name, `none`, or `<ctor>(<type>)` (RFC-0008 §1).
@@ -1426,6 +1520,8 @@ impl Parser {
                         value: String::new(),
                         span: at,
                         segments: Vec::new(),
+                        guard: None,
+                        otherwise: Vec::new(),
                     });
                     attrs.push(rhs);
                 }
@@ -1701,7 +1797,10 @@ impl Parser {
                 self.bump();
                 self.bump(); // `=`
                 match self.attr(&key) {
-                    Some(v) => attrs.push(v),
+                    Some(mut v) => {
+                        self.attr_guards(&mut v);
+                        attrs.push(v);
+                    }
                     None => {
                         let vspan = self.peek_span();
                         self.diags.push(Diagnostic::error(
@@ -2021,6 +2120,73 @@ impl Parser {
             ));
         }
 
+        // `render [with <prop> = <value> …] [of <attr>] <predicate>` — a claim about the
+        // markup the component renders to (RFC-0017 §7). `render` opens this form only when
+        // `with`, `of` or a render predicate follows, so a prop called `render` still reads
+        // as a name.
+        if matches!(self.peek(), Tok::Ident(w) if w == "render")
+            && matches!(
+                self.tokens.get(self.pos + 1).map(|t| &t.kind),
+                Some(Tok::Ident(w)) if matches!(w.as_str(), "with" | "of" | "contains" | "omits" | "not_empty")
+            )
+        {
+            self.bump();
+            let mut props = Vec::new();
+            if matches!(self.peek(), Tok::Ident(w) if w == "with") {
+                self.bump();
+                while matches!(self.peek(), Tok::Ident(w) if !PREDICATE_WORDS.contains(&w.as_str()) && w != "of")
+                {
+                    let name = self.expect_ident("`render with`")?;
+                    if !matches!(self.peek(), Tok::Equals) {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0601",
+                            &self.file,
+                            span,
+                            format!(
+                                "`render with {name}` needs `= <value>`, found {}",
+                                describe(self.peek())
+                            ),
+                        ));
+                        return None;
+                    }
+                    self.bump();
+                    let Some(value) = self.value() else {
+                        let span = self.peek_span();
+                        self.diags.push(Diagnostic::error(
+                            "MZ0601",
+                            &self.file,
+                            span,
+                            format!(
+                                "`render with {name} =` needs a value, found {}",
+                                describe(self.peek())
+                            ),
+                        ));
+                        return None;
+                    };
+                    props.push((name, value));
+                }
+                if props.is_empty() {
+                    let span = self.peek_span();
+                    self.diags.push(Diagnostic::error(
+                        "MZ0601",
+                        &self.file,
+                        span,
+                        "`render with` needs at least one `<prop> = <value>`",
+                    ));
+                    return None;
+                }
+            }
+            let target = if matches!(self.peek(), Tok::Ident(w) if w == "of") {
+                self.bump();
+                Some(self.expect_ident("`render … of`")?)
+            } else {
+                None
+            };
+            let predicate = self.parse_predicate()?;
+            return Some((Subject::Render { props, target }, predicate));
+        }
+
         // Everything else opens with a name.
         let head = self.expect_ident("a contract clause")?;
         let subject = if matches!(self.peek(), Tok::Dot) {
@@ -2124,6 +2290,10 @@ impl Parser {
                 "min_height" => {
                     self.bump();
                     self.expect_int("`min_height`").map(Predicate::MinHeight)
+                }
+                "omits" => {
+                    self.bump();
+                    self.expect_string("`omits`").map(Predicate::Omits)
                 }
                 _ => self.missing_predicate(),
             },

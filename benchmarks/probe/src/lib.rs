@@ -464,12 +464,31 @@ pub fn free_port() -> Result<u16, String> {
         .map_err(|e| format!("no free port: {e}"))
 }
 
-/// Wait until `port` accepts a connection, the child exits, or `timeout` passes.
+/// Whether `port` answers HTTP: it accepts a connection and replies to a bare `GET /` with
+/// a status line. A bare TCP connect is not enough, because a container runtime that
+/// publishes the port accepts connections before the server inside is listening.
+fn answers_http(addr: &SocketAddr) -> bool {
+    use std::io::Write as _;
+    let Ok(mut s) = TcpStream::connect_timeout(addr, Duration::from_millis(200)) else {
+        return false;
+    };
+    let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
+    let _ = s.set_write_timeout(Some(Duration::from_secs(2)));
+    if s.write_all(b"GET / HTTP/1.0\r\nHost: probe\r\n\r\n")
+        .is_err()
+    {
+        return false;
+    }
+    let mut head = [0u8; 5];
+    s.read_exact(&mut head).is_ok() && &head == b"HTTP/"
+}
+
+/// Wait until `port` answers an HTTP request, the child exits, or `timeout` passes.
 pub fn wait_ready(child: &mut Child, port: u16, timeout: Duration) -> Result<(), String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let started = Instant::now();
     while started.elapsed() < timeout {
-        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+        if answers_http(&addr) {
             return Ok(());
         }
         if let Ok(Some(status)) = child.try_wait() {

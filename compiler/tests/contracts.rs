@@ -352,7 +352,7 @@ fn the_agent_summary_carries_the_contract_counts() {
     let text = String::from_utf8_lossy(&out.stdout);
     let summary = text.lines().last().expect("a summary line");
     assert!(
-        summary.contains(r#""contract_clauses":4"#),
+        summary.contains(r#""contract_clauses":6"#),
         "summary was: {summary}"
     );
     assert!(summary.contains(r#""contract_failures":0"#), "{summary}");
@@ -474,5 +474,112 @@ fn the_scale_rule_matches_the_harness_on_the_same_examples() {
         ("min-h-12", None),
     ] {
         assert_eq!(scale_height(class).map(|(_, px)| px), want, "{class}");
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// `render` clauses: the contract checked against rendered markup (RFC-0017 §7)
+// ---------------------------------------------------------------------------------------
+
+const RENDERED: &str = "component chip\n  enum chip_tone\n    calm  class \"bg-muted\"\n    loud  class \"bg-destructive\"\n  end\n  prop tone: chip_tone = calm\n  prop label: text\n  view\n    mark\n      slot = \"chip\"\n      class = \"px-2 {tone.class}\"\n      text = label\n    end\n  end\n  contract\n";
+
+fn rendered(clauses: &str) -> (usize, usize, Vec<String>) {
+    let src = format!("{RENDERED}{clauses}  end\nend component chip\n");
+    let (report, tally) = check_contract(&src, "chip.mz");
+    let say = report
+        .diagnostics
+        .iter()
+        .map(|d| format!("[{}] {}", d.code, d.say))
+        .collect();
+    (tally.clauses, tally.failed, say)
+}
+
+#[test]
+fn a_render_clause_is_checked_against_the_rendered_markup() {
+    let (n, failed, say) = rendered(
+        "    render with label = \"Hi\" of text is \"Hi\"\n    render with label = \"Hi\" of slot is \"chip\"\n    render with label = \"Hi\" contains \"bg-muted\"\n    render with label = \"Hi\" tone = loud of class contains \"bg-destructive\"\n    render with label = \"Hi\" omits \"bg-destructive\"\n    render with label = \"Hi\" not_empty\n",
+    );
+    assert_eq!((n, failed), (6, 0), "{say:#?}");
+}
+
+#[test]
+fn a_render_clause_that_does_not_hold_fails_and_says_what_rendered() {
+    let (_, failed, say) =
+        rendered("    render with label = \"Hi\" tone = loud of class contains \"bg-muted\"\n");
+    assert_eq!(failed, 1);
+    assert!(
+        say[0].contains("[MZ0603]") && say[0].contains("bg-muted"),
+        "{say:?}"
+    );
+    let (_, failed, say) = rendered("    render with label = \"Hi\" omits \"bg-muted\"\n");
+    assert_eq!(failed, 1);
+    assert!(say[0].contains("[MZ0603]"), "{say:?}");
+}
+
+#[test]
+fn a_render_clause_that_cannot_render_is_unevaluable_never_a_pass() {
+    // `label` has no default, so a render that does not supply it cannot happen.
+    let (_, failed, say) = rendered("    render contains \"chip\"\n");
+    assert_eq!(failed, 1);
+    assert!(
+        say[0].contains("[MZ0605]") && say[0].contains("label"),
+        "{say:?}"
+    );
+    // A prop the component lacks, a variant the enum lacks, a wrong type.
+    for clause in [
+        "render with colour = loud contains \"x\"",
+        "render with label = \"a\" tone = shouting contains \"x\"",
+        "render with label = 3 contains \"x\"",
+        "render with label = \"a\" of nothing_here is \"x\"",
+    ] {
+        let (_, failed, say) = rendered(&format!("    {clause}\n"));
+        assert_eq!(failed, 1, "{clause}: {say:?}");
+        assert!(
+            say[0].contains("[MZ0605]") || say[0].contains("[MZ0603]"),
+            "{clause}: {say:?}"
+        );
+    }
+}
+
+#[test]
+fn a_prop_named_render_still_reads_as_a_name() {
+    let src = "component r\n  prop render: text = \"x\"\n  view\n    mark\n      text = render\n    end\n  end\n  contract\n    render is \"x\"\n  end\nend component r\n";
+    let (report, tally) = check_contract(src, "r.mz");
+    assert_eq!(
+        (tally.clauses, tally.failed),
+        (1, 0),
+        "{:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn omits_is_not_a_predicate_for_anything_but_render() {
+    let src = "component r\n  prop a: text = \"x\"\n  view\n    mark\n      text = a\n    end\n  end\n  contract\n    a omits \"y\"\n  end\nend component r\n";
+    let (_, tally) = check_contract(src, "r.mz");
+    assert_eq!(tally.failed, 1);
+}
+
+#[test]
+fn a_malformed_render_clause_is_one_diagnostic() {
+    for clause in [
+        "render with contains \"x\"",
+        "render with label \"Hi\" contains \"x\"",
+        "render with label = contains \"x\"",
+    ] {
+        let (report, _) = check_contract(
+            &format!("{RENDERED}    {clause}\n  end\nend component chip\n"),
+            "chip.mz",
+        );
+        let errors: Vec<_> = report
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == mzizi_lang_compiler::diagnostic::Severity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{clause}: {errors:?}");
+        assert!(
+            matches!(errors[0].code, "MZ0601" | "MZ0602"),
+            "{clause}: {errors:?}"
+        );
     }
 }

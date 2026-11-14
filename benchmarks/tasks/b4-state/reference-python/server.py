@@ -9,6 +9,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ALLOW = "GET, HEAD, POST, OPTIONS"
 ROUTE = re.compile(r"^/v1/ui/([^/]+)/versions$")
 HISTORY = {}
+# The two names B4.6 accepts, each with its own Location: the header is built from a
+# constant, never from the request path.
+LOCATIONS = {"badge": "/v1/ui/badge/versions", "button": "/v1/ui/button/versions"}
 LOCK = threading.Lock()
 
 
@@ -37,7 +40,10 @@ class Handler(BaseHTTPRequestHandler):
         if body is not None:
             self.send_header("content-type", "application/json")
         for k, v in (headers or {}).items():
-            self.send_header(k, v)
+            # A header value never carries a line break: http.server would write it as is,
+            # splitting the response. Raw CR or LF cannot arrive in a request line, so this
+            # changes no answer the probes see; it closes the path for any future caller.
+            self.send_header(k, v.replace("\r", "").replace("\n", ""))
         self.send_header("content-length", str(len(payload)))
         self.end_headers()
         if self.command != "HEAD":
@@ -48,7 +54,8 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length) if length else b""
         path = self.path.split("?", 1)[0]
         m = ROUTE.match(path)
-        if not m or m.group(1) not in ("badge", "button"):
+        location = LOCATIONS.get(m.group(1)) if m else None
+        if location is None:
             return self.send(404, body={"error": "Not found"})
         name = m.group(1)
         method = self.command
@@ -68,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
             versions.append(version)
             self.send(
                 201,
-                {"location": f"/v1/ui/{name}/versions"},
+                {"location": location},
                 {"component": name, "version": version, "count": len(versions)},
             )
 

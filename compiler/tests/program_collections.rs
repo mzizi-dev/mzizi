@@ -838,10 +838,15 @@ fn an_index_out_of_range_an_int_sum_overflow_and_a_range_too_long_trap_with_101(
             "print(range(0, to = 9223372036854775807).length())",
             "a list too long to hold in memory in `range(0, to = 9223372036854775807)`",
         ),
+        // 2^59 elements is 2^62 bytes: under `isize::MAX`, so it reaches the allocator, and
+        // larger than any 64-bit host's user address space (at most 2^57 bytes), so every
+        // allocator refuses it whatever the overcommit policy. A smaller length such as
+        // 10^11 (800 GB) is refused only by hosts that check it against memory: macOS
+        // reserved it, and the process was killed (137) while filling it (#135).
         (
             "range_huge",
-            "print(range(0, to = 100000000000).length())",
-            "a list too long to hold in memory in `range(0, to = 100000000000)`",
+            "print(range(0, to = 576460752303423488).length())",
+            "a list too long to hold in memory in `range(0, to = 576460752303423488)`",
         ),
     ] {
         let src = wrap(body);

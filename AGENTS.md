@@ -54,6 +54,7 @@ cd compiler
 cargo test                                                              # 634 tests (765 in the workspace)
 cargo run --bin mz -- check          ../primitives/button.mz
 cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
+cargo run --bin mz -- check --agent  ../primitives                      # every .mz under a directory, one summary line
 cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
 cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
 cargo run --bin mz -- outline        ../primitives/alert.mz
@@ -293,5 +294,5 @@ Load the Mzizi **dev skills** before starting work: `mzizi_get_skills category=d
 
 - **Digital hygiene.** Check free disk before starting, clone only under `$TMPDIR`, share build caches, and audit, then delete, your clones once the work merges (`digital-hygiene` skill).
 - **Clone isolation.** Clone only into a directory unique to you; never touch another agent's.
-- **Progress reports.** All dev work runs on a 10-minute progress-report loop (`progress-report` skill): measured bars, what changed, and a final "Needs you:" line. Report ticks never publish, release, merge or deploy without the owner's approval.
+- **Progress reports.** All dev work runs on a 10-minute progress-report loop (`progress-report` skill): measured bars, what changed, and a final "Needs you:" line. Report ticks never release a major without the owner's go-ahead. The owner approves major releases only. Minor and patch releases (the `staging` → `main` release PR, its tag, and the sync-back into `staging`), and merges of green PRs that have passed review, are done by agents following the repo's playbook, without asking the owner (owner, 2026-11-02).
 - **Merge gate.** Merge only when the work is complete, CI is green, it's verified at runtime, and `/code-review` has run with findings resolved.
