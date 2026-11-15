@@ -21,3 +21,15 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: ci
+
+  # The benchmark sandbox's npm lockfile is left to security updates alone (the
+  # pins are deliberate); this entry exists only so those security PRs target
+  # staging — main takes releases only, and the main gate refused #175/#176.
+  - package-ecosystem: npm
+    directory: /benchmarks/arms/ts/sandbox
+    target-branch: staging
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor", "version-update:semver-patch"]
