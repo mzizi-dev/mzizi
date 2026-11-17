@@ -23,12 +23,12 @@ probes, and `self-test.sh` is the verification below.
 
 ## Pinned versions
 
-| Package             | Pin       | Why it is here                                                                                                                                                        |
-| ------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hono`              | `4.13.10` | the framework; the version, and the `integrity` hash, of `mzizi-dev/mzizi-api`'s `package-lock.json` at `2468b2a` (the API gateway `api.mzizi.dev` runs, RFC-0009 §1) |
-| `typescript`        | `5.9.3`   | the checker; the same lockfile's version                                                                                                                              |
-| `@hono/node-server` | `2.1.5`   | the Node host RFC-0009 §2.3 names ("Node is the host"); not in the gateway's lockfile, because the gateway runs on workerd, so it is the latest release on 2026-10-29 |
-| `@types/node`       | `22.20.5` | Node's types, for `node:` imports; the latest 22.x on 2026-10-29                                                                                                      |
+| Package             | Pin       | Why it is here                                                                                                                                                                                                                                                         |
+| ------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hono`              | `4.13.18` | the framework; first pinned at 4.13.10, the version of `mzizi-dev/mzizi-api`'s `package-lock.json` at `2468b2a` (the API gateway `api.mzizi.dev` runs, RFC-0009 §1), and raised on 2026-11-14 to the patch that clears the advisories Dependabot reported (#176)       |
+| `typescript`        | `5.9.3`   | the checker; the same lockfile's version                                                                                                                                                                                                                               |
+| `@hono/node-server` | `2.1.6`   | the Node host RFC-0009 §2.3 names ("Node is the host"); not in the gateway's lockfile, because the gateway runs on workerd. First pinned at 2.1.5, the latest release on 2026-10-29, and raised on 2026-11-14 to the patch Dependabot proposed for its advisory (#175) |
+| `@types/node`       | `22.20.5` | Node's types, for `node:` imports; the latest 22.x on 2026-10-29                                                                                                                                                                                                       |
 
 `sandbox/package-lock.json` is `npm install --package-lock-only`'s resolution of those four (six packages with `undici-types` and `hono`'s peers: see the file). `install.sh` runs `npm ci`, which fails rather than change it. Node itself is Alpine 3.22's `nodejs` package (`v22.23.4` when the image was built on 2026-10-29), not pinned to a patch.
 
@@ -69,6 +69,8 @@ three files written for it. None is shown to an author or a model.
 | `b1-good.ts`          | check exits 0, and every probe holds | check 0; `mzprobe` 59 of 59 facts held |
 | `b1-bad-type.ts`      | check exits 1                        | check 1, output above                  |
 | `b1-bad-behaviour.ts` | check exits 0, probes fail           | check 0; 38 of 59 facts failed         |
+
+Re-run on 2026-11-14 with `MZ_ARM_RUNTIME=local` after the `hono` 4.13.18 and `@hono/node-server` 2.1.6 pins: the same three results.
 
 `b1-good` is an implementation of B1's `spec.md` in this arm's language, written by hand and
 checked only by B1's own probes. That the probes pass it shows the arm builds, serves and is
