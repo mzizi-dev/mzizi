@@ -89,7 +89,8 @@ fn the_rules_the_corpus_kept_breaking_are_expressed_as_contract_assertions() {
     // this test no longer restates the rules; it asserts that each primitive still
     // *expresses* them, and `tests/contracts.rs` is what runs them.
     let expected: &[(&str, &[&str])] = &[
-        // The 48px touch floor, violated five separate times in the .tsx corpus.
+        // The touch floor (45px touch, 24px desktop; these ask for 48), violated five separate
+        // times in the .tsx corpus.
         ("button.mz", &["every button_size height at_least 48"]),
         ("input.mz", &["every input_size height at_least 48"]),
         // `announce` pins the ARIA role to the severity so the two cannot drift apart.

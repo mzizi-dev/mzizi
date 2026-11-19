@@ -144,8 +144,9 @@ fn every_corpus_clause_is_actually_evaluated() {
 
 #[test]
 fn a_size_below_the_touch_floor_compiles_clean_and_fails_its_contract() {
-    // The corpus defect this feature exists for: the 48px floor, violated five separate
-    // times in the TypeScript because the height lived only in a class string.
+    // The corpus defect this feature exists for: a size under the button's own 48px height
+    // (above the 45px touch floor), violated five separate times in the TypeScript because
+    // the height lived only in a class string.
     // The class and the height move together: a height that disagreed with its own class
     // would now be MZ0313 at compile time (FM-11), and a compile error is not a defect.
     let mutated = mutate(

@@ -17,6 +17,13 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — the Bundu touch floor is 45px, and 24px on desktop (owner, 2026-11-19)
+
+- **`primitives/button.mz` and `primitives/input.mz`:** the header comments state the floor as 45px on touch and 24px on desktop, replacing the 48px touch floor. The contracts are unchanged: `every button_size height at_least 48` and `every input_size height at_least 48` still hold, because 48 sits above the new floor and is the components' own size. `button.mz`'s `sm` stays 48px by design.
+- **`primitives/README.md`:** the paragraph on what contracts buy says the one `at_least 48` line holds the table to 48, above the 45px touch floor. It no longer calls 48 the floor.
+- **`compiler/tests/contracts.rs`, `compiler/tests/primitives.rs`, `benchmarks/harness/tests/button_diff.rs`:** comments name the 45px touch floor and the 48px component sizes that sit above it. No assertion changed.
+- No compiler constant holds the floor, so no `mz` diagnostic, contract evaluation or test expectation changed. Nothing measured: the floor is a rule the components are held to, not a result.
+
 ## 2026-11-14
 
 ### Changed — release prep for 2026-11-14 (third)

@@ -91,7 +91,7 @@ end
 That first line is the rule the corpus's own doctrine calls non-negotiable, and which the
 TypeScript violated in five separate components — because there, the heights lived only
 inside Tailwind class strings where nothing could check them. Here the height is data on
-the variant, so one line holds the whole table to the floor.
+the variant, so one line holds the whole table to 48, which sits above the 45px touch floor.
 
 And since [RFC-0006](../design/RFC-0006-contracts.md) it is _run_: `mz contract
 ../primitives/button.mz` evaluates that line against the table and exits 1 if any variant
