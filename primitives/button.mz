@@ -1,4 +1,4 @@
-## The pill button. Always rounded-full per brand; never below the 48px touch floor.
+## The pill button. Always rounded-full per brand; never below the 45px touch floor (24px on desktop).
 ## Corpus reference: n2-primitives/button.tsx (variant + size via cva).
 component button
 
