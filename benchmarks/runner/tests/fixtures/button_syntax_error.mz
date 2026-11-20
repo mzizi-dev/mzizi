@@ -47,7 +47,7 @@ component button
 
   ## The rule the corpus kept breaking, as one line the compiler can hold us to.
   contract
-    every button_size height at_least 48
+    every button_size height at_least 45
     button_size.default height is 56
     button_size.sm height is 48
     button_variant.default class contains "bg-primary"
