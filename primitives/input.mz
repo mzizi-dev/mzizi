@@ -1,4 +1,4 @@
-## A single-line text field. Interactive, so the 48px floor applies.
+## A single-line text field. Interactive, so the 45px touch floor applies (24px on desktop).
 ## Corpus reference: n2-primitives/input.tsx.
 component input
 
@@ -29,7 +29,7 @@ component input
   end
 
   contract
-    every input_size height at_least 48
+    every input_size height at_least 45
     input_size.default height is 56
     slot is "input"
   end

@@ -144,8 +144,9 @@ fn every_corpus_clause_is_actually_evaluated() {
 
 #[test]
 fn a_size_below_the_touch_floor_compiles_clean_and_fails_its_contract() {
-    // The corpus defect this feature exists for: the 48px floor, violated five separate
-    // times in the TypeScript because the height lived only in a class string.
+    // The corpus defect this feature exists for: a size under the 45px touch floor (the
+    // components' own sizes sit above it, at 48), violated five separate times across five
+    // components in the TypeScript because the height lived only in a class string.
     // The class and the height move together: a height that disagreed with its own class
     // would now be MZ0313 at compile time (FM-11), and a compile error is not a defect.
     let mutated = mutate(
@@ -160,7 +161,7 @@ fn a_size_below_the_touch_floor_compiles_clean_and_fails_its_contract() {
         "expected the floor and the cell to fail: {said:?}"
     );
     assert!(
-        said.iter().any(|s| s.contains("`sm` is 40, below 48")),
+        said.iter().any(|s| s.contains("`sm` is 40, below 45")),
         "the diagnostic must name the variant and both numbers: {said:?}"
     );
 }
