@@ -17,9 +17,19 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — the contracts state the Bundu floor, 45px, not 48 (owner, 2026-11-19 and 2026-11-20)
+
+- **`primitives/button.mz`:** the column clause is `every button_size height at_least 45`, the touch floor, where it was `at_least 48`. The design heights stay pinned beside it: `button_size.sm height is 48` and `button_size.default height is 56` are unchanged, so the sizes are still held at 48 and 56. The contract comment now names the floor and the pins. `mz contract ../primitives/button.mz` still evaluates this clause and reports any size under 45.
+- **`primitives/input.mz`:** `every input_size height at_least 45` (was 48). Its `sm` size stays drawn at 48, the design height from its class.
+- **`examples/connectivity_bar.mz`:** the Retry button's `button "Retry" min_height 45` (was 48). Its class `min-h-[48px]` stays, the design height above the floor.
+- **`primitives/README.md`:** the paragraph on what contracts buy says the line holds the table to the 45px floor, and that the design heights are pinned separately. It no longer calls 48 the floor.
+- **`compiler/tests/primitives.rs`, `compiler/tests/contracts.rs`, `compiler/src/contract.rs` (doc comment), `benchmarks/harness/tests/button_diff.rs`, `benchmarks/runner/tests/fixtures/button_syntax_error.mz`:** the pinned clause text and the expected diagnostic (`` `sm` is 40, below 45 ``) move to 45. No test was removed, skipped or weakened: the same mutations are still caught, and the connectivity-bar mutation still fails at 44px.
+- Not changed, on purpose: the benchmark task spec and reference under `benchmarks/tasks/button/`, the `benchmarks/prompts/` guides, and the deliberately broken fixture `benchmarks/harness/tests/fixtures/button_broken.mz`. They are inputs to recorded runs or to the kill-criterion case, and changing them would change what those runs measured. Nothing under `benchmarks/results/` changed.
+- No compiler constant holds the floor, so no `mz` diagnostic code changed. Nothing measured: this is a rule the components are held to.
+
 ### Changed — the Bundu touch floor is 45px, and 24px on desktop (owner, 2026-11-19)
 
-- **`primitives/button.mz` and `primitives/input.mz`:** the header comments state the floor as 45px on touch and 24px on desktop. The ruling replaces the registry's 49px touch and 28px desktop floors and this repo's 48px wording. The contracts are unchanged: `every button_size height at_least 48` and `every input_size height at_least 48` still hold, because 48 sits above the new floor and is the components' own size. `button.mz`'s `sm` stays 48px by design.
+- **`primitives/button.mz` and `primitives/input.mz`:** the header comments state the floor as 45px on touch and 24px on desktop. The ruling replaces the registry's 49px touch and 28px desktop floors and this repo's 48px wording. The contracts were left at 48 by this bullet; the entry above moves their floor clauses to 45, and the 48 and 56 sizes stay pinned as design heights. `button.mz`'s `sm` stays 48px by design.
 - **`primitives/README.md`:** the paragraph on what contracts buy says the one `at_least 48` line holds the table to 48, above the 45px touch floor. It no longer calls 48 the floor.
 - **`compiler/tests/contracts.rs`, `compiler/tests/primitives.rs`, `benchmarks/harness/tests/button_diff.rs`, `benchmarks/runner/tests/fixtures/button_syntax_error.mz`:** comments and the fixture's header name the 45px touch floor and the 48px component sizes that sit above it. No assertion changed, and the fixture's deliberate syntax error is kept.
 - No compiler constant holds the floor, so no `mz` diagnostic, contract evaluation or test expectation changed. Nothing measured: the floor is a rule the components are held to, not a result.

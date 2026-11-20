@@ -497,7 +497,7 @@ fn find_enum<'a>(component: &'a Component, name: &str) -> Option<&'a EnumDecl> {
 /// A variant's cell, as written — or, for a `height` the row does not write, the height
 /// its `class` renders (see [`scale_height`]). The derived value is what lets a size table
 /// state the height once, in the class that renders it (FM-11): `every button_size height
-/// at_least 48` holds or fails on the rendered number, with no second column to drift.
+/// at_least 45` holds or fails on the rendered number, with no second column to drift.
 fn cell(variant: &Variant, column: &str) -> Option<String> {
     let written = |col: &str| {
         variant

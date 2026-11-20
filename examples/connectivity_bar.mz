@@ -42,7 +42,7 @@ component connectivity_bar
     online.label is "Back online"
     offline.color is "bg-terracotta"
     when offline shows button "Retry"
-    button "Retry" min_height 48
+    button "Retry" min_height 45
   end
 
 end component connectivity_bar

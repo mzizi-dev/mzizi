@@ -90,10 +90,11 @@ fn the_rules_the_corpus_kept_breaking_are_expressed_as_contract_assertions() {
     // *expresses* them, and `tests/contracts.rs` is what runs them.
     let expected: &[(&str, &[&str])] = &[
         // The Bundu touch floor is 45px on touch and 24px on desktop (owner ruling, 2026-11-19).
-        // These ask for 48, which sits above it. The five violations in the .tsx corpus broke
-        // the then-48px rule, which the 45px floor has since replaced; they are history.
-        ("button.mz", &["every button_size height at_least 48"]),
-        ("input.mz", &["every input_size height at_least 48"]),
+        // The column clause states that floor; the design heights are pinned beside it. The five
+        // violations in the .tsx corpus broke the then-48px rule, which the 45px floor has since
+        // replaced; they are history.
+        ("button.mz", &["every button_size height at_least 45"]),
+        ("input.mz", &["every input_size height at_least 45"]),
         // `announce` pins the ARIA role to the severity so the two cannot drift apart.
         (
             "alert.mz",
