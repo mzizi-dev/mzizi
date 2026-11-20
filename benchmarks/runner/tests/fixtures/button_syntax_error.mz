@@ -1,7 +1,7 @@
 ## Test fixture for ../run.rs: a copy of primitives/button.mz with its closing
 ## `end component button` dropped — the unclosed-block shape `mz check --agent` names in
 ## one diagnostic (MZ0204) rather than cascading. Used as a first, failing submission.
-## The pill button. Always rounded-full per brand; never below the 48px touch floor.
+## The pill button. Always rounded-full per brand; never below the 45px touch floor (24px on desktop).
 ## Corpus reference: n2-primitives/button.tsx (variant + size via cva).
 component button
 
@@ -47,7 +47,7 @@ component button
 
   ## The rule the corpus kept breaking, as one line the compiler can hold us to.
   contract
-    every button_size height at_least 48
+    every button_size height at_least 45
     button_size.default height is 56
     button_size.sm height is 48
     button_variant.default class contains "bg-primary"

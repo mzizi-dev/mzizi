@@ -83,7 +83,7 @@ capabilities (`use motion`), which _is_ a decision, and one worth reading.
 
 ```mz
 contract
-  every button_size height at_least 48
+  every button_size height at_least 45
   button_size.default height is 56
 end
 ```
@@ -91,11 +91,14 @@ end
 That first line is the rule the corpus's own doctrine calls non-negotiable, and which the
 TypeScript violated in five separate components — because there, the heights lived only
 inside Tailwind class strings where nothing could check them. Here the height is data on
-the variant, so one line holds the whole table to the floor.
+the variant, so one line holds the whole table to the Bundu touch floor of 45px (24px on
+desktop). The floor is the line's value; the design heights are pinned separately, so
+`button_size.sm height is 48` and `button_size.default height is 56` hold each size at its
+own height, above the floor.
 
 And since [RFC-0006](../design/RFC-0006-contracts.md) it is _run_: `mz contract
 ../primitives/button.mz` evaluates that line against the table and exits 1 if any variant
-falls below 48. Drop `sm` to 40 and `mz check` still reports zero errors while
+falls below 45. Drop `sm` to 40 and `mz check` still reports zero errors while
 `mz contract` reports the defect — which is precisely the shape CHARTER.md §6 calls a Phase
 0 defect.
 

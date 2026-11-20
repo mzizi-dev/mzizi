@@ -109,8 +109,8 @@ fn the_real_button_component_has_zero_height_defects_against_the_real_reference(
         "expected zero defects; got:\n{stdout}"
     );
 
-    // The 48px touch floor is the whole point of this component (button.mz's own header
-    // comment) — assert the passing rows are actually present, not just that nothing failed.
+    // The 48px sm size sits above the 45px touch floor; the contract's `at_least 45` floor and
+    // its `sm is 48` pin hold it there. Assert the passing rows are actually present, not just that nothing failed.
     for (variant, declared, token) in [
         ("default", 56, "h-14"),
         ("sm", 48, "h-12"),
