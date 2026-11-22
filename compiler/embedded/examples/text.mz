@@ -1,0 +1,65 @@
+## Text, RFC-0013 §10: lengths count Unicode scalar values, not bytes, and every method is
+## safe on non-ASCII text. Emptiness is `s is ""`, and text is built by interpolation.
+## `mz run examples/text.mz` prints what text.expected holds; CI compares the two.
+program text
+
+  fn main
+    let city = "  Zürich  "
+    let name = city.trim()
+    print("[{name}] has {name.length()} characters; with its spaces, {city.length()}")
+    print("upper {name.to_upper()}, lower {name.to_lower()}")
+    let greeting = "habari, dunia"
+    let polite = greeting.starts_with("habari")
+    print("{greeting} starts with habari: {polite}")
+    print(greeting.ends_with("dunia"))
+    print(greeting.contains("ri, d"))
+    print(greeting.replace("dunia", by = "Mzizi"))
+    let kanji = "日本語"
+    print("{kanji} is {kanji.length()} characters long")
+    let street = "straße"
+    print("{street} in upper case is {street.to_upper()}")
+    print(banner("ok", 3))
+    print(describe(""))
+    print(describe(name))
+    print("-".repeat(12))
+    let sentence = "héllo, 日本語"
+    print(sentence[1] otherwise "?")
+    print(sentence[9] otherwise "?")
+    print(sentence.slice(0, to = 5) otherwise "?")
+    print(sentence.find("日") otherwise -1)
+    print(first_word(sentence))
+    print(first_word("one two"))
+    for each c in sentence.chars()
+      print("[{c}]")
+    end
+    print(split_count("a,,b", ","))
+    print(split_count("", ","))
+    print("42".parse_int() otherwise 0)
+    print("-0x10".parse_int() otherwise 0)
+    print("1.5".parse_float() otherwise 0.0)
+    print("1.".parse_float() otherwise 0.0)
+  end fn main
+
+  fn first_word(s: text): text
+    let stop = s.find(" ") otherwise s.length()
+    return s.slice(0, to = stop) otherwise s
+  end fn first_word
+
+  fn split_count(s: text, sep: text): int
+    return s.split(sep).length()
+  end fn split_count
+
+  fn banner(word: text, width: int): text
+    let edge = "=".repeat(width)
+    return "{edge} {word} {edge}"
+  end fn banner
+
+  fn describe(s: text): text
+    when s is ""
+      return "empty"
+    end
+    let shout = s.to_upper()
+    return "{s.length()} characters, {shout} when shouted"
+  end fn describe
+
+end program text

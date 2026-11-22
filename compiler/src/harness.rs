@@ -253,16 +253,16 @@ pub struct Command {
 
 // ------------------------------------------------------------------- examples
 
-const HELLO: &str = include_str!("../../examples/hello.mz");
-const HELLO_OUT: &str = include_str!("../../examples/hello.expected");
-const FIB: &str = include_str!("../../examples/fib.mz");
-const RECORDS: &str = include_str!("../../examples/records.mz");
-const RECORDS_OUT: &str = include_str!("../../examples/records.expected");
-const FN_VALUES: &str = include_str!("../../examples/fn_values.mz");
-const FN_VALUES_OUT: &str = include_str!("../../examples/fn_values.expected");
-const TEXT_OPS: &str = include_str!("../../examples/text.mz");
-const TEXT_OPS_OUT: &str = include_str!("../../examples/text.expected");
-const FIB_OUT: &str = include_str!("../../examples/fib.expected");
+const HELLO: &str = include_str!("../embedded/examples/hello.mz");
+const HELLO_OUT: &str = include_str!("../embedded/examples/hello.expected");
+const FIB: &str = include_str!("../embedded/examples/fib.mz");
+const RECORDS: &str = include_str!("../embedded/examples/records.mz");
+const RECORDS_OUT: &str = include_str!("../embedded/examples/records.expected");
+const FN_VALUES: &str = include_str!("../embedded/examples/fn_values.mz");
+const FN_VALUES_OUT: &str = include_str!("../embedded/examples/fn_values.expected");
+const TEXT_OPS: &str = include_str!("../embedded/examples/text.mz");
+const TEXT_OPS_OUT: &str = include_str!("../embedded/examples/text.expected");
+const FIB_OUT: &str = include_str!("../embedded/examples/fib.expected");
 
 const BINDINGS: &str = "program bindings\n\n  fn main\n    let width: int = 6\n    let height = 7\n    var area = 0\n    area = width * height\n    print(\"area {area}\")\n  end fn main\n\nend program bindings\n";
 const WHEN: &str = "program sign\n\n  fn main\n    print(sign(-4))\n    print(sign(0))\n  end fn main\n\n  fn sign(n: int): text\n    when n < 0\n      return \"negative\"\n    else\n      when n is 0\n        return \"zero\"\n      end\n    end\n    return \"positive\"\n  end fn sign\n\nend program sign\n";
@@ -271,12 +271,12 @@ const ARITH_OUT: &str = "3\n-3\n-1\n7\n9\n6\n";
 const LOGIC_OUT: &str = "true\ntrue\ntrue\nfalse\ntrue\n";
 const LOGIC: &str = "program logic\n\n  fn main\n    let a = 3\n    print(a is 3 and not (a > 4))\n    print(a is not 3 or a <= 3)\n    print(\"apple\" < \"banana\")\n    print(true is false)\n    print(a >= 3)\n  end fn main\n\nend program logic\n";
 const TEXT: &str = "program texts\n\n  fn main\n    let name = \"Mzizi\"\n    print(\"hello, {name}: {1 + 1} \\{braces\\} and \\\"quotes\\\"\")\n  end fn main\n\nend program texts\n";
-const NUMBERS: &str = include_str!("../../examples/numbers.mz");
-const NUMBERS_OUT: &str = include_str!("../../examples/numbers.expected");
+const NUMBERS: &str = include_str!("../embedded/examples/numbers.mz");
+const NUMBERS_OUT: &str = include_str!("../embedded/examples/numbers.expected");
 const METHODS: &str = "program methods\n\n  fn main\n    let f = 2.5\n    print(f.round())\n    print(f.floor())\n    print(f.ceil())\n    print(f.to_int())\n    print(16.0.sqrt())\n    print(f.is_nan())\n    print((-3).abs())\n    print(3.max(5))\n    print(1.5.min(0.5))\n    print(2.pow(10))\n    print(4.to_float())\n  end fn main\n\nend program methods\n";
 const METHODS_OUT: &str = "3.0\n2.0\n3.0\n2\n4.0\nfalse\n3\n5\n0.5\n1024\n4.0\n";
-const CONTROL: &str = include_str!("../../examples/control.mz");
-const CONTROL_OUT: &str = include_str!("../../examples/control.expected");
+const CONTROL: &str = include_str!("../embedded/examples/control.mz");
+const CONTROL_OUT: &str = include_str!("../embedded/examples/control.expected");
 const ELSE_WHEN: &str = "program grades\n\n  fn main\n    print(grade(95))\n    print(grade(75))\n    print(grade(40))\n  end fn main\n\n  fn grade(n: int): text\n    when n >= 90\n      return \"A\"\n    else when n >= 70\n      return \"B\"\n    else\n      return \"C\"\n    end\n  end fn grade\n\nend program grades\n";
 const ELSE_WHEN_OUT: &str = "A\nB\nC\n";
 const MATCH: &str = "program shapes\n\n  enum shape\n    circle\n    square\n    triangle\n  end\n\n  fn main\n    print(corners(square))\n    print(corners(shape.triangle))\n    let day = 7\n    match day\n      case 6 7\n        print(\"weekend\")\n      else\n        print(\"weekday\")\n    end\n  end fn main\n\n  fn corners(s: shape): int\n    match s\n      case circle\n        return 0\n      case square\n        return 4\n      case triangle\n        return 3\n    end\n  end fn corners\n\nend program shapes\n";
@@ -285,19 +285,19 @@ const LOOPS: &str = "program loops\n\n  fn main\n    var total = 0\n    for each
 const LOOPS_OUT: &str = "25\n111\n8\n";
 const VALUES: &str = "program values\n\n  enum light\n    red\n    amber\n    green\n  end\n\n  fn main\n    let l = amber\n    let action = match l\n      case red\n        \"stop\"\n      case amber\n        \"slow\"\n      case green\n        \"go\"\n    end\n    print(action)\n    print(sign(-3))\n  end fn main\n\n  fn sign(n: int): text\n    return when n < 0\n      \"negative\"\n    else when n is 0\n      \"zero\"\n    else\n      \"positive\"\n    end\n  end fn sign\n\nend program values\n";
 const VALUES_OUT: &str = "slow\nnegative\n";
-const ERRORS: &str = include_str!("../../examples/errors.mz");
-const ERRORS_OUT: &str = include_str!("../../examples/errors.expected");
+const ERRORS: &str = include_str!("../embedded/examples/errors.mz");
+const ERRORS_OUT: &str = include_str!("../embedded/examples/errors.expected");
 const MAIN_RESULT: &str = "program halves\n\n  fn main: result(none, text)\n    let a = try half(8)\n    print(\"half of 8 is {a}\")\n    let b = try half(a)\n    print(\"half of {a} is {b}\")\n  end fn main\n\n  fn half(n: int): result(int, text)\n    when n % 2 is 1\n      return error(\"{n} is odd\")\n    end\n    return n / 2\n  end fn half\n\nend program halves\n";
 const MAIN_RESULT_OUT: &str = "half of 8 is 4\nhalf of 4 is 2\n";
 const COLUMNS: &str = "program columns\n\n  enum level\n    low  say \"fine\"     rank 1\n    high say \"too much\" rank 2\n  end\n\n  fn main\n    let l = high\n    print(\"{l}: {l.say}, rank {l.rank}\")\n    match pick(3)\n      case ok v\n        print(v)\n      case error e\n        print(\"no: {e.say}\")\n    end\n  end fn main\n\n  fn pick(n: int): result(level, level)\n    when n > 2\n      return error(level.high)\n    end\n    return low\n  end fn pick\n\nend program columns\n";
 const COLUMNS_OUT: &str = "high: too much, rank 2\nno: too much\n";
-const COLLECTIONS: &str = include_str!("../../examples/collections.mz");
-const COLLECTIONS_OUT: &str = include_str!("../../examples/collections.expected");
+const COLLECTIONS: &str = include_str!("../embedded/examples/collections.mz");
+const COLLECTIONS_OUT: &str = include_str!("../embedded/examples/collections.expected");
 const LISTS: &str = "program lists\n\n  fn main\n    var xs: list(int) = []\n    for each n in range(0, to = 4)\n      xs.push(n * n)\n    end\n    print(xs)\n    print(xs[2] otherwise 0)\n    print(xs[7] otherwise -1)\n    xs[0] = 5\n    print(\"{xs.length()} {5 in xs} {xs is none}\")\n    for each x in xs\n      print(x)\n    end\n  end fn main\n\nend program lists\n";
 const LISTS_OUT: &str = "[0, 1, 4, 9]\n4\n-1\n4 true false\n5\n1\n4\n9\n";
 const MAPS: &str = "program maps\n\n  fn main\n    var stock: map(text, int) = [\"fig\": 3]\n    stock[\"pear\"] = 2\n    stock[\"fig\"] = 4\n    print(stock)\n    print(stock[\"kiwi\"] otherwise 0)\n    let tags: set(text) = [\"b\", \"a\", \"b\"]\n    print(tags)\n    for each k in stock.keys()\n      print(\"{k}: {stock[k] otherwise 0}\")\n    end\n  end fn main\n\nend program maps\n";
 const MAPS_OUT: &str = "[\"fig\": 4, \"pear\": 2]\n0\n[\"a\", \"b\"]\nfig: 4\npear: 2\n";
-const COMPONENT: &str = include_str!("../../primitives/badge.mz");
+const COMPONENT: &str = include_str!("../embedded/primitives/badge.mz");
 const SERVICE: &str = "service t\n  route r\n    get \"/r\"\n    respond 200\n  end\n  contract\n    example get \"/r\" status is 200\n  end\nend service t\n";
 
 const fn run(source: &'static str, output: &'static str) -> Example {

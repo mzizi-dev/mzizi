@@ -1,0 +1,9 @@
+## The smallest program: one line of output (RFC-0013 §1, tracker row C10).
+## `mz run examples/hello.mz` prints `hello, world`; CI compares it with hello.expected.
+program hello
+
+  fn main
+    print("hello, world")
+  end fn main
+
+end program hello
