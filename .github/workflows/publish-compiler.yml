@@ -1,0 +1,70 @@
+name: Publish compiler
+
+# Publishes the library crate `mzizi-lang-compiler` to crates.io so mzizi-dev/mzizi-cli (the `mz`
+# command) can depend on it by version. Manual only: this repo versions by tag, so the crate's
+# version is taken from the release tag you name and written into compiler/Cargo.toml for the
+# duration of the run (nothing is committed back).
+#
+# A dry run (the default) packages and verifies the crate and uploads nothing. A real publish
+# needs the `release` environment and its CARGO_REGISTRY_TOKEN secret, and a version that is a
+# tag of this repo. A published version can be yanked, never replaced.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish, without the v (for example 0.17.0)"
+        type: string
+        required: true
+      dry_run:
+        description: "Package and verify only; upload nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-compiler
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ inputs.version }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+
+      - name: Write the tag's version into the crate
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::bad version $VERSION"; exit 1; }
+          sed -i -E '0,/^version = "[^"]*"/s//version = "'"$VERSION"'"/' compiler/Cargo.toml
+          grep -m1 '^version' compiler/Cargo.toml
+
+      - name: Test
+        working-directory: compiler
+        run: cargo test
+
+      - name: Dry run
+        working-directory: compiler
+        run: cargo publish --dry-run --allow-dirty
+
+      - name: Publish
+        if: ${{ !inputs.dry_run }}
+        working-directory: compiler
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        # crates.io trusted publishing is not set up for this crate; the owner decides.
+        run: cargo publish --allow-dirty # zizmor: ignore[use-trusted-publishing]

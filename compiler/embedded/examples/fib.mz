@@ -1,0 +1,33 @@
+## Fibonacci numbers by recursion, in RFC-0013's foundation slice (§18.1): functions,
+## calls, `let`, `var`, `when`, integer arithmetic and `print`, and no loops yet.
+## `mz run examples/fib.mz` prints what fib.expected holds; CI compares the two.
+program fib
+
+  fn main
+    print("fib(9) is {fib(9)}")
+    let n = 20
+    let f = fib(n)
+    print("fib({n}) is {f}")
+    var total = 0
+    total = total + fib(10)
+    total = total + fib(11)
+    print("fib(10) + fib(11) is {total}, and that is fib(12): {total is fib(12)}")
+    print(parity(f))
+  end fn main
+
+  fn fib(n: int): int
+    when n < 2
+      return n
+    end
+    return fib(n - 1) + fib(n - 2)
+  end fn fib
+
+  fn parity(n: int): text
+    when n % 2 is 0 and n > 0
+      return "{n} is even"
+    else
+      return "{n} is odd, or not positive"
+    end
+  end fn parity
+
+end program fib

@@ -1,0 +1,34 @@
+[Zürich] has 6 characters; with its spaces, 10
+upper ZÜRICH, lower zürich
+habari, dunia starts with habari: true
+true
+true
+habari, Mzizi
+日本語 is 3 characters long
+straße in upper case is STRASSE
+=== ok ===
+empty
+6 characters, ZÜRICH when shouted
+------------
+é
+語
+héllo
+7
+héllo,
+one
+[h]
+[é]
+[l]
+[l]
+[o]
+[,]
+[ ]
+[日]
+[本]
+[語]
+3
+1
+42
+0
+1.5
+0.0

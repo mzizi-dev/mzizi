@@ -1,0 +1,48 @@
+## Records, RFC-0013 §11 (C8): a record built by field name, copied with `with`, read by
+## field, given methods that read `self`, a field of a `var` assigned, and an `always`
+## clause that every value holds.
+## `mz run examples/records.mz` prints what records.expected holds; CI compares the two.
+program records
+
+  record point
+    field x: float
+    field y: float
+
+    fn norm: float
+      return (self.x * self.x + self.y * self.y).sqrt()
+    end fn norm
+
+    fn scaled(k: float): point
+      return point(x = self.x * k, y = self.y * k)
+    end fn scaled
+  end
+
+  record span
+    field low: int
+    field high: int
+
+    contract
+      always low <= high
+    end
+  end
+
+  fn width(s: span): int
+    return s.high - s.low
+  end fn width
+
+  fn main
+    let p = point(x = 3.0, y = 4.0)
+    print(p)
+    print(p.norm())
+    print(p.scaled(2.0))
+    print(p with (y = 0.0))
+    print(p is point(x = 3.0, y = 4.0))
+    var q = point(x = 1.0, y = 1.0)
+    q.x = 5.0
+    print(q)
+    let s = span(low = 2, high = 9)
+    print(width(s))
+    print("{s} is {width(s)} wide")
+  end fn main
+
+end program records

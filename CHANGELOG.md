@@ -17,6 +17,15 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Added — the compiler can be published to crates.io (owner, 2026-11-23)
+
+Refs mzizi-dev/mzizi-cli#3 (the one `mz` binary lives in mzizi-cli and depends on this crate as a library).
+
+- **`compiler/Cargo.toml`:** `publish = false` is gone; repository, homepage, keywords and categories are set; `exclude = ["tests/**"]` (the tests read the repo's examples). The binary is behind a new `cli` feature, on by default, so this repo's CI and benchmarks still run `cargo run --bin mz`; mzizi-cli depends on the crate with default features off. Crate version stays `0.0.0` in the tree: the version comes from the release tag (see the workflow).
+- **`compiler/embedded/`:** copies of the examples and the badge primitive that `src/harness.rs` compiles in, because a crate tarball contains nothing outside its directory. `tests/embedded_in_sync.rs` fails when a copy drifts from the original. No behaviour change.
+- **`.github/workflows/publish-compiler.yml`:** manual only, dry run by default; writes the tag's version into the crate and publishes with the `release` environment's `CARGO_REGISTRY_TOKEN`. Nothing is published by merging this.
+- Checked: `cargo test` (all green), `cargo publish --dry-run` packages and verifies. Not checked: a real publish.
+
 ### Changed — the contracts state the Bundu floor, 45px, not 48 (owner, 2026-11-19 and 2026-11-20)
 
 - **`primitives/button.mz`:** the column clause is `every button_size height at_least 45`, the touch floor, where it was `at_least 48`. The design heights stay pinned beside it: `button_size.sm height is 48` and `button_size.default height is 56` are unchanged, so the sizes are still held at 48 and 56. The contract comment now names the floor and the pins. `mz contract ../primitives/button.mz` still evaluates this clause and reports any size under 45.
