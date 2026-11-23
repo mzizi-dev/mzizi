@@ -176,8 +176,8 @@ else
   echo "run.sh: building mz (release)" >&2
   # Not --offline: mz is a workspace member, and resolving the workspace needs the crates.io
   # index on a cold cache (AGENTS.md, "Build, test, run"). It downloads no crates for mz.
-  build cargo build --quiet --release --manifest-path "$root/Cargo.toml" -p mzizi-lang-compiler --bin mz
-  mz="${CARGO_TARGET_DIR:-$root/target}/release/mz"
+  build cargo build --quiet --release --manifest-path "$root/Cargo.toml" -p mzizi-lang-compiler --features driver --bin mz-driver
+  mz="${CARGO_TARGET_DIR:-$root/target}/release/mz-driver"
 fi
 
 variants=(mzizi rust_unchecked rust_checked)

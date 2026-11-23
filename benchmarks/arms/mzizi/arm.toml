@@ -10,7 +10,7 @@ extension = "mz"
 guide = "benchmarks/prompts/mzizi-guide.md"
 check = [
   "cargo", "run", "-q", "--manifest-path", "{repo}/compiler/Cargo.toml",
-  "--bin", "mz", "--", "check", "--agent", "{file}",
+  "--features", "driver", "--bin", "mz-driver", "--", "check", "--agent", "{file}",
 ]
 normaliser = "file-name"
 extractor = "mzizi"

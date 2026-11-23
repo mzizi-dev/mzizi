@@ -743,7 +743,7 @@ fn mz_run(path: &str) -> Option<std::process::Output> {
         return None;
     }
     Some(
-        Command::new(env!("CARGO_BIN_EXE_mz"))
+        Command::new(env!("CARGO_BIN_EXE_mz-driver"))
             .args(["run", path])
             .output()
             .expect("mz runs"),

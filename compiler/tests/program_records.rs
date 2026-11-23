@@ -631,7 +631,7 @@ fn mz_run_src(name: &str, src: &str) -> Option<std::process::Output> {
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join(format!("{name}.mz"));
     std::fs::write(&path, src).expect("write");
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["run", path.to_str().expect("utf-8")])
         .env("MZ_CACHE_DIR", dir.join("cache"))
         .output()

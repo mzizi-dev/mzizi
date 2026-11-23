@@ -118,7 +118,7 @@ fn columns_count_characters_not_bytes() {
 fn the_shipped_binary_fixes_in_place_and_reports_what_is_left() {
     let path = std::env::temp_dir().join(format!("mz-fix-{}.mz", std::process::id()));
     std::fs::write(&path, TAG).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .arg("fix")
         .arg("--agent")
         .arg(&path)

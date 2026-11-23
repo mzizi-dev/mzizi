@@ -21,6 +21,14 @@ carry no pull request number.
 
 The released `mz` is built in mzizi-dev/mzizi-cli and installs with `npx @nyuchi/mzizi-cli`, `npm i -g @nyuchi/mzizi-cli` or `cargo install mzizi-cli --locked`. The README's new "Install mz" section says so, and "Try it" says the in-repo `cargo run --bin mz` is the compiler's own test driver. No code change. The in-repo binary stays until the compiler's integration tests (`compiler/tests/*.rs`, which spawn it) have a new home; that is an owner decision.
 
+### Changed — the user-facing `mz` is gone from this repo; a test-only `mz-driver` stays (owner, 2026-11-24)
+
+Closes #189. The one `mz` binary is released from mzizi-dev/mzizi-cli (npm `@nyuchi/mzizi-cli`, crates.io `mzizi-cli`).
+
+- **`compiler/Cargo.toml`:** the `[[bin]] mz` and the default `cli` feature are replaced by `[[bin]] mz-driver` behind a non-default `driver` feature, so `cargo install mzizi-lang-compiler` installs nothing. The 14 integration tests that spawn the binary declare `required-features = ["driver"]`.
+- **Tests, benchmark scripts, CI and docs** run `cargo run --features driver --bin mz-driver` (and `cargo test --features driver`) where they ran `--bin mz`. Historical result logs under `benchmarks/results/` are unchanged.
+- Checked: `cargo test --features driver` (694 passed), `cargo clippy --all-targets --features driver -D warnings`, `cargo fmt --check`. Not checked: the workspace CI jobs and the benchmark scripts end to end; CI runs them.
+
 ### Added — the compiler can be published to crates.io (owner, 2026-11-23)
 
 Refs mzizi-dev/mzizi-cli#3 (the one `mz` binary lives in mzizi-cli and depends on this crate as a library).

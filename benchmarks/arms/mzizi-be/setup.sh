@@ -6,7 +6,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
 out="$repo/target/mz-build/warm"
-cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --bin mz -- \
+cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --features driver --bin mz-driver -- \
   build "$repo/examples/registry.mz" --out "$out"
 cargo build --release --quiet --manifest-path "$out/Cargo.toml"
 echo "mzizi-be: cargo cache warm for axum and tokio at the pins in compiler/src/lower.rs"

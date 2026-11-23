@@ -10,7 +10,7 @@ extension = "mz"
 guide = "benchmarks/prompts/mzizi-be-guide.md"
 check = [
   "cargo", "run", "-q", "--manifest-path", "{repo}/compiler/Cargo.toml",
-  "--bin", "mz", "--", "check", "--agent", "{file}",
+  "--features", "driver", "--bin", "mz-driver", "--", "check", "--agent", "{file}",
 ]
 normaliser = "file-name"
 # A backend episode is scored by the task's probes (benchmarks/probe), not by a source

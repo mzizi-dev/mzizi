@@ -38,7 +38,7 @@ impl Drop for Dir {
 }
 
 fn mz(args: &[&str], dir: &Path) -> (Option<i32>, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(args)
         .arg(dir)
         .output()
