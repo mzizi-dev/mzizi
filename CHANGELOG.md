@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — README says where `mz` is installed from (mzizi-cli 0.14.1, 2026-11-24)
+
+The released `mz` is built in mzizi-dev/mzizi-cli and installs with `npx @nyuchi/mzizi-cli`, `npm i -g @nyuchi/mzizi-cli` or `cargo install mzizi-cli --locked`. The README's new "Install mz" section says so, and "Try it" says the in-repo `cargo run --bin mz` is the compiler's own test driver. No code change. The in-repo binary stays until the compiler's integration tests (`compiler/tests/*.rs`, which spawn it) have a new home; that is an owner decision.
+
 ### Added — the compiler can be published to crates.io (owner, 2026-11-23)
 
 Refs mzizi-dev/mzizi-cli#3 (the one `mz` binary lives in mzizi-cli and depends on this crate as a library).

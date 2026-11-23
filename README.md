@@ -142,7 +142,19 @@ Where an RFC and the code disagree, **the code is the fact** — see
 [RFC-0003](./design/RFC-0003-ir.md) §7.1 for a claim the implementation disproved and the
 narrower claim that replaced it.
 
+## Install `mz`
+
+The `mz` command is built in [mzizi-dev/mzizi-cli](https://github.com/mzizi-dev/mzizi-cli), which also carries the registry and agent commands (`mz add`, `mz floor`, `mz plan`). It uses this repository's compiler as a library. Install a released `mz` with any one of:
+
+```bash
+npx --package @nyuchi/mzizi-cli mz check ../primitives/button.mz   # npm, no install
+npm i -g @nyuchi/mzizi-cli                           # then: mz --help
+cargo install mzizi-cli --locked                     # from crates.io
+```
+
 ## Try it
+
+The commands below run the compiler's own `mz` driver from this repository (`compiler/src/main.rs`), which the compiler's tests use. It is the same code as the released `mz`'s language commands.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
