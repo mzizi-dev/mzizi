@@ -148,7 +148,7 @@ fn narrowing_lowers_to_if_let_and_options_serialise_as_null() {
 }
 
 fn mz(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_mz"))
+    Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(args)
         .output()
         .expect("mz runs")

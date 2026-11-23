@@ -154,16 +154,16 @@ cargo install mzizi-cli --locked                     # from crates.io
 
 ## Try it
 
-The commands below run the compiler's own `mz` driver from this repository (`compiler/src/main.rs`), which the compiler's tests use. It is the same code as the released `mz`'s language commands.
+The commands below run the compiler's own test driver, `mz-driver`, from this repository (`compiler/src/main.rs`), which the compiler's tests use. It is the same code as the released `mz`'s language commands.
 
 ```bash
 git clone https://github.com/mzizi-dev/mzizi.git && cd mzizi/compiler
 cargo test                                                           # 634 tests; the compiler crate has zero dependencies
-cargo run --bin mz -- check ../primitives/button.mz                  # does this compile
-cargo run --bin mz -- contract ../primitives/button.mz                # does it do what it says
-cargo run --bin mz -- fix path/to/file.mz                            # apply every exact fix, then re-check
-cargo run --bin mz -- run ../examples/fib.mz                         # lower a program to Rust, build it, run it
-cargo run --bin mz -- harness definition                             # the language as an agent reads it, as JSON
+cargo run --features driver --bin mz-driver -- check ../primitives/button.mz                  # does this compile
+cargo run --features driver --bin mz-driver -- contract ../primitives/button.mz                # does it do what it says
+cargo run --features driver --bin mz-driver -- fix path/to/file.mz                            # apply every exact fix, then re-check
+cargo run --features driver --bin mz-driver -- run ../examples/fib.mz                         # lower a program to Rust, build it, run it
+cargo run --features driver --bin mz-driver -- harness definition                             # the language as an agent reads it, as JSON
 ```
 
 The compiler crate needs only a stable Rust toolchain. It has no dependencies of its own. The

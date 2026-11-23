@@ -5,7 +5,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
 out="$repo/target/mz-build/b3-mirror-reference"
-cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --bin mz -- \
+cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --features driver --bin mz-driver -- \
   build "$here/gateway.mz" --out "$out" >&2
 cargo build --release --quiet --manifest-path "$out/Cargo.toml"
 exec "$out/target/release/mz-gateway"

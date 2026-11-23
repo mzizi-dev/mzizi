@@ -11,7 +11,7 @@ candidate=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
 out="${MZ_BUILD_DIR:-$(dirname "$candidate")/build}"
-cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --bin mz -- \
+cargo run --quiet --manifest-path "$repo/compiler/Cargo.toml" --features driver --bin mz-driver -- \
   build "$candidate" --out "$out" >&2
 cargo build --release --quiet --offline --manifest-path "$out/Cargo.toml"
 bin=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$out/Cargo.toml" | head -n 1)

@@ -576,7 +576,7 @@ fn mz_run(args: &[&str], cache: &std::path::Path) -> Option<std::process::Output
         return None;
     }
     Some(
-        Command::new(env!("CARGO_BIN_EXE_mz"))
+        Command::new(env!("CARGO_BIN_EXE_mz-driver"))
             .args(args)
             .env("MZ_CACHE_DIR", cache)
             .output()

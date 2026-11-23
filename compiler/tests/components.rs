@@ -39,7 +39,7 @@ fn run(name: &str) -> Option<String> {
         return None;
     }
     let cache = std::env::temp_dir().join(format!("mz-components-{}", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["run", component(name).to_str().expect("utf-8 path")])
         .env("MZ_CACHE_DIR", &cache)
         .output()

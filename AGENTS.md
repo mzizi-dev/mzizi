@@ -52,19 +52,19 @@ for it in the commit message against that standing decision.
 ```bash
 cd compiler
 cargo test                                                              # 634 tests (765 in the workspace)
-cargo run --bin mz -- check          ../primitives/button.mz
-cargo run --bin mz -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
-cargo run --bin mz -- check --agent  ../primitives                      # every .mz under a directory, one summary line
-cargo run --bin mz -- fix            path/to/file.mz                    # apply every exact fix in place
-cargo run --bin mz -- contract       ../primitives/button.mz            # evaluate the contract block
-cargo run --bin mz -- outline        ../primitives/alert.mz
-cargo run --bin mz -- ir              ../primitives/card.mz
-cargo run --bin mz -- contract       ../examples/registry.mz            # run a service in process
-cargo run --bin mz -- build          ../examples/registry.mz --out ../target/mz-build/registry
-cargo run --bin mz -- run            ../examples/fib.mz                  # lower a program, build it, run it
-cargo run --bin mz -- harness version                                  # protocol 1, the language version, the definition's SHA-256
-cargo run --bin mz -- harness definition --agent                       # every language-harness entry, as one line of JSON
-cargo run --bin mz -- harness entry let                                # one entry
+cargo run --features driver --bin mz-driver -- check          ../primitives/button.mz
+cargo run --features driver --bin mz-driver -- check --agent  ../examples/connectivity_bar.mz    # NDJSON for an agent
+cargo run --features driver --bin mz-driver -- check --agent  ../primitives                      # every .mz under a directory, one summary line
+cargo run --features driver --bin mz-driver -- fix            path/to/file.mz                    # apply every exact fix in place
+cargo run --features driver --bin mz-driver -- contract       ../primitives/button.mz            # evaluate the contract block
+cargo run --features driver --bin mz-driver -- outline        ../primitives/alert.mz
+cargo run --features driver --bin mz-driver -- ir              ../primitives/card.mz
+cargo run --features driver --bin mz-driver -- contract       ../examples/registry.mz            # run a service in process
+cargo run --features driver --bin mz-driver -- build          ../examples/registry.mz --out ../target/mz-build/registry
+cargo run --features driver --bin mz-driver -- run            ../examples/fib.mz                  # lower a program, build it, run it
+cargo run --features driver --bin mz-driver -- harness version                                  # protocol 1, the language version, the definition's SHA-256
+cargo run --features driver --bin mz-driver -- harness definition --agent                       # every language-harness entry, as one line of JSON
+cargo run --features driver --bin mz-driver -- harness entry let                                # one entry
 cd .. && benchmarks/perf/run.sh                                         # perf suite: Mzizi vs hand-written Rust, measured
 benchmarks/perf/run.sh --check-only                                     # what CI runs: build and compare output, no timing
 ```
@@ -95,15 +95,15 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 for f in ../examples/*.mz; do
   echo "checking $f"
-  cargo run --quiet --bin mz -- check "$f"
+  cargo run --quiet --features driver --bin mz-driver -- check "$f"
 done
 for f in ../primitives/*.mz; do
   echo "checking $f"
-  cargo run --quiet --bin mz -- check "$f"
+  cargo run --quiet --features driver --bin mz-driver -- check "$f"
 done
 for f in ../examples/*.mz ../primitives/*.mz; do
   echo "evaluating $f"
-  cargo run --quiet --bin mz -- contract "$f"
+  cargo run --quiet --features driver --bin mz-driver -- contract "$f"
 done
 cd ..
 

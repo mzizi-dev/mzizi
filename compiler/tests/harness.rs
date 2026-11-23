@@ -666,7 +666,7 @@ fn program_examples_print_their_expected_output() {
         let Some(output) = output else { continue };
         let path = dir.join(format!("example_{i}.mz"));
         std::fs::write(&path, source).unwrap();
-        let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+        let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
             .args(["run", path.to_str().unwrap()])
             .env("MZ_CACHE_DIR", dir.join("cache"))
             .output()
@@ -685,7 +685,7 @@ fn program_examples_print_their_expected_output() {
 // ------------------------------------------------------------------- mz harness
 
 fn mz(args: &[&str]) -> (String, Option<i32>) {
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(args)
         .output()
         .expect("mz runs");

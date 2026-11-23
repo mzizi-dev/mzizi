@@ -23,17 +23,89 @@ description = "The Mzizi compiler, `mz` (Phase 0 prototype): lexer, recovering p
 # should not start life with a dependency tree to build first.
 [dependencies]
 
-# The `mz` command moves to mzizi-dev/mzizi-cli, which depends on this crate as a library with
-# default features off. The binary stays here, behind the on-by-default `cli` feature, until a
-# released `mz` replaces it; this repo's CI and benchmarks keep running `cargo run --bin mz`.
+# The user-facing `mz` command lives in mzizi-dev/mzizi-cli, which depends on this crate as a
+# library. What stays here is `mz-driver`, a test-only binary the compiler's own integration
+# tests and the benchmark scripts spawn. It sits behind the non-default `driver` feature, so
+# `cargo install mzizi-lang-compiler` installs nothing and a plain `cargo build` skips it. Run
+# the tests with `cargo test --features driver`; the tests that need it are skipped without.
 [features]
-default = ["cli"]
-cli = []
+default = []
+driver = []
 
 [[bin]]
-name = "mz"
+name = "mz-driver"
 path = "src/main.rs"
-required-features = ["cli"]
+required-features = ["driver"]
+
+[[test]]
+name = "components"
+path = "tests/components.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "contracts"
+path = "tests/contracts.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "directory"
+path = "tests/directory.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "fix"
+path = "tests/fix.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "harness"
+path = "tests/harness.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "lower"
+path = "tests/lower.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program"
+path = "tests/program.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_collections"
+path = "tests/program_collections.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_control"
+path = "tests/program_control.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_errors"
+path = "tests/program_errors.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_fn_values"
+path = "tests/program_fn_values.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_numbers"
+path = "tests/program_numbers.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_records"
+path = "tests/program_records.rs"
+required-features = ["driver"]
+
+[[test]]
+name = "program_text"
+path = "tests/program_text.rs"
+required-features = ["driver"]
 
 [lib]
 name = "mzizi_lang_compiler"

@@ -295,7 +295,7 @@ fn evaluating_the_whole_corpus_stays_inside_the_loop_budget() {
 fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one() {
     // The binary, not the harness. CI's `mz check` steps exist for the same reason: the
     // claim the charter makes is about the thing this project ships.
-    let ok = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let ok = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .arg("contract")
         .arg(root().join("primitives/button.mz"))
         .output()
@@ -321,7 +321,7 @@ fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one()
     )
     .expect("writable temp file");
 
-    let checked = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let checked = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .arg("check")
         .arg(&broken)
         .output()
@@ -333,7 +333,7 @@ fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one()
         String::from_utf8_lossy(&checked.stdout)
     );
 
-    let failed = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let failed = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .arg("contract")
         .arg(&broken)
         .output()
@@ -345,7 +345,7 @@ fn the_shipped_binary_exits_zero_on_a_holding_contract_and_one_on_a_broken_one()
 #[test]
 fn the_agent_summary_carries_the_contract_counts() {
     // RFC-0001 §4.4 fixed the summary line as carrying contract results from the start.
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["contract", "--agent"])
         .arg(root().join("primitives/alert.mz"))
         .output()

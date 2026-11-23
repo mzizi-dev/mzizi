@@ -68,14 +68,14 @@ cargo clippy --all-targets -- -D warnings   # every lint is an error, including 
 cargo test                                  # 634 tests in the compiler crate
 
 # The ones that are the point — the shipped binary, not the test harness:
-cargo run --quiet --bin mz -- check ../examples/connectivity_bar.mz
+cargo run --quiet --features driver --bin mz-driver -- check ../examples/connectivity_bar.mz
 for f in ../primitives/*.mz; do
   echo "checking $f"
-  cargo run --quiet --bin mz -- check "$f"
+  cargo run --quiet --features driver --bin mz-driver -- check "$f"
 done
 for f in ../examples/*.mz ../primitives/*.mz; do
   echo "evaluating $f"
-  cargo run --quiet --bin mz -- contract "$f"
+  cargo run --quiet --features driver --bin mz-driver -- contract "$f"
 done
 ```
 

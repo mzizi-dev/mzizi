@@ -558,7 +558,7 @@ fn mz_run(args: &[&str]) -> Option<std::process::Output> {
         return None;
     }
     Some(
-        Command::new(env!("CARGO_BIN_EXE_mz"))
+        Command::new(env!("CARGO_BIN_EXE_mz-driver"))
             .args(args)
             .output()
             .expect("mz runs"),
@@ -654,7 +654,7 @@ fn mz_run_without_a_per_user_cache_directory_refuses_and_writes_nothing_to_temp(
     let path = root().join("examples/hello.mz");
     let shared = std::env::temp_dir().join("mz-run");
     let existed = shared.exists();
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["run", path.to_str().unwrap()])
         .env_remove("MZ_CACHE_DIR")
         .env_remove("XDG_CACHE_HOME")
@@ -684,7 +684,7 @@ fn mz_run_honours_mz_cache_dir() {
         eprintln!("SKIPPED: `cargo` is not on the path, so `mz run` cannot build anything");
         return;
     }
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["run", path.to_str().unwrap()])
         .env("MZ_CACHE_DIR", &cache)
         .output()
@@ -703,7 +703,7 @@ fn mz_run_honours_mz_cache_dir() {
 #[test]
 fn other_commands_on_a_program_behave() {
     let path = root().join("examples/fib.mz");
-    let bin = env!("CARGO_BIN_EXE_mz");
+    let bin = env!("CARGO_BIN_EXE_mz-driver");
     for cmd in ["check", "contract"] {
         let out = Command::new(bin)
             .args([cmd, path.to_str().unwrap()])
@@ -757,7 +757,7 @@ fn mz_run_shows_warnings_and_an_inherited_deny_warnings_does_not_fail_the_build(
         eprintln!("SKIPPED: `cargo` is not on the path, so `mz run` cannot build anything");
         return;
     }
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args(["run", path.to_str().unwrap()])
         .env("RUSTFLAGS", "-D warnings")
         .output()

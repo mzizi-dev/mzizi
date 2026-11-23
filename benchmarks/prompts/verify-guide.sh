@@ -23,8 +23,8 @@ mkdir -p "$out"
 arm="$(basename "$guide")"
 arm="${arm%-guide.md}"
 
-cargo build -q --manifest-path "$root/compiler/Cargo.toml" --bin mz || exit 2
-mz="$root/target/debug/mz"
+cargo build -q --manifest-path "$root/compiler/Cargo.toml" --features driver --bin mz-driver || exit 2
+mz="$root/target/debug/mz-driver"
 
 # Split the guide into block-<n>.<lang>, recording each block's language in order.
 awk -v out="$out" '

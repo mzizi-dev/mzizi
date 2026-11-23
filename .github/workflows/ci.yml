@@ -63,11 +63,11 @@ jobs:
 
       - name: cargo clippy -D warnings
         working-directory: compiler
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features driver -- -D warnings
 
       - name: cargo test
         working-directory: compiler
-        run: cargo test
+        run: cargo test --features driver
 
       # The example and every primitive must stay parseable by the shipped binary, not just
       # by the test harness — the charter's rule is that unverified bytes are worthless.
@@ -76,7 +76,7 @@ jobs:
         run: |
           for f in ../examples/*.mz ../examples/components/*.mz; do
             echo "checking $f"
-            cargo run --quiet --bin mz -- check "$f"
+            cargo run --quiet --features driver --bin mz-driver -- check "$f"
           done
 
       - name: mz check every primitive
@@ -84,7 +84,7 @@ jobs:
         run: |
           for f in ../primitives/*.mz; do
             echo "checking $f"
-            cargo run --quiet --bin mz -- check "$f"
+            cargo run --quiet --features driver --bin mz-driver -- check "$f"
           done
 
       # `mz contract` is a second gate, not a duplicate of the first. `mz check` proves the
@@ -96,7 +96,7 @@ jobs:
         run: |
           for f in ../examples/*.mz ../primitives/*.mz; do
             echo "evaluating $f"
-            cargo run --quiet --bin mz -- contract "$f"
+            cargo run --quiet --features driver --bin mz-driver -- contract "$f"
           done
 
   # The `compiler` job runs with `working-directory: compiler`, which by Cargo's own rule
@@ -123,7 +123,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: cargo clippy -D warnings (workspace)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --features mzizi-lang-compiler/driver -- -D warnings
 
       # Its own workspace root, excluded from the repository's, so `--all` and `--workspace`
       # above miss it.
@@ -168,7 +168,7 @@ jobs:
 
       - name: mz build the example service
         working-directory: compiler
-        run: cargo run --quiet --bin mz -- build ../examples/registry.mz --out ../target/mz-build/registry
+        run: cargo run --quiet --features driver --bin mz-driver -- build ../examples/registry.mz --out ../target/mz-build/registry
 
       - name: cargo test the lowered service (one oneshot test per example)
         run: cargo test --manifest-path target/mz-build/registry/Cargo.toml
@@ -236,13 +236,13 @@ jobs:
       - name: mz run every example program against its .expected output
         run: |
           set -euo pipefail
-          cargo build --quiet -p mzizi-lang-compiler --bin mz
+          cargo build --quiet -p mzizi-lang-compiler --features driver --bin mz-driver
           for program in examples/*.mz examples/components/*.mz; do
             grep -q '^program ' "$program" || continue
             expected="${program%.mz}.expected"
             test -f "$expected" || { echo "$program has no $expected"; exit 1; }
             echo "running $program"
-            target/debug/mz run "$program" > actual.txt
+            target/debug/mz-driver run "$program" > actual.txt
             diff -u "$expected" actual.txt
           done
 
@@ -254,7 +254,7 @@ jobs:
       # throwaway target directories go under RUNNER_TEMP, outside ./target, so the Rust
       # cache does not save them.
       - name: perf suite builds and agrees (benchmarks/perf, --check-only)
-        run: MZ=target/debug/mz benchmarks/perf/run.sh --check-only --out "$RUNNER_TEMP/perf"
+        run: MZ=target/debug/mz-driver benchmarks/perf/run.sh --check-only --out "$RUNNER_TEMP/perf"
 
   secrets:
     name: secret scan

@@ -203,7 +203,7 @@ fn mz_run_fn_values_prints_its_expected_output() {
         return;
     }
     let cache = std::env::temp_dir().join(format!("mz-fn-values-{}", std::process::id()));
-    let out = Command::new(env!("CARGO_BIN_EXE_mz"))
+    let out = Command::new(env!("CARGO_BIN_EXE_mz-driver"))
         .args([
             "run",
             root()
