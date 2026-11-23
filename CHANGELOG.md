@@ -20,6 +20,7 @@ carry no pull request number.
 ### Changed — README says where `mz` is installed from (mzizi-cli 0.14.1, 2026-11-24)
 
 The released `mz` is built in mzizi-dev/mzizi-cli and installs with `npx @nyuchi/mzizi-cli`, `npm i -g @nyuchi/mzizi-cli` or `cargo install mzizi-cli --locked`. The README's new "Install mz" section says so, and "Try it" says the in-repo `cargo run --bin mz` is the compiler's own test driver. No code change. The in-repo binary stays until the compiler's integration tests (`compiler/tests/*.rs`, which spawn it) have a new home; that is an owner decision.
+
 ### Changed — the user-facing `mz` is gone from this repo; a test-only `mz-driver` stays (owner, 2026-11-24)
 
 Closes #189. The one `mz` binary is released from mzizi-dev/mzizi-cli (npm `@nyuchi/mzizi-cli`, crates.io `mzizi-cli`).
