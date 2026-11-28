@@ -17,6 +17,10 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — staging wording removed from comments (2026-11-28)
+
+Comments in the release and Dependabot workflows no longer describe a `staging` branch; the repo is trunk-based. No behaviour changes.
+
 ### Changed — CI is trunk-based: Dependabot targets main and no workflow names staging (2026-11-28)
 
 Closes #191. This repo has no `staging` branch, so `target-branch: staging` pointed Dependabot at a branch that does not exist and its version-update runs errored.
