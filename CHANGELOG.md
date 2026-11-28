@@ -17,6 +17,14 @@ carry no pull request number.
 
 ## [Unreleased]
 
+### Changed — CI is trunk-based: Dependabot targets main and no workflow names staging (2026-11-28)
+
+Closes #191. This repo has no `staging` branch, so `target-branch: staging` pointed Dependabot at a branch that does not exist and its version-update runs errored.
+
+- **`.github/dependabot.yml`:** the `target-branch` line is gone; Dependabot opens its pull requests against the default branch.
+- **`.github/workflows/`:** `ci.yml`, `changelog.yml` and `supply-chain.yml` no longer list `staging` in their `branches:` triggers, and `staging-version.yml` (a workflow that ran on a branch that is gone) is deleted.
+- No compiler, language or benchmark change. Checked: the workflow files parse and the changelog check passes on this entry.
+
 ### Changed — README says where `mz` is installed from (mzizi-cli 0.14.1, 2026-11-24)
 
 The released `mz` is built in mzizi-dev/mzizi-cli and installs with `npx @nyuchi/mzizi-cli`, `npm i -g @nyuchi/mzizi-cli` or `cargo install mzizi-cli --locked`. The README's new "Install mz" section says so, and "Try it" says the in-repo `cargo run --bin mz` is the compiler's own test driver. No code change. The in-repo binary stays until the compiler's integration tests (`compiler/tests/*.rs`, which spawn it) have a new home; that is an owner decision.
