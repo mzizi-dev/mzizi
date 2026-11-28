@@ -23,9 +23,9 @@ name: Supply chain
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main]
   pull_request:
-    branches: [main, staging, "claude/**"]
+    branches: [main, "claude/**"]
   # Required checks must also report on a merge queue's gh-readonly-queue/** ref, or a queued
   # PR waits until the queue times it out. Harmless where no queue is configured.
   merge_group:
