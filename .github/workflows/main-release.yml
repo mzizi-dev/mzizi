@@ -1,12 +1,11 @@
 # Versioning policy (nyuchi/.github#80): every release to `main` is the next
-# MINOR (x.y.z -> x.(y+1).0); merges into `staging` are patches
-# (staging-version.yml); a MAJOR is only ever made by hand, here, with
+# MINOR (x.y.z -> x.(y+1).0); a MAJOR is only ever made by hand, here, with
 # workflow_dispatch and bump: major.
 #
 # Gated on CI: it runs after the `CI` workflow COMPLETES on `main` and only
 # tags when it succeeded, so a red `main` gets no version. The version lives
 # in tags only: nothing is committed back to `main`. The tag and release are
-# pushed with the run's GITHUB_TOKEN, as the org's staging release does (the
+# pushed with the run's GITHUB_TOKEN, as the org's trunk release does (the
 # org RELEASE_BUMP_TOKEN is not used: nothing here listens for tag pushes, so
 # a tag that starts no workflow is what we want). Copied from
 # mukoko-dev/mukoko-circles .github/workflows/main-release.yml.
